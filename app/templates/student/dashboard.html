@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}学生首页{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item active" aria-current="page">学生首页</li>
+  </ol>
+</nav>
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h2 class="h4">学生工作台</h2>
+    <p class="text-secondary">当前已经接入课时申请基础流程入口。</p>
+    <div class="d-flex gap-2">
+      <a class="btn btn-primary" href="{{ url_for('student.create_hour_application_view') }}">提交课时申请</a>
+      <a class="btn btn-outline-primary" href="{{ url_for('student.list_hour_applications') }}">查看我的申请</a>
+      <a class="btn btn-outline-secondary" href="{{ url_for('student.hour_account') }}">查看课时账户</a>
+      <a class="btn btn-outline-success" href="{{ url_for('credit_exchange.create_application') }}">申请学分兑换</a>
+      <a class="btn btn-outline-success" href="{{ url_for('credit_exchange.student_list') }}">我的兑换申请</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}申请详情{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('student.dashboard') }}">学生首页</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('student.list_hour_applications') }}">我的课时申请</a></li>
+    <li class="breadcrumb-item active" aria-current="page">申请详情</li>
+  </ol>
+</nav>
+<div class="card shadow-sm">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h2 class="h4 mb-0">课时申请详情</h2>
+      <a class="btn btn-outline-secondary" href="{{ url_for('student.list_hour_applications') }}">返回</a>
+    </div>
+    <dl class="row mb-0">
+      <dt class="col-sm-3">申请单号</dt>
+      <dd class="col-sm-9">{{ application.application_no }}</dd>
+      <dt class="col-sm-3">任务类别</dt>
+      <dd class="col-sm-9">{{ application.task_type_name }}</dd>
+      <dt class="col-sm-3">任务详情描述</dt>
+      <dd class="col-sm-9">{{ application.title }}</dd>
+      <dt class="col-sm-3">参与人员</dt>
+      <dd class="col-sm-9">{{ application.participant_members or '空' }}</dd>
+      <dt class="col-sm-3">专业</dt>
+      <dd class="col-sm-9">{{ application.major_name or '空' }}</dd>
+      <dt class="col-sm-3">课程</dt>
+      <dd class="col-sm-9">{{ application.course_name or '空' }}</dd>
+      <dt class="col-sm-3">课任/指导老师</dt>
+      <dd class="col-sm-9">{{ application.instructor_name or '空' }}</dd>
+      <dt class="col-sm-3">兑换课程课时</dt>
+      <dd class="col-sm-9">{{ application.requested_hours }}</dd>
+      <dt class="col-sm-3">状态</dt>
+      <dd class="col-sm-9">{{ application.status_name }}</dd>
+      {% if application.status != 'rejected' %}
+      <dt class="col-sm-3">最终认定课时</dt>
+      <dd class="col-sm-9">{{ application.final_hours or '空' }}</dd>
+      {% endif %}
+    </dl>
+    <hr>
+    <h3 class="h5">证明材料</h3>
+    <ul class="mb-4">
+      {% for attachment in attachments %}
+      <li>
+        <a href="{{ url_for('main.view_attachment', attachment_id=attachment.id) }}">
+          {{ attachment.file_name }}
+        </a>
+      </li>
+      {% else %}
+      <li class="text-secondary">暂无附件</li>
+      {% endfor %}
+    </ul>
+    <h3 class="h5">审核记录</h3>
+    <ul class="mb-0">
+      {% for review in reviews %}
+      <li>{{ review.created_at }} / {{ review.action_name }} / {{ review.comment or '空' }}</li>
+      {% else %}
+      <li class="text-secondary">暂无审核记录</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

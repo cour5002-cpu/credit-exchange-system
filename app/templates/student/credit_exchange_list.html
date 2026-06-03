@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}我的兑换申请{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('student.dashboard') }}">学生首页</a></li>
+    <li class="breadcrumb-item active" aria-current="page">我的兑换申请</li>
+  </ol>
+</nav>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="h4 mb-0">我的兑换申请</h2>
+  <a class="btn btn-primary" href="{{ url_for('credit_exchange.create_application') }}">新建兑换申请</a>
+</div>
+<div class="card shadow-sm">
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead>
+          <tr>
+            <th>兑换单号</th>
+            <th>申请兑换课时</th>
+            <th>预计兑换学分</th>
+            <th>状态</th>
+            <th>提交时间</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for application in applications %}
+          <tr>
+            <td>{{ application.exchange_no }}</td>
+            <td>{{ application.requested_hours }}</td>
+            <td>{{ application.estimated_credits }}</td>
+            <td>{{ application.status_name }}</td>
+            <td>{{ application.created_at }}</td>
+            <td><a href="{{ url_for('credit_exchange.student_detail', application_id=application.id) }}">详情</a></td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6" class="text-center text-secondary py-4">暂无兑换申请</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Flask
+instance/
+.webassets-cache
+
+# 敏感配置文件
+.env
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 日志文件
+*.log
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 上传的文件（包含用户数据）
+app/static/uploads/
+
+# 数据库迁移（保留结构，不保留具体迁移）
+migrations/versions/*.pyc
+migrations/__pycache__/
+
+# 测试覆盖率
+.coverage
+htmlcov/
+
+# Jupyter Notebook
+.ipynb_checkpoints
