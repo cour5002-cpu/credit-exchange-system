@@ -15,7 +15,9 @@ def authenticate_user(username: str, password: str):
 def get_home_endpoint_by_role(role: str) -> str:
     mapping = {
         "student": "student.dashboard",
-        "teacher": "teacher.dashboard",
+        "teacher": "advisor.dashboard",
+        "advisor": "advisor.dashboard",
+        "reviewer": "reviewer.dashboard",
         "admin": "admin.dashboard",
     }
     return mapping.get(role, "main.index")

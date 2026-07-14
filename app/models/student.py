@@ -14,6 +14,7 @@ class Student(db.Model):
     grade = db.Column(db.String(32))
     class_name = db.Column(db.String(64))
     status = db.Column(db.String(20), nullable=False, default="active")
+    import_batch_no = db.Column(db.String(64))
     created_at = db.Column(db.DateTime, server_default=db.func.now(), nullable=False)
     updated_at = db.Column(
         db.DateTime,

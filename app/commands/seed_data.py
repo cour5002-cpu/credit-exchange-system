@@ -37,12 +37,18 @@ def seed_task_types() -> None:
             exists.type_name = name
             exists.sort_order = order
             exists.status = "enabled"
+            exists.allow_student_self = True
+            exists.allow_admin_task = True
+            exists.allow_teacher_task = True
             continue
         db.session.add(
             TaskType(
                 type_code=code,
                 type_name=name,
                 sort_order=order,
+                allow_student_self=True,
+                allow_admin_task=True,
+                allow_teacher_task=True,
             )
         )
 
@@ -124,6 +130,7 @@ def ensure_teacher_users() -> None:
                 name=real_name,
                 major_name=major_name,
                 course_name=course_name,
+                role_flags="advisor,reviewer",
                 department="教务处",
                 title="讲师",
                 status="active",

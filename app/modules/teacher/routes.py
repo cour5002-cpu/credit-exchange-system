@@ -18,14 +18,14 @@ teacher_bp = Blueprint("teacher", __name__, url_prefix="/teacher")
 
 @teacher_bp.route("/dashboard")
 @login_required
-@role_required("teacher")
+@role_required("reviewer")
 def dashboard():
     return render_template("teacher/dashboard.html")
 
 
 @teacher_bp.route("/hour-applications")
 @login_required
-@role_required("teacher")
+@role_required("reviewer")
 def list_my_applications():
     teacher = get_current_teacher()
     applications = []
@@ -36,7 +36,7 @@ def list_my_applications():
 
 @teacher_bp.route("/hour-applications/history")
 @login_required
-@role_required("teacher")
+@role_required("reviewer")
 def review_history():
     teacher = get_current_teacher()
     applications = []
@@ -55,7 +55,7 @@ def review_history():
 
 @teacher_bp.route("/hour-applications/<int:application_id>/next")
 @login_required
-@role_required("teacher")
+@role_required("reviewer")
 def next_application(application_id):
     teacher = get_current_teacher()
     if not teacher:
@@ -72,7 +72,7 @@ def next_application(application_id):
 
 @teacher_bp.route("/hour-applications/<int:application_id>", methods=["GET", "POST"])
 @login_required
-@role_required("teacher")
+@role_required("reviewer")
 def review_application_detail(application_id):
     teacher = get_current_teacher()
     if not teacher:

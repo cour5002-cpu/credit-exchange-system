@@ -12,6 +12,7 @@ class Teacher(db.Model):
     course_name = db.Column(db.String(128))
     department = db.Column(db.String(128))
     title = db.Column(db.String(64))
+    role_flags = db.Column(db.String(128), nullable=False, default="advisor,reviewer")
     status = db.Column(db.String(20), nullable=False, default="active")
     created_at = db.Column(db.DateTime, server_default=db.func.now(), nullable=False)
     updated_at = db.Column(
@@ -20,3 +21,13 @@ class Teacher(db.Model):
         onupdate=db.func.now(),
         nullable=False,
     )
+
+    @property
+    def role_flag_list(self):
+        if not self.role_flags:
+            return []
+        return [
+            item.strip()
+            for item in self.role_flags.split(",")
+            if item.strip() in {"advisor", "reviewer"}
+        ]

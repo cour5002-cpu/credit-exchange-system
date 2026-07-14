@@ -9,6 +9,9 @@ class TaskType(db.Model):
     type_name = db.Column(db.String(64), nullable=False)
     status = db.Column(db.String(20), nullable=False, default="enabled")
     sort_order = db.Column(db.Integer, nullable=False, default=0)
+    allow_student_self = db.Column(db.Boolean, nullable=False, default=True)
+    allow_admin_task = db.Column(db.Boolean, nullable=False, default=True)
+    allow_teacher_task = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, server_default=db.func.now(), nullable=False)
     updated_at = db.Column(
         db.DateTime,

@@ -10,7 +10,7 @@ def role_required(*roles):
         def wrapped(*args, **kwargs):
             if not current_user.is_authenticated:
                 abort(401)
-            if current_user.role not in roles:
+            if not current_user.has_role(*roles):
                 abort(403)
             return view_func(*args, **kwargs)
 

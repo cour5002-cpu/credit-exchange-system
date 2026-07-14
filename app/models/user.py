@@ -1,4 +1,5 @@
 from flask_login import UserMixin
+from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.extensions import db, login_manager
@@ -33,6 +34,38 @@ class User(UserMixin, db.Model):
     @property
     def is_active(self):
         return self.status == "active"
+
+    @property
+    def roles(self):
+        role_set = {self.role}
+        if self.role in {"advisor", "reviewer"}:
+            role_set.add("teacher")
+
+        try:
+            from app.models.teacher import Teacher
+
+            teacher = Teacher.query.filter_by(user_id=self.id).first()
+            if teacher:
+                role_set.update(teacher.role_flag_list)
+                if teacher.role_flag_list:
+                    role_set.add("teacher")
+        except SQLAlchemyError:
+            pass
+
+        return sorted(role_set)
+
+    def has_role(self, *roles: str) -> bool:
+        return bool(set(roles) & set(self.roles))
+
+    @property
+    def effective_role(self) -> str:
+        if self.role != "teacher":
+            return self.role
+        if "advisor" in self.roles:
+            return "advisor"
+        if "reviewer" in self.roles:
+            return "reviewer"
+        return self.role
 
 
 @login_manager.user_loader
