@@ -14,7 +14,6 @@ const placeholderRoutes = [
   ['/reviewer/review-tasks', 'reviewer-review-tasks', '待审核成果', '查看等待审核的学生成果。'],
   ['/reviewer/review-records', 'reviewer-review-records', '我的审核记录', '查看已经完成的审核记录。'],
   ['/reviewer/notifications', 'reviewer-notifications', '信息通知', '查看审核老师端通知消息。'],
-  ['/admin/review-assign', 'admin-review-assign', '审核分配', '为待审核事项分配审核老师。'],
   ['/admin/final-confirm', 'admin-final-confirm', '最终确认', '处理等待最终确认的业务。'],
   ['/admin/appeals-complaints', 'admin-appeals-complaints', '申诉与投诉', '处理用户提交的申诉与投诉。'],
   ['/admin/extensions', 'admin-extensions', '特殊延期', '管理特殊情况的延期申请。'],
@@ -83,6 +82,16 @@ const router = createRouter({
       path: '/admin/task-categories',
       name: 'admin-task-categories',
       component: () => import('../views/TaskCategoriesView.vue'),
+    },
+    {
+      path: '/admin/review-assign',
+      name: 'admin-review-assign',
+      component: () => import('../views/AdminAcceptanceListView.vue'),
+    },
+    {
+      path: '/admin/review-assign/:id',
+      name: 'admin-acceptance-detail',
+      component: () => import('../views/AdminAcceptanceDetailView.vue'),
     },
     ...placeholderRoutes,
     {

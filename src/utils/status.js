@@ -4,6 +4,8 @@ const STATUS_META = {
   reviewing: { text: '审核中', color: 'info' },
   pending_confirmation: { text: '待确认', color: 'warning' },
   confirmed: { text: '已确认', color: 'success' },
+  pending_acceptance: { text: '待受理', color: 'warning' },
+  accepted: { text: '已受理', color: 'success' },
   approved: { text: '已通过', color: 'success' },
   rejected: { text: '已驳回', color: 'danger' },
   completed: { text: '已完成', color: 'success' },
