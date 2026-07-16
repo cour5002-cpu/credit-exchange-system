@@ -15,9 +15,16 @@ const teachers = [
   { id: 'T005', name: '赵敏', department: '创新创业学院' },
 ]
 
+const mockTasks = [
+  { id: 'TASK-001', title: '校园数据分析项目', publisher: '张明老师', hours: 8 },
+  { id: 'TASK-002', title: '学科竞赛作品提交', publisher: '李华老师', hours: 10 },
+  { id: 'TASK-003', title: '志愿服务数据整理', publisher: '陈强老师', hours: 6 },
+]
+
 const form = reactive({
   source: 'student',
   taskId: '',
+  requestedHours: '',
   applicationType: 'with_result',
   primaryTeacherId: '',
   observerTeacherIds: [],
@@ -57,7 +64,26 @@ function isObserverDisabled(teacherId) {
   return form.observerTeacherIds.length >= maximumObservers
 }
 
+function handleSourceChange() {
+  form.taskId = ''
+  form.requestedHours = ''
+}
+
+function handleTaskChange() {
+  const task = mockTasks.find((item) => item.id === form.taskId)
+  form.requestedHours = task?.hours ?? ''
+}
+
 function validateForm() {
+  if (form.source === 'task') {
+    if (!form.taskId) return '请选择关联任务'
+    const task = mockTasks.find((item) => item.id === form.taskId)
+    form.requestedHours = task?.hours ?? ''
+  }
+  if (form.requestedHours === '' || form.requestedHours === null) return '请填写申请课时数'
+  if (!Number.isFinite(Number(form.requestedHours)) || Number(form.requestedHours) <= 0) {
+    return '申请课时数必须大于 0'
+  }
   if (!form.primaryTeacherId) return '请选择主指导老师。'
   if (1 + form.observerTeacherIds.length > 3) return '主指导老师和查看导师总数不能超过 3 人。'
   if (form.applicationType === 'without_result' && !form.expectedResultDate) {
@@ -113,23 +139,14 @@ function goBack() {
             <fieldset class="form-field form-field-wide option-fieldset">
               <legend>申请来源</legend>
               <label class="option-card">
-                <input v-model="form.source" type="radio" value="student" />
+                <input v-model="form.source" type="radio" value="student" @change="handleSourceChange" />
                 <span><strong>学生自主申请</strong><small>由学生发起新的课时认定申请</small></span>
               </label>
               <label class="option-card">
-                <input v-model="form.source" type="radio" value="task" />
+                <input v-model="form.source" type="radio" value="task" @change="handleSourceChange" />
                 <span><strong>任务成果申请</strong><small>基于已参与任务的成果发起申请</small></span>
               </label>
             </fieldset>
-
-            <div v-if="form.source === 'task'" class="form-field form-field-wide">
-              <label for="source-task">关联任务（Mock）</label>
-              <select id="source-task" v-model="form.taskId">
-                <option value="">请选择任务</option>
-                <option value="TASK-001">校园志愿服务周</option>
-                <option value="TASK-002">创新创业专题实践</option>
-              </select>
-            </div>
 
             <fieldset class="form-field form-field-wide option-fieldset">
               <legend>申请类型</legend>
@@ -142,6 +159,32 @@ function goBack() {
                 <span><strong>无成果申请</strong><small>成果将在后续约定时间内补充提交</small></span>
               </label>
             </fieldset>
+
+            <div v-if="form.source === 'task'" class="form-field form-field-wide">
+              <label for="source-task">关联任务 <span class="required-mark">*</span></label>
+              <select id="source-task" v-model="form.taskId" @change="handleTaskChange">
+                <option value="">请选择任务</option>
+                <option v-for="task in mockTasks" :key="task.id" :value="task.id">
+                  {{ task.title }} · {{ task.publisher }} · {{ task.hours }} 课时
+                </option>
+              </select>
+            </div>
+
+            <div class="form-field">
+              <label for="requested-hours">申请课时数 <span class="required-mark">*</span></label>
+              <input
+                id="requested-hours"
+                v-model="form.requestedHours"
+                type="number"
+                min="1"
+                step="1"
+                placeholder="请输入申请课时数"
+                :readonly="form.source === 'task'"
+              />
+              <small v-if="form.source === 'task'">
+                任务成果申请的课时数由任务发布时设置，学生不可修改。
+              </small>
+            </div>
 
             <div v-if="form.applicationType === 'without_result'" class="form-field">
               <label for="expected-result-date">预计成果提交时间 <span class="required-mark">*</span></label>
