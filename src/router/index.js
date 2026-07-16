@@ -12,7 +12,6 @@ const placeholderRoutes = [
   ['/teacher/records', 'teacher-records', '我的处理记录', '查看已经处理的业务记录。'],
   ['/teacher/notifications', 'teacher-notifications', '信息通知', '查看指导老师端通知消息。'],
   ['/reviewer/notifications', 'reviewer-notifications', '信息通知', '查看审核老师端通知消息。'],
-  ['/admin/final-confirm', 'admin-final-confirm', '最终确认', '处理等待最终确认的业务。'],
   ['/admin/appeals-complaints', 'admin-appeals-complaints', '申诉与投诉', '处理用户提交的申诉与投诉。'],
   ['/admin/extensions', 'admin-extensions', '特殊延期', '管理特殊情况的延期申请。'],
   ['/admin/statistics', 'admin-statistics', '数据统计', '查看系统业务统计数据。'],
@@ -110,6 +109,16 @@ const router = createRouter({
       path: '/admin/review-assign/:id',
       name: 'admin-acceptance-detail',
       component: () => import('../views/AdminAcceptanceDetailView.vue'),
+    },
+    {
+      path: '/admin/final-confirm',
+      name: 'admin-final-confirm',
+      component: () => import('../views/AdminFinalConfirmListView.vue'),
+    },
+    {
+      path: '/admin/final-confirm/:id',
+      name: 'admin-final-confirm-detail',
+      component: () => import('../views/AdminFinalConfirmDetailView.vue'),
     },
     ...placeholderRoutes,
     {
