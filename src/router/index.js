@@ -11,8 +11,6 @@ const placeholderRoutes = [
   ['/teacher/publish-task', 'teacher-publish-task', '发布任务', '创建并发布新的任务。'],
   ['/teacher/records', 'teacher-records', '我的处理记录', '查看已经处理的业务记录。'],
   ['/teacher/notifications', 'teacher-notifications', '信息通知', '查看指导老师端通知消息。'],
-  ['/reviewer/review-tasks', 'reviewer-review-tasks', '待审核成果', '查看等待审核的学生成果。'],
-  ['/reviewer/review-records', 'reviewer-review-records', '我的审核记录', '查看已经完成的审核记录。'],
   ['/reviewer/notifications', 'reviewer-notifications', '信息通知', '查看审核老师端通知消息。'],
   ['/admin/final-confirm', 'admin-final-confirm', '最终确认', '处理等待最终确认的业务。'],
   ['/admin/appeals-complaints', 'admin-appeals-complaints', '申诉与投诉', '处理用户提交的申诉与投诉。'],
@@ -67,6 +65,26 @@ const router = createRouter({
       path: '/reviewer/dashboard',
       name: 'reviewer-dashboard',
       component: () => import('../views/ReviewerDashboard.vue'),
+    },
+    {
+      path: '/reviewer/review-tasks',
+      name: 'reviewer-review-tasks',
+      component: () => import('../views/ReviewerTaskListView.vue'),
+    },
+    {
+      path: '/reviewer/review-tasks/:id',
+      name: 'reviewer-review-task-detail',
+      component: () => import('../views/ReviewerReviewDetailView.vue'),
+    },
+    {
+      path: '/reviewer/review-records',
+      name: 'reviewer-review-records',
+      component: () => import('../views/ReviewerRecordListView.vue'),
+    },
+    {
+      path: '/reviewer/review-records/:id',
+      name: 'reviewer-review-record-detail',
+      component: () => import('../views/ReviewerReviewDetailView.vue'),
     },
     {
       path: '/admin/dashboard',
