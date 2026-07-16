@@ -2,6 +2,8 @@ const STATUS_META = {
   pending: { text: '待处理', color: 'warning' },
   pending_review: { text: '待审核', color: 'warning' },
   reviewing: { text: '审核中', color: 'info' },
+  pending_confirmation: { text: '待确认', color: 'warning' },
+  confirmed: { text: '已确认', color: 'success' },
   approved: { text: '已通过', color: 'success' },
   rejected: { text: '已驳回', color: 'danger' },
   completed: { text: '已完成', color: 'success' },
@@ -38,4 +40,3 @@ export function getStageDescription(stage) {
   if (stage === null || stage === undefined || stage === '') return '暂无阶段信息。'
   return STAGE_DESCRIPTIONS[normalizeValue(stage)] ?? String(stage)
 }
-

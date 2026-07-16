@@ -9,7 +9,6 @@ const placeholderRoutes = [
   ['/student/notifications', 'student-notifications', '信息通知', '查看学生端通知消息。'],
   ['/teacher/tasks', 'teacher-tasks', '我的任务', '查看和管理指导任务。'],
   ['/teacher/publish-task', 'teacher-publish-task', '发布任务', '创建并发布新的任务。'],
-  ['/teacher/confirm', 'teacher-confirm', '待确认事项', '处理当前等待确认的事项。'],
   ['/teacher/records', 'teacher-records', '我的处理记录', '查看已经处理的业务记录。'],
   ['/teacher/notifications', 'teacher-notifications', '信息通知', '查看指导老师端通知消息。'],
   ['/reviewer/review-tasks', 'reviewer-review-tasks', '待审核成果', '查看等待审核的学生成果。'],
@@ -54,6 +53,16 @@ const router = createRouter({
       path: '/teacher/dashboard',
       name: 'teacher-dashboard',
       component: () => import('../views/TeacherDashboard.vue'),
+    },
+    {
+      path: '/teacher/confirm',
+      name: 'teacher-confirm',
+      component: () => import('../views/TeacherConfirmListView.vue'),
+    },
+    {
+      path: '/teacher/confirm/:id',
+      name: 'teacher-confirm-detail',
+      component: () => import('../views/TeacherConfirmDetailView.vue'),
     },
     {
       path: '/reviewer/dashboard',
