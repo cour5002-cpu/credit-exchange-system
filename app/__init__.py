@@ -4,9 +4,15 @@ from app.config import config_by_name
 from app.extensions import init_extensions
 from app.models import (
     CreditExchangeApplication,
+    CreditExchangeAllocation,
+    CreditConversionRule,
     CreditExchangeRecord,
+    Appeal,
+    Complaint,
     ApplicationAdvisor,
     Attachment,
+    CollegeTask,
+    ExtensionRequest,
     HourAwardRecord,
     HourApplication,
     HourApplicationAttachment,
@@ -14,10 +20,15 @@ from app.models import (
     HourApplicationReview,
     OperationLog,
     ReviewAssignment,
+    RuleFile,
     Student,
+    StudentCreditRecord,
     StudentHourAccount,
     StudentHourTransaction,
     SystemConfig,
+    TaskMember,
+    TaskRegistration,
+    TaskResultSubmission,
     TaskType,
     Teacher,
     User,
@@ -37,6 +48,8 @@ from app.commands.seed_data import register_seed_commands
 def create_app(config_name: str = "default") -> Flask:
     app = Flask(__name__)
     app.config.from_object(config_by_name[config_name])
+    if config_name == "production" and app.config["SECRET_KEY"] in {"dev-secret-key", "change-me", ""}:
+        raise RuntimeError("生产环境必须通过 SECRET_KEY 配置强随机密钥")
 
     init_extensions(app)
     register_blueprints(app)
@@ -70,3 +83,9 @@ def register_error_handlers(app: Flask) -> None:
         if request.path.startswith("/api/v1/"):
             return jsonify({"code": 40401, "message": "资源不存在", "data": None}), 404
         return getattr(error, "description", "Not Found"), 404
+
+    @app.errorhandler(413)
+    def payload_too_large(error):
+        if request.path.startswith("/api/v1/"):
+            return jsonify({"code": 41301, "message": "上传文件超过 10MB 限制", "data": None}), 413
+        return "上传文件超过 10MB 限制", 413
