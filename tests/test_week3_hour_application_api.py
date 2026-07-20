@@ -24,6 +24,32 @@ class Week3HourApplicationApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
         return client, response.json["data"]
 
+    def create_pending_material_application(self, title):
+        student_client, _ = self.client_login("student1", "student123")
+        advisor_client, advisor_me = self.client_login("teacher1", "teacher123")
+        task_type_id = student_client.get("/api/v1/task-types?enabled=true").json["data"]["items"][0]["id"]
+        due_at = datetime.now() + timedelta(days=7)
+        response = student_client.post(
+            "/api/v1/student/hour-applications",
+            json={
+                "application_type": "without_material",
+                "task_type_id": task_type_id,
+                "title": title,
+                "requested_hours": 8,
+                "material_due_at": due_at.isoformat(),
+                "advisor_teacher_id": advisor_me["teacher"]["id"],
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        application_id = response.json["data"]["id"]
+        response = advisor_client.post(
+            f"/api/v1/advisor/hour-applications/{application_id}/approve",
+            json={"comment": "同意进入成果补交阶段"},
+        )
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertEqual(response.json["data"]["status"], "pending_material")
+        return student_client, advisor_client, application_id, due_at
+
     def test_without_material_application_mainline(self):
         student_client, _ = self.client_login("student1", "student123")
         advisor_client, advisor_me = self.client_login("teacher1", "teacher123")
@@ -108,6 +134,12 @@ class Week3HourApplicationApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json["code"], 40901)
 
+        response = admin_client.post(
+            f"/api/v1/admin/hour-applications/{application_id}/close",
+            json={"reason": "已到账申请不允许关闭"},
+        )
+        self.assertEqual(response.status_code, 409)
+
     def test_with_material_application_requires_uploaded_attachment(self):
         student_client, _ = self.client_login("student1", "student123")
         advisor_client, advisor_me = self.client_login("teacher1", "teacher123")
@@ -162,6 +194,133 @@ class Week3HourApplicationApiTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
         self.assertEqual(response.json["data"]["status"], "pending_assignment")
+
+    def test_save_hour_application_draft(self):
+        student_client, _ = self.client_login("student1", "student123")
+        _, advisor_me = self.client_login("teacher1", "teacher123")
+        task_type_id = student_client.get("/api/v1/task-types?enabled=true").json["data"]["items"][0]["id"]
+
+        response = student_client.post(
+            "/api/v1/student/hour-applications/drafts",
+            json={
+                "application_type": "with_material",
+                "task_type_id": task_type_id,
+                "title": "第3周课时申请草稿",
+                "requested_hours": 4,
+                "advisor_teacher_id": advisor_me["teacher"]["id"],
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertEqual(response.json["data"]["status"], "draft")
+
+    def test_normal_extension_is_reviewed_by_primary_advisor_once(self):
+        student_client, advisor_client, application_id, due_at = self.create_pending_material_application("第3周普通延期回归")
+        admin_client, _ = self.client_login("admin", "admin123")
+        requested_due_at = due_at + timedelta(days=30)
+
+        response = student_client.post(
+            f"/api/v1/student/hour-applications/{application_id}/extension-requests",
+            json={"requested_due_at": requested_due_at.isoformat(), "reason": "项目设备延期到货"},
+        )
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertEqual(response.json["data"]["status"], "extension_requested")
+        self.assertEqual(response.json["data"]["review_level"], "advisor")
+        extension_id = response.json["data"]["extension_request_id"]
+
+        response = admin_client.post(
+            f"/api/v1/admin/extension-requests/{extension_id}/approve",
+            json={"comment": "管理员不能审批普通延期"},
+        )
+        self.assertEqual(response.status_code, 403)
+
+        response = advisor_client.get("/api/v1/advisor/extension-requests/pending")
+        self.assertIn(extension_id, [item["id"] for item in response.json["data"]["items"]])
+        response = advisor_client.post(
+            f"/api/v1/advisor/extension-requests/{extension_id}/approve",
+            json={"comment": "同意普通延期"},
+        )
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertEqual(response.json["data"]["status"], "extension_approved")
+
+        response = student_client.post(
+            f"/api/v1/student/hour-applications/{application_id}/extension-requests",
+            json={"requested_due_at": (requested_due_at + timedelta(days=1)).isoformat(), "reason": "再次延期"},
+        )
+        self.assertEqual(response.status_code, 409)
+
+        second_student_client, second_advisor_client, second_application_id, second_due_at = self.create_pending_material_application(
+            "第3周普通延期驳回回归"
+        )
+        response = second_student_client.post(
+            f"/api/v1/student/hour-applications/{second_application_id}/extension-requests",
+            json={"requested_due_at": (second_due_at + timedelta(days=30)).isoformat(), "reason": "普通延期驳回验证"},
+        )
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        second_extension_id = response.json["data"]["extension_request_id"]
+        response = second_advisor_client.post(
+            f"/api/v1/advisor/extension-requests/{second_extension_id}/reject",
+            json={"comment": "延期理由不充分"},
+        )
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertEqual(response.json["data"]["status"], "extension_rejected")
+
+    def test_special_extension_can_be_closed_by_admin(self):
+        student_client, _, application_id, due_at = self.create_pending_material_application("第3周特殊延期关闭回归")
+        admin_client, _ = self.client_login("admin", "admin123")
+        response = student_client.post(
+            f"/api/v1/student/hour-applications/{application_id}/extension-requests",
+            json={"requested_due_at": (due_at + timedelta(days=200)).isoformat(), "reason": "延期跨度超过一个学期"},
+        )
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertEqual(response.json["data"]["status"], "extension_admin_review")
+        self.assertEqual(response.json["data"]["review_level"], "admin")
+        extension_id = response.json["data"]["extension_request_id"]
+
+        response = admin_client.get("/api/v1/admin/extension-requests/pending-special")
+        self.assertIn(extension_id, [item["id"] for item in response.json["data"]["items"]])
+        response = admin_client.post(
+            f"/api/v1/admin/hour-applications/{application_id}/close",
+            json={},
+        )
+        self.assertEqual(response.status_code, 400)
+        response = admin_client.post(
+            f"/api/v1/admin/hour-applications/{application_id}/close",
+            json={"reason": "学生临近毕业，流程已无法继续"},
+        )
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertEqual(response.json["data"]["status"], "closed")
+
+        response = admin_client.post(
+            f"/api/v1/admin/extension-requests/{extension_id}/approve",
+            json={"comment": "关闭后不能再审批"},
+        )
+        self.assertEqual(response.status_code, 409)
+
+    def test_special_extension_admin_approve_and_reject(self):
+        admin_client, _ = self.client_login("admin", "admin123")
+
+        for decision in ("approve", "reject"):
+            student_client, _, application_id, due_at = self.create_pending_material_application(
+                f"第3周特殊延期管理员{decision}回归"
+            )
+            response = student_client.post(
+                f"/api/v1/student/hour-applications/{application_id}/extension-requests",
+                json={"requested_due_at": (due_at + timedelta(days=200)).isoformat(), "reason": "延期跨度超过一个学期"},
+            )
+            self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+            extension_id = response.json["data"]["extension_request_id"]
+
+            response = admin_client.get(f"/api/v1/extension-requests/{extension_id}")
+            self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+            self.assertEqual(response.json["data"]["extension_request"]["review_level"], "admin")
+
+            response = admin_client.post(
+                f"/api/v1/admin/extension-requests/{extension_id}/{decision}",
+                json={"comment": "管理员处理特殊延期"},
+            )
+            self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+            expected_status = "extension_approved" if decision == "approve" else "extension_rejected"
+            self.assertEqual(response.json["data"]["status"], expected_status)
 
 
 if __name__ == "__main__":

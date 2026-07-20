@@ -58,6 +58,7 @@ def seed_system_configs() -> None:
         ("credit_exchange_ratio", "10:1", "10课时兑换1学分"),
         ("max_single_exchange_hours", "100", "单次最大兑换课时数"),
         ("allow_student_resubmit", "0", "是否允许驳回后重新提交"),
+        ("extension_special_threshold_days", "183", "延期超过该天数时转管理员审核"),
     ]
     for key, value, description in items:
         exists = SystemConfig.query.filter_by(config_key=key).first()

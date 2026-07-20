@@ -18,6 +18,10 @@ class HourApplication(db.Model):
         "advisor_approved": "指导老师已确认",
         "advisor_rejected": "指导老师已驳回",
         "pending_material": "待补交成果",
+        "extension_requested": "已申请延期",
+        "extension_admin_review": "特殊延期待管理员审核",
+        "extension_rejected": "延期已驳回",
+        "material_overdue": "成果逾期未提交",
         "material_submitted": "成果已补交",
         "pending_assignment": "待分配审核老师",
         "pending_review": "待审核老师审核",
@@ -54,7 +58,7 @@ class HourApplication(db.Model):
     task_type_code = db.Column(db.String(64), nullable=False)
     requested_hours = db.Column(db.Numeric(10, 2), nullable=False)
     description = db.Column(db.Text)
-    status = db.Column(db.String(20), nullable=False, default="submitted")
+    status = db.Column(db.String(32), nullable=False, default="submitted")
     assigned_teacher_id = db.Column(db.BigInteger, db.ForeignKey("teachers.id"))
     reviewer_suggested_hours = db.Column(db.Numeric(10, 2))
     final_hours = db.Column(db.Numeric(10, 2))

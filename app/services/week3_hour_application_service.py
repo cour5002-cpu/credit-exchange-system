@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import or_
@@ -6,6 +6,7 @@ from sqlalchemy import or_
 from app.extensions import db
 from app.models.application_advisor import ApplicationAdvisor
 from app.models.attachment import Attachment
+from app.models.extension_request import ExtensionRequest
 from app.models.hour_application import HourApplication
 from app.models.hour_application_attachment import HourApplicationAttachment
 from app.models.hour_application_member import HourApplicationMember
@@ -17,11 +18,19 @@ from app.models.student import Student
 from app.models.task_type import TaskType
 from app.models.teacher import Teacher
 from app.services.hour_account_service import add_hours
+from app.services.config_service import get_config_value
 from app.utils.number_generator import generate_application_no
 
 
 VALID_APPLICATION_TYPES = {"with_material", "without_material", "task_result"}
 VALID_SOURCE_TYPES = {"student_self", "admin_task", "teacher_task"}
+EXTENSION_CLOSABLE_STATUSES = {
+    "pending_material",
+    "extension_requested",
+    "extension_admin_review",
+    "extension_rejected",
+    "material_overdue",
+}
 
 
 class BusinessError(ValueError):
@@ -217,6 +226,148 @@ def get_visible_application_for_student(user, application_id):
     raise BusinessError("课时申请不存在或不可见", code=40401, status=404)
 
 
+def create_extension_request(user, application_id, payload):
+    student = current_student(user)
+    application = get_visible_application_for_student(user, application_id)
+    if application.application_type != "without_material":
+        raise BusinessError("只有无成果申请可以申请延期", code=40901, status=409)
+    if application.leader_student_id != student.id and application.applicant_student_id != student.id:
+        raise BusinessError("只有申请发起人或队长可以申请延期", code=40301, status=403)
+    _require_status(application, "pending_material")
+    if application.extension_count >= 1 or ExtensionRequest.query.filter_by(application_id=application.id).first():
+        raise BusinessError("每个课时申请最多延期一次", code=40902, status=409)
+
+    requested_due_at = _parse_datetime(payload.get("requested_due_at"))
+    if not requested_due_at:
+        raise BusinessError("requested_due_at 不能为空")
+    if requested_due_at <= datetime.now():
+        raise BusinessError("延期后的成果提交时间必须晚于当前时间")
+    if not application.material_due_at or requested_due_at <= application.material_due_at:
+        raise BusinessError("延期后的成果提交时间必须晚于原截止时间")
+    reason = _required_str(payload, "reason")
+
+    try:
+        special_threshold_days = int(get_config_value("extension_special_threshold_days", "183"))
+    except (TypeError, ValueError):
+        special_threshold_days = 183
+    is_special = requested_due_at - application.material_due_at > timedelta(days=special_threshold_days)
+    review_level = "admin" if is_special else "advisor"
+    before = application.status
+    application.status = "extension_admin_review" if is_special else "extension_requested"
+    application.extension_count += 1
+    extension = ExtensionRequest(
+        application_id=application.id,
+        old_due_at=application.material_due_at,
+        requested_due_at=requested_due_at,
+        reason=reason,
+        review_level=review_level,
+        status="submitted",
+    )
+    db.session.add(extension)
+    _add_operation(user.id, "extension_request", application.id, "request_extension", before, application.status)
+    db.session.commit()
+    return extension
+
+
+def list_advisor_pending_extensions(user):
+    teacher = current_teacher(user, "advisor")
+    return (
+        ExtensionRequest.query.join(HourApplication, HourApplication.id == ExtensionRequest.application_id)
+        .join(ApplicationAdvisor, ApplicationAdvisor.application_id == HourApplication.id)
+        .filter(
+            ExtensionRequest.review_level == "advisor",
+            ExtensionRequest.status == "submitted",
+            ApplicationAdvisor.teacher_id == teacher.id,
+            ApplicationAdvisor.advisor_role == "primary",
+            ApplicationAdvisor.can_operate.is_(True),
+        )
+        .order_by(ExtensionRequest.created_at.desc(), ExtensionRequest.id.desc())
+        .all()
+    )
+
+
+def list_admin_extensions(pending_special=False):
+    query = ExtensionRequest.query
+    if pending_special:
+        query = query.filter_by(review_level="admin", status="submitted")
+    return query.order_by(ExtensionRequest.created_at.desc(), ExtensionRequest.id.desc()).all()
+
+
+def get_visible_extension_request(user, extension_request_id):
+    extension = db.session.get(ExtensionRequest, extension_request_id)
+    if not extension:
+        raise BusinessError("延期申请不存在", code=40401, status=404)
+    if user.has_role("admin"):
+        return extension
+    if user.has_role("advisor"):
+        teacher = current_teacher(user, "advisor")
+        if _is_primary_advisor(extension.application_id, teacher.id):
+            return extension
+    raise BusinessError("无权查看该延期申请", code=40301, status=403)
+
+
+def review_extension_request(user, extension_request_id, approve, comment=None, reviewer_role="advisor"):
+    extension = db.session.get(ExtensionRequest, extension_request_id)
+    if not extension:
+        raise BusinessError("延期申请不存在", code=40401, status=404)
+    if extension.status != "submitted":
+        raise BusinessError("该延期申请已经处理", code=40901, status=409)
+    application = extension.application
+
+    if reviewer_role == "advisor":
+        teacher = current_teacher(user, "advisor")
+        if extension.review_level != "advisor" or not _is_primary_advisor(application.id, teacher.id):
+            raise BusinessError("当前指导老师无权处理该延期申请", code=40301, status=403)
+        expected_status = "extension_requested"
+        teacher_id = teacher.id
+    else:
+        if not user.has_role("admin") or extension.review_level != "admin":
+            raise BusinessError("当前管理员无权处理该延期申请", code=40301, status=403)
+        expected_status = "extension_admin_review"
+        teacher_id = None
+    _require_status(application, expected_status)
+    if not approve and not (comment or "").strip():
+        raise BusinessError("驳回原因不能为空")
+
+    before = application.status
+    extension.status = "approved" if approve else "rejected"
+    extension.reviewed_by = user.id
+    extension.review_comment = (comment or "").strip() or None
+    extension.reviewed_at = datetime.now()
+    if approve:
+        application.material_due_at = extension.requested_due_at
+        application.status = "pending_material"
+        decision = "extension_approved"
+    else:
+        application.status = "material_overdue" if extension.old_due_at <= datetime.now() else "pending_material"
+        decision = "extension_rejected"
+    _add_review(application, user.id, teacher_id, reviewer_role, decision, before, application.status, comment)
+    _add_operation(user.id, "extension_request", extension.id, decision, before, application.status)
+    db.session.commit()
+    return extension, decision
+
+
+def close_unfinishable_application(user, application_id, reason):
+    reason = (reason or "").strip()
+    if not reason:
+        raise BusinessError("关闭原因不能为空")
+    application = get_application(application_id)
+    if application.application_type != "without_material" or application.status not in EXTENSION_CLOSABLE_STATUSES:
+        raise BusinessError("当前状态不允许终止并关闭", code=40901, status=409)
+    before = application.status
+    application.status = "closed"
+    for extension in application.extension_requests:
+        if extension.status == "submitted":
+            extension.status = "closed"
+            extension.reviewed_by = user.id
+            extension.review_comment = reason
+            extension.reviewed_at = datetime.now()
+    _add_review(application, user.id, None, "admin", "closed", before, application.status, reason)
+    _add_operation(user.id, "hour_application", application.id, "close_unfinishable", before, application.status)
+    db.session.commit()
+    return application
+
+
 def list_advisor_pending(user, status="submitted"):
     teacher = current_teacher(user, "advisor")
     return _advisor_query(teacher, status).order_by(HourApplication.created_at.desc(), HourApplication.id.desc()).all()
@@ -228,7 +379,7 @@ def list_advisor_material_pending(user):
 
 
 def get_application(application_id):
-    application = HourApplication.query.get(application_id)
+    application = db.session.get(HourApplication, application_id)
     if not application:
         raise BusinessError("课时申请不存在", code=40401, status=404)
     return application

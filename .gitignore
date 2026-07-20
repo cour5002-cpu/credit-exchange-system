@@ -63,3 +63,13 @@ htmlcov/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+
+# 本地开发过程记录
+docs/development/
+docs/archive/
+docs/spec/11-8周任务详细分工规划.md
+
+# 本地辅助工具和接口测试材料
+.workbuddy/
+API测试图片/
+api-test-cookie.txt
