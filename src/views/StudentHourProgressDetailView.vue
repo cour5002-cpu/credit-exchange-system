@@ -144,7 +144,7 @@ function goBack() {
           <dl class="info-grid">
             <div><dt>主指导老师</dt><dd>{{ application.mainAdvisor?.name || '--' }}</dd></div>
             <div><dt>查看导师</dt><dd>{{ application.viewAdvisors.map((advisor) => advisor.name).join('、') || '--' }}</dd></div>
-            <div><dt>确认状态</dt><dd><StatusTag :status="application.advisorStatus" /></dd></div>
+            <div><dt>确认状态</dt><dd><StatusTag :status="application.advisorStatus" :text="{ pending: '待确认', approved: '已确认', rejected: '已驳回' }[application.advisorStatus]" /></dd></div>
             <div><dt>确认时间</dt><dd>{{ application.advisorConfirmTime || '--' }}</dd></div>
           </dl>
           <p class="opinion">确认意见：{{ application.advisorComment || '暂无' }}</p>
@@ -153,7 +153,7 @@ function goBack() {
         <section class="card">
           <h2>管理员受理与分配</h2>
           <dl class="info-grid">
-            <div><dt>受理状态</dt><dd><StatusTag :status="application.adminAcceptStatus" /></dd></div>
+            <div><dt>受理状态</dt><dd><StatusTag :status="application.adminAcceptStatus" :text="{ pending: '待受理并分配', accepted: '已受理并分配' }[application.adminAcceptStatus]" /></dd></div>
             <div><dt>受理时间</dt><dd>{{ application.adminAcceptTime || '--' }}</dd></div>
             <div><dt>分配审核老师</dt><dd>{{ application.reviewer?.name || '待分配' }}</dd></div>
             <div><dt>审核方向</dt><dd>{{ application.reviewer?.direction || '--' }}</dd></div>
@@ -165,7 +165,7 @@ function goBack() {
           <h2>审核老师审核</h2>
           <dl class="info-grid">
             <div><dt>审核老师</dt><dd>{{ application.reviewer?.name || '--' }}</dd></div>
-            <div><dt>审核结果</dt><dd><StatusTag :status="application.reviewStatus" /></dd></div>
+            <div><dt>审核结果</dt><dd><StatusTag :status="application.reviewStatus" :text="{ pending: '待审核', approved: '审核通过', modified_approved: '修改课时后审核通过', rejected: '已驳回' }[application.reviewStatus]" /></dd></div>
             <div><dt>原申请课时</dt><dd>{{ application.originalHours ?? application.requestedHours }} 小时</dd></div>
             <div><dt>审核认定课时</dt><dd>{{ application.recognizedHours ?? '--' }}<template v-if="application.recognizedHours !== null"> 小时</template></dd></div>
             <div><dt>审核时间</dt><dd>{{ application.reviewTime || '--' }}</dd></div>
@@ -176,7 +176,7 @@ function goBack() {
         <section class="card">
           <h2>管理员最终确认</h2>
           <dl class="info-grid">
-            <div><dt>最终确认状态</dt><dd><StatusTag :status="application.finalStatus" /></dd></div>
+            <div><dt>最终确认状态</dt><dd><StatusTag :status="application.finalStatus" :text="{ pending: '待最终确认', approved: '最终通过', rejected: '最终驳回' }[application.finalStatus]" /></dd></div>
             <div><dt>最终确认时间</dt><dd>{{ application.finalConfirmTime || '--' }}</dd></div>
             <div><dt>最终认定课时</dt><dd>{{ application.status === APPLICATION_STATUS.FINAL_APPROVED ? `${application.recognizedHours} 小时` : '--' }}</dd></div>
           </dl>

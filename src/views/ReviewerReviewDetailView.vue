@@ -37,7 +37,7 @@ function goBack() { router.push(readonly.value ? '/reviewer/review-records' : '/
 </script>
 
 <template><main class="detail-page"><div class="detail-content"><template v-if="item">
-  <header class="page-header"><div><p class="eyebrow">REVIEW DETAIL</p><h1>{{ item.title }}</h1><p>{{ item.applyTypeText }}</p></div><StatusTag :status="item.status" :text="item.status === APPLICATION_STATUS.PENDING_REVIEWER ? '待审核' : ''" /></header>
+  <header class="page-header"><div><p class="eyebrow">REVIEW DETAIL</p><h1>{{ item.title }}</h1><p>{{ item.applyTypeText }}</p></div><StatusTag :status="item.status" /></header>
   <div v-if="readonly" class="readonly-notice">这是历史审核记录，仅供查看，不允许再次修改。</div>
   <section class="card"><h2>学生信息</h2><dl class="info-grid"><div><dt>姓名</dt><dd>{{ item.studentName }}</dd></div><div><dt>学号</dt><dd>{{ item.studentId }}</dd></div><div><dt>申请人身份</dt><dd>{{ item.captainId === item.currentUserId ? '队长' : '成员' }}</dd></div><div><dt>当前流程</dt><dd>审核老师审核</dd></div></dl></section>
   <section class="card"><h2>申请信息</h2><dl class="info-grid"><div><dt>申请编号</dt><dd>{{ item.id }}</dd></div><div><dt>申请来源</dt><dd>{{ item.sourceText }}</dd></div><div><dt>申请类型</dt><dd>{{ item.applyTypeText }}</dd></div><div><dt>原申请课时</dt><dd>{{ item.requestedHours }} 小时</dd></div><div v-if="item.taskId"><dt>关联任务</dt><dd>{{ item.taskTitle }}（{{ item.taskId }}）</dd></div><div><dt>分配审核老师</dt><dd>{{ item.reviewer?.name || '--' }}<template v-if="item.reviewer?.direction"> · {{ item.reviewer.direction }}</template></dd></div><div><dt>管理员受理时间</dt><dd>{{ item.adminAcceptTime }}</dd></div></dl></section>

@@ -64,7 +64,7 @@ const filteredConfirmations = computed(() => {
                 <td>{{ item.studentName }}</td>
                 <td>课时申请确认</td>
                 <td>{{ item.submitTime }}</td>
-                <td><StatusTag :status="item.status" text="待确认" /></td>
+                <td><StatusTag :status="item.status" /></td>
                 <td><RouterLink class="detail-link" :to="`/teacher/confirm/${item.id}`">查看详情</RouterLink></td>
               </tr>
               <tr v-if="!filteredConfirmations.length">

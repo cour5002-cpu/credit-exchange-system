@@ -249,7 +249,7 @@ function goBack() {
         <div>
           <p class="eyebrow">HOUR APPLICATION</p>
           <h1>课时申请</h1>
-          <StageDescription description="填写申请信息并确认团队成员，提交后将进入指导老师审核阶段。" />
+          <StageDescription description="填写申请信息并确认团队成员，提交后将进入指导老师确认阶段。" />
         </div>
         <button class="secondary-button" type="button" @click="goBack">返回学生首页</button>
       </header>

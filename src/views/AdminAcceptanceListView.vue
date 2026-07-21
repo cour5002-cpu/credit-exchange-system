@@ -37,7 +37,7 @@ function toggleSelectAll(event) {
 
 function batchAccept() {
   if (!selectedIds.value.length) {
-    window.alert('请先选择要受理的申请')
+    window.alert('请先选择要受理并分配的申请')
     return
   }
 
@@ -82,7 +82,7 @@ function batchAccept() {
           <tbody>
             <tr v-for="item in filteredItems" :key="item.id">
               <td class="checkbox-cell"><input v-model="selectedIds" type="checkbox" :value="item.id" :aria-label="`选择申请：${item.title}`" /></td>
-              <td><strong>{{ item.title }}</strong><small>{{ item.id }}</small></td><td>{{ item.studentName }}</td><td>{{ item.sourceText }}</td><td>{{ item.applyTypeText }}</td><td>{{ item.requestedHours }} 小时</td><td><StatusTag :status="item.advisorStatus" text="已确认" /></td><td>{{ item.reviewer?.name || '待分配' }}</td><td>{{ item.submitTime }}</td><td><StatusTag :status="item.status" text="待受理" /></td><td><RouterLink class="detail-link" :to="`/admin/review-assign/${item.id}`">查看详情</RouterLink></td>
+              <td><strong>{{ item.title }}</strong><small>{{ item.id }}</small></td><td>{{ item.studentName }}</td><td>{{ item.sourceText }}</td><td>{{ item.applyTypeText }}</td><td>{{ item.requestedHours }} 小时</td><td><StatusTag :status="item.advisorStatus" text="已确认" /></td><td>{{ item.reviewer?.name || '待分配' }}</td><td>{{ item.submitTime }}</td><td><StatusTag :status="item.status" /></td><td><RouterLink class="detail-link" :to="`/admin/review-assign/${item.id}`">查看详情</RouterLink></td>
             </tr>
             <tr v-if="!filteredItems.length"><td class="empty" colspan="11">没有找到符合条件的待受理申请。</td></tr>
           </tbody>

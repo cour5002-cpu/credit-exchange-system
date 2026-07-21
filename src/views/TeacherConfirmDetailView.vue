@@ -56,7 +56,7 @@ function downloadAttachment(file) {
       <template v-if="confirmation">
         <header class="page-header">
           <div><p class="eyebrow">CONFIRMATION DETAIL</p><h1>{{ confirmation.title }}</h1><p>课时申请确认</p></div>
-          <StatusTag :status="confirmation.status" :text="confirmation.status === APPLICATION_STATUS.PENDING_ADVISOR ? '待确认' : ''" />
+          <StatusTag :status="confirmation.status" />
         </header>
 
         <section class="detail-card">
