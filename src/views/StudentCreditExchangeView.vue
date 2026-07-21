@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import AttachmentNotice from '../components/AttachmentNotice.vue'
 import StatusTag from '../components/StatusTag.vue'
 import { APPLICATION_STATUS, getApplications } from '../mock/applications.js'
-import { addExchange } from '../mock/exchanges.js'
+import { addExchange, EXCHANGE_STATUS } from '../mock/exchanges.js'
 
 const router = useRouter()
 const currentUser = { id: 'stu001', name: '张三', studentId: '2024001' }
@@ -22,7 +22,10 @@ const eligibleApplications = computed(() =>
 const selectedApplication = computed(() =>
   eligibleApplications.value.find((application) => application.id === form.applicationId) ?? null,
 )
-const finalHours = computed(() => Number(selectedApplication.value?.recognizedHours) || 0)
+const finalHours = computed(() => {
+  if (!selectedApplication.value) return 0
+  return Number(selectedApplication.value.recognizedHours ?? selectedApplication.value.requestedHours) || 0
+})
 const estimatedCredits = computed(() =>
   finalHours.value > 0 ? (finalHours.value / hoursPerCredit).toFixed(2) : '0.00',
 )
@@ -88,7 +91,7 @@ function submitExchange() {
     window.alert(error)
     return
   }
-  createExchange('pending_confirmation')
+  createExchange(EXCHANGE_STATUS.PENDING_CONFIRMATION)
   feedback.value = { type: 'success', message: '学分兑换申请提交成功，已进入确认流程。' }
   window.alert(feedback.value.message)
 }
