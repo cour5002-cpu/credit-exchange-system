@@ -24,7 +24,7 @@ export const APPLICATION_STAGE = Object.freeze({
   FINISHED: 'finished',
 })
 
-export const currentReviewerId = 'reviewer001'
+export const currentReviewerId = ref('reviewer001')
 
 export const mockReviewers = [
   { reviewerId: 'reviewer001', reviewerName: '刘敏', college: '计算机学院', direction: '项目成果与技术实践', get pendingCount() { return getReviewerPendingCount(this.reviewerId) } },
@@ -304,6 +304,18 @@ function assignReviewer(application, reviewer) {
   }
 }
 
+function writeReviewerIdentity(application, reviewerId) {
+  const reviewer = mockReviewers.find((item) => item.reviewerId === reviewerId)
+  if (!reviewer) return
+  application.reviewerId = reviewer.reviewerId
+  application.reviewer = {
+    id: reviewer.reviewerId,
+    name: reviewer.reviewerName,
+    college: reviewer.college,
+    direction: reviewer.direction,
+  }
+}
+
 export function adminAccept(id, comment = '', reviewer = null) {
   const application = findApplication(id)
   if (!application) return null
@@ -314,9 +326,10 @@ export function adminAccept(id, comment = '', reviewer = null) {
   return updateStatus(application, APPLICATION_STATUS.PENDING_REVIEWER)
 }
 
-export function reviewerApprove(id, recognizedHours, comment = '') {
+export function reviewerApprove(id, recognizedHours, comment = '', reviewerId = '') {
   const application = findApplication(id)
   if (!application) return null
+  writeReviewerIdentity(application, reviewerId || application.reviewerId)
   application.reviewStatus = 'approved'
   application.originalHours = application.requestedHours
   application.recognizedHours = application.requestedHours
@@ -326,9 +339,10 @@ export function reviewerApprove(id, recognizedHours, comment = '') {
   return updateStatus(application, APPLICATION_STATUS.PENDING_ADMIN_FINAL)
 }
 
-export function reviewerModifiedApprove(id, recognizedHours, comment = '') {
+export function reviewerModifiedApprove(id, recognizedHours, comment = '', reviewerId = '') {
   const application = findApplication(id)
   if (!application) return null
+  writeReviewerIdentity(application, reviewerId || application.reviewerId)
   application.reviewStatus = 'modified_approved'
   application.originalHours = application.requestedHours
   application.recognizedHours = recognizedHours
@@ -338,9 +352,10 @@ export function reviewerModifiedApprove(id, recognizedHours, comment = '') {
   return updateStatus(application, APPLICATION_STATUS.PENDING_ADMIN_FINAL)
 }
 
-export function reviewerReject(id, comment = '') {
+export function reviewerReject(id, comment = '', reviewerId = '') {
   const application = findApplication(id)
   if (!application) return null
+  writeReviewerIdentity(application, reviewerId || application.reviewerId)
   application.reviewStatus = 'rejected'
   application.originalHours = application.requestedHours
   application.recognizedHours = 0
@@ -376,8 +391,11 @@ export function getAdminAcceptApplications() {
   return applications.filter((application) => application.status === APPLICATION_STATUS.PENDING_ADMIN_ACCEPT)
 }
 
-export function getReviewerPendingApplications() {
-  return applications.filter((application) => application.status === APPLICATION_STATUS.PENDING_REVIEWER)
+export function getReviewerPendingApplications(reviewerId = '') {
+  return applications.filter((application) =>
+    application.status === APPLICATION_STATUS.PENDING_REVIEWER
+    && (!reviewerId || application.reviewerId === reviewerId),
+  )
 }
 
 export function getAdminFinalApplications() {
@@ -393,3 +411,4 @@ export function getFinishedApplications() {
   ])
   return applications.filter((application) => finishedStatuses.has(application.status))
 }
+import { ref } from 'vue'

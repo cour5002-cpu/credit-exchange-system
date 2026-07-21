@@ -5,6 +5,7 @@ import ReviewActionBar from '../components/ReviewActionBar.vue'
 import StatusTag from '../components/StatusTag.vue'
 import {
   APPLICATION_STATUS,
+  currentReviewerId,
   getApplications,
   reviewerApprove,
   reviewerModifiedApprove,
@@ -12,7 +13,9 @@ import {
 } from '../mock/applications.js'
 
 const route = useRoute(); const router = useRouter()
-const item = computed(() => getApplications().find((application) => application.id === route.params.id))
+const item = computed(() => getApplications().find((application) =>
+  application.id === route.params.id && application.reviewerId === currentReviewerId.value,
+))
 const readonly = computed(() => route.name === 'reviewer-review-record-detail')
 const recognizedHours = ref(item.value?.recognizedHours ?? item.value?.requestedHours ?? '')
 const opinion = ref(item.value?.reviewComment ?? '')
@@ -26,9 +29,9 @@ function validateRecognizedHours() {
   return ''
 }
 function showError(message) { feedback.value = { type: 'error', message }; window.alert(message) }
-function approve() { const error = validateRecognizedHours(); if (error) return showError(error); if (hoursChanged.value) return showError('认定课时已修改，请使用“修改课时后审核通过”'); reviewerApprove(item.value.id, Number(recognizedHours.value), opinion.value.trim()); feedback.value = { type: 'success', message: '审核通过成功，申请已进入管理员最终确认环节。' }; window.alert(feedback.value.message); goBack() }
-function approveWithChange() { const error = validateRecognizedHours(); if (error) return showError(error); if (!hoursChanged.value) return showError('认定课时未修改，请使用“审核通过”'); if (!opinion.value.trim()) return showError('请填写修改课时原因或审核意见'); reviewerModifiedApprove(item.value.id, Number(recognizedHours.value), opinion.value.trim()); feedback.value = { type: 'success', message: '已修改课时并审核通过，申请已进入管理员最终确认环节。' }; window.alert(feedback.value.message); goBack() }
-function reject() { if (!opinion.value.trim()) return showError('请填写驳回原因'); reviewerReject(item.value.id, opinion.value.trim()); feedback.value = { type: 'success', message: '已驳回' }; window.alert(feedback.value.message); goBack() }
+function approve() { const error = validateRecognizedHours(); if (error) return showError(error); if (hoursChanged.value) return showError('认定课时已修改，请使用“修改课时后审核通过”'); reviewerApprove(item.value.id, Number(recognizedHours.value), opinion.value.trim(), currentReviewerId.value); feedback.value = { type: 'success', message: '审核通过成功，申请已进入管理员最终确认环节。' }; window.alert(feedback.value.message); goBack() }
+function approveWithChange() { const error = validateRecognizedHours(); if (error) return showError(error); if (!hoursChanged.value) return showError('认定课时未修改，请使用“审核通过”'); if (!opinion.value.trim()) return showError('请填写修改课时原因或审核意见'); reviewerModifiedApprove(item.value.id, Number(recognizedHours.value), opinion.value.trim(), currentReviewerId.value); feedback.value = { type: 'success', message: '已修改课时并审核通过，申请已进入管理员最终确认环节。' }; window.alert(feedback.value.message); goBack() }
+function reject() { if (!opinion.value.trim()) return showError('请填写驳回原因'); reviewerReject(item.value.id, opinion.value.trim(), currentReviewerId.value); feedback.value = { type: 'success', message: '已驳回' }; window.alert(feedback.value.message); goBack() }
 function preview(file) { window.alert(`正在预览：${file.name}`) } function download(file) { window.alert(`正在下载：${file.name}`) }
 function goBack() { router.push(readonly.value ? '/reviewer/review-records' : '/reviewer/review-tasks') }
 </script>
