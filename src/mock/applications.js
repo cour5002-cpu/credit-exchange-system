@@ -120,8 +120,8 @@ const applications = [
   createApplication({
     id: 'APP-2026-001',
     title: '校园志愿服务课时申请',
-    studentName: '李晓雨',
-    studentId: '2023101001',
+    studentName: '张三',
+    studentId: '2024001',
     source: 'self',
     applyType: 'with_result',
     requestedHours: 16,
@@ -129,7 +129,7 @@ const applications = [
     captainId: 'stu001',
     currentUserId: 'stu001',
     members: [
-      { id: 'stu001', name: '李晓雨', studentId: '2023101001', role: 'captain' },
+      { id: 'stu001', name: '张三', studentId: '2024001', role: 'captain' },
       { id: 'stu002', name: '周然', studentId: '2023101022', role: 'member' },
     ],
     mainAdvisor: { id: 'T001', name: '张明', department: '计算机学院' },

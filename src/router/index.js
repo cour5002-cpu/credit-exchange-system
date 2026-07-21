@@ -3,7 +3,6 @@ import { createRouter, createWebHistory } from 'vue-router'
 const placeholderRoutes = [
   ['/student/tasks', 'student-tasks', '我的任务', '查看和管理分配给你的任务。'],
   ['/student/task-square', 'student-task-square', '任务广场', '浏览当前可以参与的任务。'],
-  ['/student/hour-progress', 'student-hour-progress', '课时申请进度', '查看课时申请的处理进度。'],
   ['/student/credit-exchange', 'student-credit-exchange', '学分兑换', '办理课时与学分兑换。'],
   ['/student/feedback', 'student-feedback', '问题反馈', '提交使用过程中遇到的问题。'],
   ['/student/notifications', 'student-notifications', '信息通知', '查看学生端通知消息。'],
@@ -44,6 +43,16 @@ const router = createRouter({
       path: '/student/hour-apply',
       name: 'student-hour-apply',
       component: () => import('../views/StudentHourApplyView.vue'),
+    },
+    {
+      path: '/student/hour-progress',
+      name: 'student-hour-progress',
+      component: () => import('../views/StudentHourProgressView.vue'),
+    },
+    {
+      path: '/student/hour-progress/:id',
+      name: 'student-hour-progress-detail',
+      component: () => import('../views/StudentHourProgressDetailView.vue'),
     },
     {
       path: '/teacher/dashboard',
