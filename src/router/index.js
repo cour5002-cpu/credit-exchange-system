@@ -59,6 +59,16 @@ const router = createRouter({
       component: () => import('../views/StudentCreditExchangeView.vue'),
     },
     {
+      path: '/student/credit-exchange-records',
+      name: 'student-credit-exchange-records',
+      component: () => import('../views/StudentCreditExchangeRecordsView.vue'),
+    },
+    {
+      path: '/student/credit-exchange-records/:id',
+      name: 'student-credit-exchange-record-detail',
+      component: () => import('../views/StudentCreditExchangeRecordDetailView.vue'),
+    },
+    {
       path: '/teacher/dashboard',
       name: 'teacher-dashboard',
       component: () => import('../views/TeacherDashboard.vue'),
@@ -129,9 +139,23 @@ const router = createRouter({
       component: () => import('../views/AdminFinalConfirmListView.vue'),
     },
     {
+      path: '/admin/final-confirm/exchanges',
+      name: 'admin-credit-exchange-final-confirm',
+      component: () => import('../views/AdminCreditExchangeReviewView.vue'),
+    },
+    {
+      path: '/admin/final-confirm/exchanges/:id',
+      name: 'admin-credit-exchange-final-confirm-detail',
+      component: () => import('../views/AdminCreditExchangeDetailView.vue'),
+    },
+    {
       path: '/admin/final-confirm/:id',
       name: 'admin-final-confirm-detail',
       component: () => import('../views/AdminFinalConfirmDetailView.vue'),
+    },
+    {
+      path: '/admin/credit-exchange-review',
+      redirect: '/admin/final-confirm/exchanges',
     },
     ...placeholderRoutes,
     {
