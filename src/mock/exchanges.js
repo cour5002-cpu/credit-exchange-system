@@ -1,3 +1,5 @@
+import { APPLICATION_STATUS, getApplications } from './applications.js'
+
 export const EXCHANGE_STATUS = Object.freeze({
   PENDING_CONFIRMATION: 'pending_confirmation',
   PENDING_FINAL_CONFIRM: 'pending_final_confirm',
@@ -12,6 +14,13 @@ const exchanges = []
 const FINAL_PENDING_STATUSES = [
   EXCHANGE_STATUS.PENDING_CONFIRMATION,
   EXCHANGE_STATUS.PENDING_FINAL_CONFIRM,
+]
+const ACTIVE_EXCHANGE_STATUSES = [
+  EXCHANGE_STATUS.PENDING_CONFIRMATION,
+  EXCHANGE_STATUS.PENDING_FINAL_CONFIRM,
+  EXCHANGE_STATUS.PENDING_DISTRIBUTION_CONFIRM,
+  EXCHANGE_STATUS.FINAL_APPROVED,
+  EXCHANGE_STATUS.COMPLETED,
 ]
 
 function nowText() {
@@ -44,6 +53,31 @@ function createBatchResult(ids) {
 
 export function getExchanges() {
   return exchanges
+}
+
+export function isHoursArrived(application) {
+  if (!application) return false
+  if (application.hoursArrived !== undefined) return Boolean(application.hoursArrived)
+  if (application.hoursPosted !== undefined) return Boolean(application.hoursPosted)
+  if (application.arrived !== undefined) return Boolean(application.arrived)
+  return application.status === APPLICATION_STATUS.FINAL_APPROVED
+}
+
+export function hasActiveExchange(applicationId) {
+  if (!applicationId) return false
+  return exchanges.some((exchange) =>
+    exchange.applicationId === applicationId
+    && ACTIVE_EXCHANGE_STATUSES.includes(exchange.status),
+  )
+}
+
+export function getAvailableExchangeApplications(currentStudentId) {
+  return getApplications().filter((application) =>
+    application.captainId === currentStudentId
+    && application.status === APPLICATION_STATUS.FINAL_APPROVED
+    && isHoursArrived(application)
+    && !hasActiveExchange(application.id),
+  )
 }
 
 export function addExchange(exchange) {

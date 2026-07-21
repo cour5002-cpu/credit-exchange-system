@@ -1,7 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-import { APPLICATION_STATUS, getApplications } from '../mock/applications.js'
-import { EXCHANGE_STATUS, getExchanges } from '../mock/exchanges.js'
+import { EXCHANGE_STATUS, getAvailableExchangeApplications, getExchanges } from '../mock/exchanges.js'
 
 const currentUser = { id: 'stu001', name: '张三', studentId: '2024001' }
 const completedStatuses = [EXCHANGE_STATUS.COMPLETED, EXCHANGE_STATUS.FINAL_APPROVED]
@@ -9,10 +8,7 @@ const pendingStatuses = [EXCHANGE_STATUS.PENDING_CONFIRMATION, EXCHANGE_STATUS.P
 const studentExchanges = computed(() => getExchanges().filter((item) => item.studentId === currentUser.studentId))
 const creditedCredits = computed(() => studentExchanges.value.filter((item) => completedStatuses.includes(item.status)).reduce((sum, item) => sum + Number(item.estimatedCredits || 0), 0))
 const pendingCount = computed(() => studentExchanges.value.filter((item) => pendingStatuses.includes(item.status)).length)
-const availableProjectCount = computed(() => {
-  const unavailableIds = new Set(studentExchanges.value.filter((item) => ![EXCHANGE_STATUS.FINAL_REJECTED, EXCHANGE_STATUS.REJECTED].includes(item.status)).map((item) => item.applicationId))
-  return getApplications().filter((item) => item.currentUserId === currentUser.id && item.status === APPLICATION_STATUS.FINAL_APPROVED && !unavailableIds.has(item.id)).length
-})
+const availableProjectCount = computed(() => getAvailableExchangeApplications(currentUser.id).length)
 
 const entries = [
   { title: '我的任务', description: '查看和管理分配给你的任务。', to: '/student/tasks' },

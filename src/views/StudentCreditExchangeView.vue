@@ -3,8 +3,14 @@ import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AttachmentNotice from '../components/AttachmentNotice.vue'
 import StatusTag from '../components/StatusTag.vue'
-import { APPLICATION_STATUS, getApplications } from '../mock/applications.js'
-import { addExchange, EXCHANGE_STATUS } from '../mock/exchanges.js'
+import { APPLICATION_STATUS } from '../mock/applications.js'
+import {
+  addExchange,
+  EXCHANGE_STATUS,
+  getAvailableExchangeApplications,
+  hasActiveExchange,
+  isHoursArrived,
+} from '../mock/exchanges.js'
 
 const router = useRouter()
 const currentUser = { id: 'stu001', name: '张三', studentId: '2024001' }
@@ -12,13 +18,12 @@ const hoursPerCredit = 8
 const form = reactive({ applicationId: '', applyReason: '', attachment: null })
 const feedback = ref({ type: '', message: '' })
 const attachmentInput = ref(null)
+const availabilityVersion = ref(0)
 
-const eligibleApplications = computed(() =>
-  getApplications().filter((application) =>
-    application.currentUserId === currentUser.id
-    && application.status === APPLICATION_STATUS.FINAL_APPROVED,
-  ),
-)
+const eligibleApplications = computed(() => {
+  availabilityVersion.value
+  return getAvailableExchangeApplications(currentUser.id)
+})
 const selectedApplication = computed(() =>
   eligibleApplications.value.find((application) => application.id === form.applicationId) ?? null,
 )
@@ -35,6 +40,8 @@ function validateForm() {
   if (!selectedApplication.value || selectedApplication.value.status !== APPLICATION_STATUS.FINAL_APPROVED) {
     return '只有最终确认通过的项目才能申请学分兑换'
   }
+  if (!isHoursArrived(selectedApplication.value)) return '只有课时已到账的项目才能申请学分兑换'
+  if (hasActiveExchange(selectedApplication.value.id)) return '该项目已存在有效的兑换申请，请勿重复提交'
   if (finalHours.value <= 0) return '该项目暂无可兑换课时'
   if (!form.attachment) return '请上传认定证明'
   return ''
@@ -70,7 +77,7 @@ function createExchange(status) {
     sourceText: application?.sourceText ?? '',
     teamName: application?.taskTitle ? `${application.taskTitle}团队` : `${currentUser.name}团队`,
     taskName: application?.taskTitle || application?.title || '',
-    hoursArrived: true,
+    hoursArrived: isHoursArrived(application),
     exchanged: false,
     advisorConfirmStatus: application?.advisorStatus || 'approved',
     advisorComment: application?.advisorComment || '',
@@ -108,6 +115,10 @@ function submitExchange() {
     return
   }
   createExchange(EXCHANGE_STATUS.PENDING_CONFIRMATION)
+  availabilityVersion.value += 1
+  form.applicationId = ''
+  form.applyReason = ''
+  removeAttachment()
   feedback.value = { type: 'success', message: '学分兑换申请提交成功，已进入确认流程。' }
   window.alert(feedback.value.message)
 }
@@ -147,11 +158,11 @@ function goBack() {
             <select id="exchange-project" v-model="form.applicationId">
               <option value="">请选择已最终确认通过的项目</option>
               <option v-for="application in eligibleApplications" :key="application.id" :value="application.id">
-                {{ application.title }} · 最终认定 {{ application.recognizedHours }} 小时
+                {{ application.title }} · 最终认定 {{ application.recognizedHours ?? application.requestedHours }} 小时
               </option>
             </select>
           </div>
-          <p v-if="!eligibleApplications.length" class="empty-state">暂无可兑换项目，请等待课时申请完成最终确认。</p>
+          <p v-if="!eligibleApplications.length" class="empty-state">暂无可兑换项目。只有课时已到账且未兑换的项目才能申请学分兑换。</p>
         </section>
 
         <section v-if="selectedApplication" class="form-card">
