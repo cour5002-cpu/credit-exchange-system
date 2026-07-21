@@ -4,8 +4,18 @@ import { useRouter } from 'vue-router'
 import AttachmentNotice from '../components/AttachmentNotice.vue'
 import MemberInputTable from '../components/MemberInputTable.vue'
 import StageDescription from '../components/StageDescription.vue'
+import { addApplication } from '../mock/applications.js'
 
 const router = useRouter()
+
+// Mock 当前登录学生信息，接入登录接口后替换此处即可。
+const currentUser = {
+  id: 'stu001',
+  name: '张三',
+  studentId: '2024001',
+  college: '计算机学院',
+  major: '数据科学与大数据技术',
+}
 
 const teachers = [
   { id: 'T001', name: '张明', department: '计算机学院' },
@@ -16,12 +26,42 @@ const teachers = [
 ]
 
 const mockTasks = [
-  { id: 'TASK-001', title: '校园数据分析项目', publisher: '张明老师', hours: 8 },
-  { id: 'TASK-002', title: '学科竞赛作品提交', publisher: '李华老师', hours: 10 },
-  { id: 'TASK-003', title: '志愿服务数据整理', publisher: '陈强老师', hours: 6 },
+  {
+    id: 'TASK-001', title: '校园数据分析项目', publisher: '张明老师', hours: 8, captainId: 'stu001',
+    members: [
+      { id: 'stu001', name: '张三', studentId: '2024001', role: 'captain' },
+      { id: 'stu002', name: '李四', studentId: '2024002', role: 'member' },
+    ],
+  },
+  {
+    id: 'TASK-002', title: '学科竞赛作品提交', publisher: '李华老师', hours: 10, captainId: 'stu002',
+    members: [
+      { id: 'stu002', name: '李四', studentId: '2024002', role: 'captain' },
+      { id: 'stu001', name: '张三', studentId: '2024001', role: 'member' },
+    ],
+  },
+  {
+    id: 'TASK-003', title: '志愿服务数据整理', publisher: '陈强老师', hours: 6, captainId: 'stu003',
+    members: [
+      { id: 'stu003', name: '王五', studentId: '2024003', role: 'captain' },
+      { id: 'stu004', name: '赵六', studentId: '2024004', role: 'member' },
+    ],
+  },
 ]
 
+function createCurrentUserMember() {
+  return {
+    id: currentUser.id,
+    name: currentUser.name,
+    studentNo: currentUser.studentId,
+    college: currentUser.college,
+    major: currentUser.major,
+    isLeader: true,
+  }
+}
+
 const form = reactive({
+  title: '',
   source: 'student',
   taskId: '',
   requestedHours: '',
@@ -29,12 +69,41 @@ const form = reactive({
   primaryTeacherId: '',
   observerTeacherIds: [],
   expectedResultDate: '',
-  members: [],
+  members: [createCurrentUserMember()],
 })
 
 const feedback = ref({ type: '', message: '' })
 const observerPanelExpanded = ref(false)
 const observerSearch = ref('')
+const selectedTask = computed(() => mockTasks.find((task) => task.id === form.taskId) ?? null)
+const selectedTaskCaptain = computed(() =>
+  selectedTask.value?.members.find((member) => member.id === selectedTask.value.captainId) ?? null,
+)
+const isSelectedTaskMember = computed(() =>
+  Boolean(selectedTask.value?.members.some((member) => member.id === currentUser.id)),
+)
+const isSelectedTaskCaptain = computed(() =>
+  Boolean(selectedTask.value && selectedTask.value.captainId === currentUser.id),
+)
+const isSelfApplicationLeader = computed(() =>
+  form.members.some((member) => member.id === currentUser.id && member.isLeader),
+)
+const permissionState = computed(() => {
+  if (form.source === 'student') {
+    return isSelfApplicationLeader.value
+      ? { allowed: true, message: '学生自主申请由当前学生作为队长提交。' }
+      : { allowed: false, message: '学生自主申请必须由当前登录学生作为队长提交。' }
+  }
+  if (!selectedTask.value) return { allowed: false, message: '请先选择关联任务。' }
+  if (!isSelectedTaskMember.value) {
+    return { allowed: false, message: '你不是该任务成员，不能提交该任务的课时申请。' }
+  }
+  if (!isSelectedTaskCaptain.value) {
+    return { allowed: false, message: '你不是该任务队长，不能提交该任务的课时申请，请联系队长提交。' }
+  }
+  return { allowed: true, message: '你是该任务队长，可以提交课时申请。' }
+})
+const canSubmitApplication = computed(() => permissionState.value.allowed)
 const observerTeacherOptions = computed(() =>
   teachers.filter((teacher) => teacher.id !== form.primaryTeacherId),
 )
@@ -67,18 +136,20 @@ function isObserverDisabled(teacherId) {
 function handleSourceChange() {
   form.taskId = ''
   form.requestedHours = ''
+  form.members = form.source === 'student' ? [createCurrentUserMember()] : []
+  feedback.value = { type: '', message: '' }
 }
 
 function handleTaskChange() {
-  const task = mockTasks.find((item) => item.id === form.taskId)
-  form.requestedHours = task?.hours ?? ''
+  form.requestedHours = selectedTask.value?.hours ?? ''
+  feedback.value = { type: '', message: '' }
 }
 
 function validateForm() {
+  if (!form.title.trim()) return '请填写申请标题'
   if (form.source === 'task') {
     if (!form.taskId) return '请选择关联任务'
-    const task = mockTasks.find((item) => item.id === form.taskId)
-    form.requestedHours = task?.hours ?? ''
+    form.requestedHours = selectedTask.value?.hours ?? ''
   }
   if (form.requestedHours === '' || form.requestedHours === null) return '请填写申请课时数'
   if (!Number.isFinite(Number(form.requestedHours)) || Number(form.requestedHours) <= 0) {
@@ -89,17 +160,30 @@ function validateForm() {
   if (form.applicationType === 'without_result' && !form.expectedResultDate) {
     return '无成果申请必须填写预计成果提交时间。'
   }
-  if (!form.members.length) return '请至少填写 1 名团队成员。'
-  if (!form.members.some((member) => member.isLeader)) return '请选择 1 名队长。'
+  if (form.source === 'student') {
+    if (!form.members.length) return '请至少填写 1 名团队成员。'
+    if (!isSelfApplicationLeader.value) return '学生自主申请必须由当前登录学生作为队长提交。'
+  }
   return ''
 }
 
 function saveDraft() {
+  if (!canSubmitApplication.value) {
+    feedback.value = { type: 'error', message: permissionState.value.message }
+    return
+  }
+
   feedback.value = { type: 'success', message: '草稿已模拟保存，本次操作不会提交到后端。' }
   window.alert(feedback.value.message)
 }
 
 function submitApplication() {
+  if (!canSubmitApplication.value) {
+    feedback.value = { type: 'error', message: permissionState.value.message }
+    window.alert(permissionState.value.message)
+    return
+  }
+
   const error = validateForm()
   if (error) {
     feedback.value = { type: 'error', message: error }
@@ -107,7 +191,49 @@ function submitApplication() {
     return
   }
 
-  feedback.value = { type: 'success', message: '校验通过，申请已模拟提交。' }
+  const task = selectedTask.value
+  const applicationMembers = form.source === 'task'
+    ? task.members.map((member) => ({ ...member }))
+    : form.members.map((member) => ({
+        id: member.id || member.studentNo,
+        name: member.name,
+        studentId: member.studentNo,
+        college: member.college,
+        major: member.major,
+        role: member.isLeader ? 'captain' : 'member',
+      }))
+  const mainAdvisor = teachers.find((teacher) => teacher.id === form.primaryTeacherId) ?? null
+  const viewAdvisors = form.observerTeacherIds
+    .map((id) => teachers.find((teacher) => teacher.id === id))
+    .filter(Boolean)
+
+  addApplication({
+    title: form.title.trim(),
+    studentName: currentUser.name,
+    studentId: currentUser.studentId,
+    source: form.source === 'student' ? 'self' : 'task',
+    applyType: form.applicationType,
+    requestedHours: Number(form.requestedHours),
+    taskId: task?.id ?? '',
+    taskTitle: task?.title ?? '',
+    captainId: form.source === 'task' ? task.captainId : currentUser.id,
+    currentUserId: currentUser.id,
+    members: applicationMembers,
+    mainAdvisor: mainAdvisor ? { ...mainAdvisor } : null,
+    viewAdvisors: viewAdvisors.map((advisor) => ({ ...advisor })),
+    attachments: [
+      {
+        id: `ATT-${Date.now()}`,
+        name: form.applicationType === 'with_result' ? '成果证明材料.pdf' : '团队成员承诺书.pdf',
+        type: 'PDF',
+        description: form.applicationType === 'with_result'
+          ? 'Mock 成果证明材料'
+          : 'Mock 团队成员确认材料',
+      },
+    ],
+  })
+
+  feedback.value = { type: 'success', message: '课时申请提交成功，已进入指导老师确认环节。' }
   window.alert(feedback.value.message)
 }
 
@@ -128,14 +254,37 @@ function goBack() {
         <button class="secondary-button" type="button" @click="goBack">返回学生首页</button>
       </header>
 
+      <section
+        class="permission-notice"
+        :class="canSubmitApplication ? 'permission-notice--allowed' : 'permission-notice--denied'"
+        role="status"
+      >
+        <span class="permission-notice__icon" aria-hidden="true">{{ canSubmitApplication ? '✓' : '!' }}</span>
+        <div>
+          <strong>{{ permissionState.message }}</strong>
+          <p>当前登录学生：{{ currentUser.name }}（{{ currentUser.id }}）</p>
+        </div>
+      </section>
+
       <form class="application-form" @submit.prevent="submitApplication">
-        <section class="form-section">
+          <section class="form-section">
           <div class="section-heading">
             <h2>基本信息</h2>
             <span>请根据实际申请情况填写</span>
           </div>
 
           <div class="form-grid">
+            <div class="form-field form-field-wide">
+              <label for="application-title">申请标题 <span class="required-mark">*</span></label>
+              <input
+                id="application-title"
+                v-model="form.title"
+                type="text"
+                placeholder="请输入本次课时申请标题"
+                :disabled="!canSubmitApplication"
+              />
+            </div>
+
             <fieldset class="form-field form-field-wide option-fieldset">
               <legend>申请来源</legend>
               <label class="option-card">
@@ -151,11 +300,11 @@ function goBack() {
             <fieldset class="form-field form-field-wide option-fieldset">
               <legend>申请类型</legend>
               <label class="option-card">
-                <input v-model="form.applicationType" type="radio" value="with_result" />
+                <input v-model="form.applicationType" type="radio" value="with_result" :disabled="!canSubmitApplication" />
                 <span><strong>有成果申请</strong><small>当前已有可供审核的成果材料</small></span>
               </label>
               <label class="option-card">
-                <input v-model="form.applicationType" type="radio" value="without_result" />
+                <input v-model="form.applicationType" type="radio" value="without_result" :disabled="!canSubmitApplication" />
                 <span><strong>无成果申请</strong><small>成果将在后续约定时间内补充提交</small></span>
               </label>
             </fieldset>
@@ -188,7 +337,20 @@ function goBack() {
 
             <div v-if="form.applicationType === 'without_result'" class="form-field">
               <label for="expected-result-date">预计成果提交时间 <span class="required-mark">*</span></label>
-              <input id="expected-result-date" v-model="form.expectedResultDate" type="date" />
+              <input id="expected-result-date" v-model="form.expectedResultDate" type="date" :disabled="!canSubmitApplication" />
+            </div>
+          </div>
+
+          <div v-if="form.source === 'task' && selectedTask" class="task-summary">
+            <div>
+              <span>任务队长</span>
+              <strong>{{ selectedTaskCaptain?.name ?? '未设置' }}</strong>
+              <small>{{ selectedTaskCaptain?.studentId ?? '--' }}</small>
+            </div>
+            <div>
+              <span>任务成员数</span>
+              <strong>{{ selectedTask.members.length }} 人</strong>
+              <small>成员信息由任务自动带出</small>
             </div>
           </div>
 
@@ -199,9 +361,10 @@ function goBack() {
             :required="true"
             :accept-types="['PDF', 'Word', '图片']"
           />
-        </section>
+          </section>
 
-        <section class="form-section">
+          <section class="form-section">
+          <fieldset class="section-fieldset" :disabled="!canSubmitApplication">
           <div class="section-heading">
             <h2>指导老师</h2>
             <span>主指导老师与查看导师合计最多 3 人</span>
@@ -275,18 +438,38 @@ function goBack() {
               </div>
             </div>
           </div>
-        </section>
+          </fieldset>
+          </section>
 
-        <section class="form-section">
+          <section class="form-section">
           <div class="section-heading">
             <h2>团队信息</h2>
             <span>至少 1 名成员，且必须指定 1 名队长</span>
           </div>
-          <MemberInputTable v-model="form.members" />
-          <p class="leader-notice">队长负责后续成果提交和学分兑换，请谨慎选择。</p>
-        </section>
+          <MemberInputTable
+            v-if="form.source === 'student'"
+            v-model="form.members"
+            :locked-leader-id="currentUser.id"
+          />
+          <div v-else-if="selectedTask" class="task-member-table">
+            <table>
+              <thead><tr><th>姓名</th><th>学号</th><th>角色</th></tr></thead>
+              <tbody>
+                <tr v-for="member in selectedTask.members" :key="member.id">
+                  <td>{{ member.name }}</td>
+                  <td>{{ member.studentId }}</td>
+                  <td><span class="member-role">{{ member.role === 'captain' ? '队长' : '成员' }}</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p v-else class="task-member-empty">选择关联任务后，将自动展示任务成员信息。</p>
+          <p class="leader-notice">
+            {{ form.source === 'student' ? '当前登录学生已锁定为队长，可继续添加其他成员。' : '任务成员信息来源于关联任务，不可在此修改。' }}
+          </p>
+          </section>
 
-        <section class="form-section">
+          <section class="form-section">
           <div class="section-heading"><h2>附件说明</h2></div>
           <AttachmentNotice
             title="承诺书上传说明"
@@ -294,7 +477,7 @@ function goBack() {
             :required="true"
             :accept-types="['PDF', 'Word', '图片']"
           />
-        </section>
+          </section>
 
         <p v-if="feedback.message" class="form-feedback" :class="`form-feedback--${feedback.type}`" role="status">
           {{ feedback.message }}
@@ -302,8 +485,8 @@ function goBack() {
 
         <div class="form-actions">
           <button class="secondary-button" type="button" @click="goBack">返回</button>
-          <button class="secondary-button" type="button" @click="saveDraft">保存草稿</button>
-          <button class="primary-button" type="submit">提交申请</button>
+          <button class="secondary-button" type="button" :disabled="!canSubmitApplication" @click="saveDraft">保存草稿</button>
+          <button class="primary-button" type="submit" :disabled="!canSubmitApplication">提交申请</button>
         </div>
       </form>
     </div>
@@ -316,7 +499,15 @@ function goBack() {
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
 .page-header h1 { margin: 0 0 8px; font-size: 30px; }
 .application-form { display: grid; gap: 22px; }
+.permission-notice { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 22px; padding: 16px 18px; border: 1px solid; border-radius: 12px; }
+.permission-notice--allowed { color: #166534; border-color: #bbf7d0; background: #f0fdf4; }
+.permission-notice--denied { color: #b45309; border-color: #fed7aa; background: #fff7ed; }
+.permission-notice__icon { display: grid; flex: 0 0 24px; width: 24px; height: 24px; place-items: center; border: 1px solid currentColor; border-radius: 50%; font-weight: 800; }
+.permission-notice strong { line-height: 1.6; }
+.permission-notice p { margin: 3px 0 0; color: #64748b; font-size: 13px; }
 .form-section { padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04); }
+.section-fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.section-fieldset:disabled { opacity: 0.6; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
 .section-heading h2 { margin: 0; font-size: 20px; }
 .section-heading span { color: #64748b; font-size: 14px; }
@@ -352,16 +543,28 @@ function goBack() {
 .option-card strong, .option-card small { display: block; }
 .option-card small { margin-top: 4px; color: #64748b; line-height: 1.5; }
 .required-mark { color: #dc2626; }
+.task-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 18px; padding: 16px; border: 1px solid #dbeafe; border-radius: 10px; background: #f8fbff; }
+.task-summary div { display: grid; gap: 4px; }
+.task-summary span, .task-summary small { color: #64748b; font-size: 13px; }
+.task-summary strong { color: #1e3a8a; }
+.task-member-table { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 12px; }
+.task-member-table table { width: 100%; border-collapse: collapse; }
+.task-member-table th, .task-member-table td { padding: 12px 14px; border-bottom: 1px solid #e2e8f0; text-align: left; }
+.task-member-table th { color: #475569; background: #f8fafc; font-size: 13px; }
+.task-member-table tbody tr:last-child td { border-bottom: 0; }
+.member-role { display: inline-block; padding: 3px 9px; border-radius: 999px; color: #1d4ed8; background: #dbeafe; font-size: 12px; font-weight: 700; }
+.task-member-empty { margin: 0; padding: 24px; border: 1px dashed #cbd5e1; border-radius: 12px; color: #64748b; text-align: center; }
 .leader-notice { margin: 12px 0 0; color: #64748b; font-size: 14px; }
 .form-feedback { margin: 0; padding: 12px 16px; border-radius: 10px; }
 .form-feedback--error { color: #b91c1c; background: #fef2f2; }
 .form-feedback--success { color: #166534; background: #f0fdf4; }
 .form-actions { display: flex; justify-content: flex-end; gap: 12px; }
+.form-actions button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 @media (max-width: 680px) {
   .hour-apply-page { padding: 24px 14px; }
   .page-header, .section-heading { align-items: stretch; flex-direction: column; }
-  .form-grid, .option-fieldset { grid-template-columns: 1fr; }
+  .form-grid, .option-fieldset, .task-summary { grid-template-columns: 1fr; }
   .form-field-wide, .option-fieldset legend { grid-column: auto; }
   .form-actions { flex-wrap: wrap; }
 }

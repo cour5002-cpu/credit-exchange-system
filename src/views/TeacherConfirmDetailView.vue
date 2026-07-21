@@ -4,19 +4,25 @@ import { useRoute, useRouter } from 'vue-router'
 import AttachmentNotice from '../components/AttachmentNotice.vue'
 import ReviewActionBar from '../components/ReviewActionBar.vue'
 import StatusTag from '../components/StatusTag.vue'
-import { getConfirmationTypeText, getTeacherConfirmation } from '../mock/teacherConfirmations'
+import {
+  APPLICATION_STATUS,
+  advisorApprove,
+  advisorReject,
+  getApplications,
+} from '../mock/applications.js'
 
 const route = useRoute()
 const router = useRouter()
-const confirmation = computed(() => getTeacherConfirmation(route.params.id))
+const confirmation = computed(() => getApplications().find((item) => item.id === route.params.id))
 const opinion = ref('')
 const feedback = ref({ type: '', message: '' })
 
 function approveConfirmation() {
   if (!confirmation.value) return
-  confirmation.value.status = 'confirmed'
-  feedback.value = { type: 'success', message: '确认通过成功' }
+  advisorApprove(confirmation.value.id, opinion.value.trim())
+  feedback.value = { type: 'success', message: '确认通过成功，申请已进入管理员受理环节。' }
   window.alert(feedback.value.message)
+  goBack()
 }
 
 function rejectConfirmation() {
@@ -25,9 +31,10 @@ function rejectConfirmation() {
     window.alert(feedback.value.message)
     return
   }
-  confirmation.value.status = 'rejected'
+  advisorReject(confirmation.value.id, opinion.value.trim())
   feedback.value = { type: 'success', message: '驳回成功' }
   window.alert(feedback.value.message)
+  goBack()
 }
 
 function goBack() {
@@ -48,17 +55,17 @@ function downloadAttachment(file) {
     <div class="detail-content">
       <template v-if="confirmation">
         <header class="page-header">
-          <div><p class="eyebrow">CONFIRMATION DETAIL</p><h1>{{ confirmation.title }}</h1><p>{{ getConfirmationTypeText(confirmation.type) }}</p></div>
-          <StatusTag :status="confirmation.status" />
+          <div><p class="eyebrow">CONFIRMATION DETAIL</p><h1>{{ confirmation.title }}</h1><p>课时申请确认</p></div>
+          <StatusTag :status="confirmation.status" :text="confirmation.status === APPLICATION_STATUS.PENDING_ADVISOR ? '待确认' : ''" />
         </header>
 
         <section class="detail-card">
           <h2>学生信息</h2>
           <dl class="info-grid">
-            <div><dt>姓名</dt><dd>{{ confirmation.student.name }}</dd></div>
-            <div><dt>学号</dt><dd>{{ confirmation.student.studentNo }}</dd></div>
-            <div><dt>学院</dt><dd>{{ confirmation.student.college }}</dd></div>
-            <div><dt>专业</dt><dd>{{ confirmation.student.major }}</dd></div>
+            <div><dt>姓名</dt><dd>{{ confirmation.studentName }}</dd></div>
+            <div><dt>学号</dt><dd>{{ confirmation.studentId }}</dd></div>
+            <div><dt>申请人身份</dt><dd>{{ confirmation.captainId === confirmation.currentUserId ? '队长' : '成员' }}</dd></div>
+            <div><dt>当前流程</dt><dd>指导老师确认</dd></div>
           </dl>
         </section>
 
@@ -66,28 +73,29 @@ function downloadAttachment(file) {
           <h2>申请信息</h2>
           <dl class="info-grid">
             <div><dt>事项编号</dt><dd>{{ confirmation.id }}</dd></div>
-            <div><dt>申请来源</dt><dd>{{ confirmation.application.source }}</dd></div>
-            <div><dt>申请类别</dt><dd>{{ confirmation.application.category }}</dd></div>
-            <div><dt>申请课时</dt><dd>{{ confirmation.application.requestedHours }} 小时</dd></div>
-            <div v-if="confirmation.application.requestedCredits"><dt>兑换学分</dt><dd>{{ confirmation.application.requestedCredits }} 学分</dd></div>
-            <div><dt>提交时间</dt><dd>{{ confirmation.submittedAt }}</dd></div>
+            <div><dt>申请来源</dt><dd>{{ confirmation.sourceText }}</dd></div>
+            <div><dt>申请类型</dt><dd>{{ confirmation.applyTypeText }}</dd></div>
+            <div><dt>申请课时</dt><dd>{{ confirmation.requestedHours }} 小时</dd></div>
+            <div v-if="confirmation.taskId"><dt>关联任务</dt><dd>{{ confirmation.taskTitle }}（{{ confirmation.taskId }}）</dd></div>
+            <div><dt>提交时间</dt><dd>{{ confirmation.submitTime }}</dd></div>
           </dl>
         </section>
 
         <section class="detail-card">
           <h2>团队成员</h2>
-          <div class="table-wrapper"><table><thead><tr><th>姓名</th><th>学号</th><th>学院</th><th>专业</th><th>角色</th></tr></thead><tbody><tr v-for="member in confirmation.members" :key="member.studentNo"><td>{{ member.name }}</td><td>{{ member.studentNo }}</td><td>{{ member.college }}</td><td>{{ member.major }}</td><td>{{ member.isLeader ? '队长' : '成员' }}</td></tr></tbody></table></div>
+          <div class="table-wrapper"><table><thead><tr><th>姓名</th><th>学号</th><th>学院</th><th>专业</th><th>角色</th></tr></thead><tbody><tr v-for="member in confirmation.members" :key="member.id"><td>{{ member.name }}</td><td>{{ member.studentId }}</td><td>{{ member.college || '--' }}</td><td>{{ member.major || '--' }}</td><td>{{ member.role === 'captain' ? '队长' : '成员' }}</td></tr></tbody></table></div>
         </section>
 
         <section class="detail-card">
           <h2>主指导老师</h2>
-          <p>{{ confirmation.primaryTeacher.name }} · {{ confirmation.primaryTeacher.department }}</p>
+          <p>{{ confirmation.mainAdvisor?.name || '--' }} · {{ confirmation.mainAdvisor?.department || '--' }}</p>
+          <p v-if="confirmation.viewAdvisors.length" class="description">查看导师：{{ confirmation.viewAdvisors.map((advisor) => advisor.name).join('、') }}</p>
         </section>
 
         <section class="detail-card">
           <h2>成果或申请说明</h2>
-          <p class="description">{{ confirmation.description }}</p>
-          <AttachmentNotice title="附件材料摘要" :description="confirmation.attachment" :required="false" :accept-types="['PDF', 'Word', '图片']" />
+          <p class="description">请确认学生提交的申请信息、团队成员与附件材料。</p>
+          <AttachmentNotice title="附件材料摘要" description="以下材料来自学生课时申请。" :required="false" :accept-types="['PDF', 'Word', '图片']" />
         </section>
 
         <section class="detail-card" aria-labelledby="student-attachments-title">
@@ -99,7 +107,7 @@ function downloadAttachment(file) {
                 <h3>{{ file.name }}</h3>
                 <div class="attachment-meta">
                   <span>{{ file.type }}</span>
-                  <span>上传时间：{{ file.uploadedAt }}</span>
+                  <span v-if="file.uploadedAt">上传时间：{{ file.uploadedAt }}</span>
                 </div>
                 <p>{{ file.description }}</p>
               </div>
@@ -118,7 +126,13 @@ function downloadAttachment(file) {
           <p v-if="feedback.message" class="feedback" :class="`feedback--${feedback.type}`" role="status">{{ feedback.message }}</p>
         </section>
 
-        <ReviewActionBar approve-text="确认通过" reject-text="驳回" @approve="approveConfirmation" @reject="rejectConfirmation">
+        <ReviewActionBar
+          approve-text="确认通过"
+          reject-text="驳回"
+          :disabled="confirmation.status !== APPLICATION_STATUS.PENDING_ADVISOR"
+          @approve="approveConfirmation"
+          @reject="rejectConfirmation"
+        >
           <template #before><button class="back-button" type="button" @click="goBack">返回</button></template>
         </ReviewActionBar>
       </template>

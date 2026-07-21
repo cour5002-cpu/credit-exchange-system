@@ -4,6 +4,10 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  lockedLeaderId: {
+    type: String,
+    default: '',
+  },
 })
 
 const emit = defineEmits(['update:modelValue'])
@@ -40,6 +44,7 @@ function updateMember(index, field, value) {
 }
 
 function selectLeader(index) {
+  if (props.lockedLeaderId) return
   const members = props.modelValue.map((member, memberIndex) => ({
     ...member,
     isLeader: memberIndex === index,
@@ -48,6 +53,7 @@ function selectLeader(index) {
 }
 
 function removeMember(index) {
+  if (props.modelValue[index]?.id === props.lockedLeaderId) return
   const removedLeader = Boolean(props.modelValue[index]?.isLeader)
   const members = props.modelValue
     .filter((_, memberIndex) => memberIndex !== index)
@@ -130,12 +136,20 @@ function removeMember(index) {
                 :checked="member.isLeader"
                 type="radio"
                 name="team-leader"
+                :disabled="Boolean(lockedLeaderId)"
                 :aria-label="`将第 ${index + 1} 名成员设为队长`"
                 @change="selectLeader(index)"
               />
             </td>
             <td>
-              <button class="remove-button" type="button" @click="removeMember(index)">删除</button>
+              <button
+                class="remove-button"
+                type="button"
+                :disabled="member.id === lockedLeaderId"
+                @click="removeMember(index)"
+              >
+                {{ member.id === lockedLeaderId ? '队长锁定' : '删除' }}
+              </button>
             </td>
           </tr>
         </tbody>
@@ -176,6 +190,7 @@ input[type='text']:focus { border-color: #60a5fa; outline: 3px solid rgba(37, 99
 .leader-cell input { width: 18px; height: 18px; accent-color: #2563eb; cursor: pointer; }
 .add-button { padding: 9px 15px; border: 1px solid #2563eb; border-radius: 9px; color: #fff; background: #2563eb; font: inherit; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .remove-button { padding: 5px 8px; border: 0; color: #dc2626; background: transparent; font: inherit; font-weight: 700; cursor: pointer; }
+.remove-button:disabled { color: #94a3b8; cursor: not-allowed; }
 .empty-state { padding: 28px 20px; color: #64748b; text-align: center; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
@@ -183,4 +198,3 @@ input[type='text']:focus { border-color: #60a5fa; outline: 3px solid rgba(37, 99
   .member-input-table__header { align-items: stretch; flex-direction: column; }
 }
 </style>
-

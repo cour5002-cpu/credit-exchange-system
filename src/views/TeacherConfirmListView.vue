@@ -1,24 +1,20 @@
 <script setup>
 import { computed, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
-import {
-  confirmationTypeOptions,
-  getConfirmationTypeText,
-  teacherConfirmations,
-} from '../mock/teacherConfirmations'
+import { getAdvisorPendingApplications } from '../mock/applications.js'
 
-const selectedType = ref('')
+const selectedSource = ref('')
 const keyword = ref('')
 
 const filteredConfirmations = computed(() => {
   const normalizedKeyword = keyword.value.trim().toLowerCase()
-  return teacherConfirmations.value.filter((item) => {
-    const matchesType = !selectedType.value || item.type === selectedType.value
+  return getAdvisorPendingApplications().filter((item) => {
+    const matchesSource = !selectedSource.value || item.source === selectedSource.value
     const matchesKeyword =
       !normalizedKeyword ||
-      item.student.name.toLowerCase().includes(normalizedKeyword) ||
+      item.studentName.toLowerCase().includes(normalizedKeyword) ||
       item.title.toLowerCase().includes(normalizedKeyword)
-    return matchesType && matchesKeyword
+    return matchesSource && matchesKeyword
   })
 })
 </script>
@@ -37,12 +33,11 @@ const filteredConfirmations = computed(() => {
 
       <section class="filter-panel" aria-label="确认事项筛选">
         <label>
-          <span>确认类型</span>
-          <select v-model="selectedType">
-            <option value="">全部类型</option>
-            <option v-for="option in confirmationTypeOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </option>
+          <span>申请来源</span>
+          <select v-model="selectedSource">
+            <option value="">全部来源</option>
+            <option value="self">学生自主申请</option>
+            <option value="task">任务成果申请</option>
           </select>
         </label>
         <label>
@@ -66,10 +61,10 @@ const filteredConfirmations = computed(() => {
             <tbody>
               <tr v-for="item in filteredConfirmations" :key="item.id">
                 <td><strong>{{ item.title }}</strong><small>{{ item.id }}</small></td>
-                <td>{{ item.student.name }}</td>
-                <td>{{ getConfirmationTypeText(item.type) }}</td>
-                <td>{{ item.submittedAt }}</td>
-                <td><StatusTag :status="item.status" /></td>
+                <td>{{ item.studentName }}</td>
+                <td>课时申请确认</td>
+                <td>{{ item.submitTime }}</td>
+                <td><StatusTag :status="item.status" text="待确认" /></td>
                 <td><RouterLink class="detail-link" :to="`/teacher/confirm/${item.id}`">查看详情</RouterLink></td>
               </tr>
               <tr v-if="!filteredConfirmations.length">
@@ -98,4 +93,3 @@ const filteredConfirmations = computed(() => {
 .table-wrapper { overflow-x: auto; }table { width: 100%; border-collapse: collapse; }th, td { padding: 13px 14px; border-bottom: 1px solid #e2e8f0; text-align: left; white-space: nowrap; }th { color: #475569; background: #f8fafc; font-size: 13px; }tbody tr:last-child td { border-bottom: 0; }td small { display: block; margin-top: 4px; color: #94a3b8; }.empty-state { padding: 32px; color: #64748b; text-align: center; }
 @media (max-width: 680px) { .confirm-page { padding: 24px 14px; }.page-header { flex-direction: column; }.filter-panel { grid-template-columns: 1fr; } }
 </style>
-

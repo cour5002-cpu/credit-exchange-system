@@ -2,27 +2,25 @@
 import { computed, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
 import {
-  acceptanceTypeOptions,
-  adminAcceptances,
-  getAcceptanceTypeText,
-  getApplicationSourceText,
-} from '../mock/adminAcceptances'
+  adminAccept,
+  getAdminAcceptApplications,
+} from '../mock/applications.js'
 
 const selectedType = ref('')
 const keyword = ref('')
 const selectedIds = ref([])
+const refreshKey = ref(0)
 
 const filteredItems = computed(() => {
+  refreshKey.value
   const search = keyword.value.trim().toLowerCase()
-  return adminAcceptances.value.filter((item) =>
-    (!selectedType.value || item.type === selectedType.value) &&
-    (!search || item.student.name.toLowerCase().includes(search) || item.title.toLowerCase().includes(search)),
+  return getAdminAcceptApplications().filter((item) =>
+    (!selectedType.value || item.applyType === selectedType.value) &&
+    (!search || item.studentName.toLowerCase().includes(search) || item.title.toLowerCase().includes(search)),
   )
 })
 
-const selectableItems = computed(() =>
-  filteredItems.value.filter((item) => item.status === 'pending_acceptance'),
-)
+const selectableItems = computed(() => filteredItems.value)
 const allSelected = computed(() =>
   selectableItems.value.length > 0 && selectableItems.value.every((item) => selectedIds.value.includes(item.id)),
 )
@@ -39,24 +37,22 @@ function toggleSelectAll(event) {
 
 function batchAccept() {
   if (!selectedIds.value.length) {
-    window.alert('请先选择要确认的申请')
+    window.alert('请先选择要受理的申请')
     return
   }
 
-  const selectedItems = adminAcceptances.value.filter((item) => selectedIds.value.includes(item.id))
-  if (selectedItems.some((item) => item.status !== 'pending_acceptance')) {
-    window.alert('只能批量确认待受理申请')
-    return
-  }
+  const selectedItems = getAdminAcceptApplications().filter((item) => selectedIds.value.includes(item.id))
+  if (!selectedItems.length) return
 
-  if (!window.confirm(`确定要批量确认通过已选择的 ${selectedItems.length} 条申请吗？`)) return
+  if (!window.confirm(`确定要批量受理并分配已选择的 ${selectedItems.length} 条申请吗？`)) return
 
-  selectedItems.forEach((item) => {
-    item.status = 'accepted'
-    item.adminOpinion = '管理员批量确认通过'
+  const assignments = selectedItems.map((item) => {
+    const acceptedApplication = adminAccept(item.id, '管理员批量受理并分配')
+    return `${item.title} → ${acceptedApplication.reviewer.name}老师`
   })
   selectedIds.value = []
-  window.alert('批量确认通过成功')
+  refreshKey.value += 1
+  window.alert(`批量受理并分配成功：\n${assignments.join('\n')}`)
 }
 </script>
 
@@ -69,26 +65,26 @@ function batchAccept() {
       </header>
 
       <section class="filters" aria-label="待受理申请筛选">
-        <label><span>申请类型</span><select v-model="selectedType"><option value="">全部类型</option><option v-for="option in acceptanceTypeOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
+        <label><span>申请类型</span><select v-model="selectedType"><option value="">全部类型</option><option value="with_result">有成果申请</option><option value="without_result">无成果申请</option></select></label>
         <label><span>搜索</span><input v-model="keyword" type="search" placeholder="搜索学生姓名或申请标题" /></label>
       </section>
 
       <section class="list-panel">
         <div class="panel-header">
           <div><h2>申请列表</h2><span>共 {{ filteredItems.length }} 项，已选择 {{ selectedIds.length }} 项</span></div>
-          <button class="batch-button" type="button" @click="batchAccept">批量确认通过</button>
+          <button class="batch-button" type="button" @click="batchAccept">批量受理并分配</button>
         </div>
         <div class="table-wrapper"><table>
           <thead><tr>
             <th class="checkbox-cell"><input type="checkbox" aria-label="全选待受理申请" :checked="allSelected" :indeterminate.prop="partiallySelected" :disabled="!selectableItems.length" @change="toggleSelectAll" /></th>
-            <th>申请标题</th><th>学生姓名</th><th>申请来源</th><th>申请类型</th><th>指导老师确认状态</th><th>提交时间</th><th>当前状态</th><th>操作</th>
+            <th>申请标题</th><th>学生姓名</th><th>申请来源</th><th>申请类型</th><th>申请课时数</th><th>指导老师确认状态</th><th>拟分配审核老师</th><th>提交时间</th><th>当前状态</th><th>操作</th>
           </tr></thead>
           <tbody>
             <tr v-for="item in filteredItems" :key="item.id">
-              <td class="checkbox-cell"><input v-model="selectedIds" type="checkbox" :value="item.id" :disabled="item.status !== 'pending_acceptance'" :aria-label="`选择申请：${item.title}`" /></td>
-              <td><strong>{{ item.title }}</strong><small>{{ item.id }}</small></td><td>{{ item.student.name }}</td><td>{{ getApplicationSourceText(item.source) }}</td><td>{{ getAcceptanceTypeText(item.type) }}</td><td><StatusTag :status="item.teacherStatus" /></td><td>{{ item.submittedAt }}</td><td><StatusTag :status="item.status" /></td><td><RouterLink class="detail-link" :to="`/admin/review-assign/${item.id}`">查看详情</RouterLink></td>
+              <td class="checkbox-cell"><input v-model="selectedIds" type="checkbox" :value="item.id" :aria-label="`选择申请：${item.title}`" /></td>
+              <td><strong>{{ item.title }}</strong><small>{{ item.id }}</small></td><td>{{ item.studentName }}</td><td>{{ item.sourceText }}</td><td>{{ item.applyTypeText }}</td><td>{{ item.requestedHours }} 小时</td><td><StatusTag :status="item.advisorStatus" text="已确认" /></td><td>{{ item.reviewer?.name || '待分配' }}</td><td>{{ item.submitTime }}</td><td><StatusTag :status="item.status" text="待受理" /></td><td><RouterLink class="detail-link" :to="`/admin/review-assign/${item.id}`">查看详情</RouterLink></td>
             </tr>
-            <tr v-if="!filteredItems.length"><td class="empty" colspan="9">没有找到符合条件的待受理申请。</td></tr>
+            <tr v-if="!filteredItems.length"><td class="empty" colspan="11">没有找到符合条件的待受理申请。</td></tr>
           </tbody>
         </table></div>
       </section>
