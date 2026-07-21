@@ -10,11 +10,14 @@ export const EXCHANGE_STATUS = Object.freeze({
   REJECTED: 'rejected',
 })
 
-const exchanges = []
-const FINAL_PENDING_STATUSES = [
+export const PENDING_CREDIT_STATUSES = Object.freeze([
   EXCHANGE_STATUS.PENDING_CONFIRMATION,
   EXCHANGE_STATUS.PENDING_FINAL_CONFIRM,
-]
+  EXCHANGE_STATUS.PENDING_DISTRIBUTION_CONFIRM,
+])
+
+const exchanges = []
+const FINAL_PENDING_STATUSES = PENDING_CREDIT_STATUSES
 const ACTIVE_EXCHANGE_STATUSES = [
   EXCHANGE_STATUS.PENDING_CONFIRMATION,
   EXCHANGE_STATUS.PENDING_FINAL_CONFIRM,
@@ -218,7 +221,7 @@ export function batchFinalRejectExchanges(ids, comment) {
   return result
 }
 
-// 保留第四周早期 Mock 方法，供已有演示代码兼容使用。
+// 旧兼容方法，不建议新流程继续调用。保留供已有演示代码兼容使用。
 export function approveExchange(id, comment = '') {
   const exchange = findExchange(id)
   if (!exchange || exchange.status !== EXCHANGE_STATUS.PENDING_CONFIRMATION) return null

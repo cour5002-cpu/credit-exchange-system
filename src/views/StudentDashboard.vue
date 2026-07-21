@@ -1,14 +1,13 @@
 <script setup>
 import { computed } from 'vue'
-import { EXCHANGE_STATUS, getAvailableExchangeApplications, getExchanges } from '../mock/exchanges.js'
+import { EXCHANGE_STATUS, getAvailableExchangeApplications, getExchanges, PENDING_CREDIT_STATUSES } from '../mock/exchanges.js'
 
 const currentUser = { id: 'stu001', name: '张三', studentId: '2024001' }
 const completedStatuses = [EXCHANGE_STATUS.COMPLETED, EXCHANGE_STATUS.FINAL_APPROVED]
-const pendingStatuses = [EXCHANGE_STATUS.PENDING_CONFIRMATION, EXCHANGE_STATUS.PENDING_FINAL_CONFIRM]
 const studentExchanges = computed(() => getExchanges().filter((item) => item.studentId === currentUser.studentId || item.memberDistributions?.some((member) => member.studentId === currentUser.studentId)))
 function personalCredits(item) { return Number(item.memberDistributions?.find((member) => member.studentId === currentUser.studentId)?.allocatedCredits || 0) }
 const creditedCredits = computed(() => studentExchanges.value.filter((item) => completedStatuses.includes(item.status)).reduce((sum, item) => sum + personalCredits(item), 0))
-const pendingCredits = computed(() => studentExchanges.value.filter((item) => pendingStatuses.includes(item.status)).reduce((sum, item) => sum + personalCredits(item), 0))
+const pendingCredits = computed(() => studentExchanges.value.filter((item) => PENDING_CREDIT_STATUSES.includes(item.status)).reduce((sum, item) => sum + personalCredits(item), 0))
 const availableProjectCount = computed(() => getAvailableExchangeApplications(currentUser.id).length)
 
 const entries = [

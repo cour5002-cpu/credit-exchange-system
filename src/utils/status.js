@@ -16,7 +16,7 @@ const STATUS_META = {
   reviewing: { text: '审核中', color: 'info' },
   pending_confirmation: { text: '待确认', color: 'warning' },
   pending_final_confirm: { text: '待管理员最终确认', color: 'warning' },
-  pending_distribution_confirm: { text: '待分配确认', color: 'warning' },
+  pending_distribution_confirm: { text: '待管理员最终确认', color: 'warning' },
   confirmed: { text: '已确认', color: 'success' },
   pending_acceptance: { text: '待受理', color: 'warning' },
   accepted: { text: '已受理', color: 'success' },

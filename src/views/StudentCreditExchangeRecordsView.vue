@@ -1,16 +1,15 @@
 <script setup>
 import { computed } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
-import { EXCHANGE_STATUS, getExchanges } from '../mock/exchanges.js'
+import { EXCHANGE_STATUS, getExchanges, PENDING_CREDIT_STATUSES } from '../mock/exchanges.js'
 
 const currentUser = { id: 'stu001', studentId: '2024001' }
 const items = computed(() => getExchanges().filter((item) => item.captainId === currentUser.id || item.studentId === currentUser.studentId || item.memberDistributions?.some((member) => member.studentId === currentUser.studentId)).sort((a, b) => String(b.submitTime).localeCompare(String(a.submitTime))))
 function personalDistribution(item) { return item.memberDistributions?.find((member) => member.studentId === currentUser.studentId) || {} }
 function statusText(status) {
   if ([EXCHANGE_STATUS.COMPLETED, EXCHANGE_STATUS.FINAL_APPROVED].includes(status)) return '学分已到账'
-  if ([EXCHANGE_STATUS.PENDING_CONFIRMATION, EXCHANGE_STATUS.PENDING_FINAL_CONFIRM].includes(status)) return '待管理员最终确认'
+  if (PENDING_CREDIT_STATUSES.includes(status)) return '待管理员最终确认'
   if ([EXCHANGE_STATUS.FINAL_REJECTED, EXCHANGE_STATUS.REJECTED].includes(status)) return '兑换已驳回'
-  if (status === EXCHANGE_STATUS.PENDING_DISTRIBUTION_CONFIRM) return '待分配确认'
   return ''
 }
 </script>

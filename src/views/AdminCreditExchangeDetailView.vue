@@ -2,13 +2,13 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
-import { EXCHANGE_STATUS, finalApproveExchange, finalRejectExchange, getExchangeFinalApproveFailure, getExchanges } from '../mock/exchanges.js'
+import { EXCHANGE_STATUS, finalApproveExchange, finalRejectExchange, getExchangeFinalApproveFailure, getExchanges, PENDING_CREDIT_STATUSES } from '../mock/exchanges.js'
 
 const route = useRoute()
 const router = useRouter()
 const opinion = ref('')
 const item = computed(() => getExchanges().find((exchange) => exchange.id === route.params.id || exchange.exchangeId === route.params.id))
-const canHandle = computed(() => [EXCHANGE_STATUS.PENDING_CONFIRMATION, EXCHANGE_STATUS.PENDING_FINAL_CONFIRM].includes(item.value?.status))
+const canHandle = computed(() => PENDING_CREDIT_STATUSES.includes(item.value?.status))
 const allocatedHoursTotal = computed(() => (item.value?.memberDistributions || []).reduce((sum, member) => sum + Number(member.allocatedHours || 0), 0))
 const allocatedCreditsTotal = computed(() => (item.value?.memberDistributions || []).reduce((sum, member) => sum + Number(member.allocatedCredits || 0), 0))
 

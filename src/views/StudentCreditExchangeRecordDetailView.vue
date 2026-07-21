@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
-import { EXCHANGE_STATUS, getExchanges } from '../mock/exchanges.js'
+import { EXCHANGE_STATUS, getExchanges, PENDING_CREDIT_STATUSES } from '../mock/exchanges.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -11,7 +11,7 @@ const item = computed(() => getExchanges().find((exchange) => (exchange.id === r
 const isCaptain = computed(() => item.value?.captainId === currentUser.id || item.value?.studentId === currentUser.studentId)
 const personalDistribution = computed(() => item.value?.memberDistributions?.find((member) => member.studentId === currentUser.studentId))
 const credited = computed(() => [EXCHANGE_STATUS.COMPLETED, EXCHANGE_STATUS.FINAL_APPROVED].includes(item.value?.status))
-const pending = computed(() => [EXCHANGE_STATUS.PENDING_CONFIRMATION, EXCHANGE_STATUS.PENDING_FINAL_CONFIRM].includes(item.value?.status))
+const pending = computed(() => PENDING_CREDIT_STATUSES.includes(item.value?.status))
 const rejected = computed(() => [EXCHANGE_STATUS.FINAL_REJECTED, EXCHANGE_STATUS.REJECTED].includes(item.value?.status))
 const resultText = computed(() => credited.value ? '学分已到账' : pending.value ? '待管理员最终确认' : rejected.value ? '兑换已驳回' : '')
 function fileAction(action, file) { window.alert(`${action}“${file.name}”仅为 Mock 演示，暂未接入真实文件服务。`) }
