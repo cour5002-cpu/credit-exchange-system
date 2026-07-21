@@ -24,10 +24,12 @@ export const APPLICATION_STAGE = Object.freeze({
   FINISHED: 'finished',
 })
 
+export const currentReviewerId = 'reviewer001'
+
 export const mockReviewers = [
-  { reviewerId: 'R001', reviewerName: '刘敏', college: '计算机学院', direction: '项目成果与技术实践', pendingCount: 2 },
-  { reviewerId: 'R002', reviewerName: '孙伟', college: '管理学院', direction: '创新创业与社会实践', pendingCount: 1 },
-  { reviewerId: 'R003', reviewerName: '周岚', college: '校团委', direction: '志愿服务与综合实践', pendingCount: 0 },
+  { reviewerId: 'reviewer001', reviewerName: '刘敏', college: '计算机学院', direction: '项目成果与技术实践', get pendingCount() { return getReviewerPendingCount(this.reviewerId) } },
+  { reviewerId: 'reviewer002', reviewerName: '孙伟', college: '管理学院', direction: '创新创业与社会实践', get pendingCount() { return getReviewerPendingCount(this.reviewerId) } },
+  { reviewerId: 'reviewer003', reviewerName: '周岚', college: '校团委', direction: '志愿服务与综合实践', get pendingCount() { return getReviewerPendingCount(this.reviewerId) } },
 ]
 
 const statusStageMap = {
@@ -61,6 +63,13 @@ function nowText() {
   const date = new Date()
   const pad = (value) => String(value).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function resolveReviewerId(data) {
+  if (data.reviewerId) return data.reviewerId
+  if (data.reviewer?.id) return data.reviewer.id
+  if (data.reviewer?.name === '赵审核老师') return 'reviewer001'
+  return mockReviewers.find((reviewer) => reviewer.reviewerName === data.reviewer?.name)?.reviewerId ?? ''
 }
 
 function createApplication(data) {
@@ -109,6 +118,7 @@ function createApplication(data) {
 
     attachments: [],
     ...data,
+    reviewerId: resolveReviewerId(data),
     sourceText: data.sourceText ?? sourceTextMap[data.source] ?? '',
     applyTypeText: data.applyTypeText ?? applyTypeTextMap[data.applyType] ?? '',
     status,
@@ -184,7 +194,8 @@ const applications = [
     adminAcceptStatus: 'accepted',
     adminAcceptComment: '材料齐全，同意受理。',
     adminAcceptTime: '2026-07-13 14:10',
-    reviewer: { id: 'R001', name: '刘老师' },
+    reviewerId: 'reviewer001',
+    reviewer: { id: 'reviewer001', name: '刘敏', college: '计算机学院', direction: '项目成果与技术实践' },
     attachments: [{ id: 'ATT-004', name: '竞赛获奖证书.pdf', type: 'PDF' }],
   }),
   createApplication({
@@ -208,7 +219,8 @@ const applications = [
     adminAcceptStatus: 'accepted',
     adminAcceptComment: '同意受理。',
     adminAcceptTime: '2026-07-13 09:00',
-    reviewer: { id: 'R002', name: '孙老师' },
+    reviewerId: 'reviewer001',
+    reviewer: { id: 'reviewer001', name: '刘敏', college: '计算机学院', direction: '项目成果与技术实践' },
     reviewStatus: 'modified_approved',
     originalHours: 12,
     recognizedHours: 10,
@@ -218,6 +230,13 @@ const applications = [
     attachments: [],
   }),
 ]
+
+function getReviewerPendingCount(reviewerId) {
+  return applications.filter((application) =>
+    application.status === APPLICATION_STATUS.PENDING_REVIEWER
+    && application.reviewerId === reviewerId,
+  ).length
+}
 
 function findApplication(id) {
   return applications.find((application) => application.id === id)
@@ -283,7 +302,6 @@ function assignReviewer(application, reviewer) {
     college: assignedReviewer.college,
     direction: assignedReviewer.direction,
   }
-  assignedReviewer.pendingCount += 1
 }
 
 export function adminAccept(id, comment = '', reviewer = null) {
@@ -296,11 +314,6 @@ export function adminAccept(id, comment = '', reviewer = null) {
   return updateStatus(application, APPLICATION_STATUS.PENDING_REVIEWER)
 }
 
-function decreaseReviewerPendingCount(application) {
-  const reviewer = mockReviewers.find((item) => item.reviewerId === application.reviewerId)
-  if (reviewer && reviewer.pendingCount > 0) reviewer.pendingCount -= 1
-}
-
 export function reviewerApprove(id, recognizedHours, comment = '') {
   const application = findApplication(id)
   if (!application) return null
@@ -310,7 +323,6 @@ export function reviewerApprove(id, recognizedHours, comment = '') {
   application.reviewResult = 'approved'
   application.reviewComment = comment
   application.reviewTime = nowText()
-  decreaseReviewerPendingCount(application)
   return updateStatus(application, APPLICATION_STATUS.PENDING_ADMIN_FINAL)
 }
 
@@ -323,7 +335,6 @@ export function reviewerModifiedApprove(id, recognizedHours, comment = '') {
   application.reviewResult = 'modified_approved'
   application.reviewComment = comment
   application.reviewTime = nowText()
-  decreaseReviewerPendingCount(application)
   return updateStatus(application, APPLICATION_STATUS.PENDING_ADMIN_FINAL)
 }
 
@@ -336,7 +347,6 @@ export function reviewerReject(id, comment = '') {
   application.reviewResult = 'rejected'
   application.reviewComment = comment
   application.reviewTime = nowText()
-  decreaseReviewerPendingCount(application)
   return updateStatus(application, APPLICATION_STATUS.REVIEWER_REJECTED)
 }
 

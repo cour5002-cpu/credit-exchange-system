@@ -16,6 +16,10 @@ defineProps({
     type: String,
     default: '驳回',
   },
+  showReject: {
+    type: Boolean,
+    default: true,
+  },
 })
 
 defineEmits(['approve', 'reject'])
@@ -25,6 +29,7 @@ defineEmits(['approve', 'reject'])
   <div class="review-action-bar">
     <slot name="before" />
     <button
+      v-if="showReject"
       class="review-action review-action--reject"
       type="button"
       :disabled="disabled || loading"
