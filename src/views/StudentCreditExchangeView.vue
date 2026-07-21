@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AttachmentNotice from '../components/AttachmentNotice.vue'
 import StatusTag from '../components/StatusTag.vue'
@@ -15,7 +15,7 @@ import {
 const router = useRouter()
 const currentUser = { id: 'stu001', name: '张三', studentId: '2024001' }
 const hoursPerCredit = 8
-const form = reactive({ applicationId: '', applyReason: '', attachment: null })
+const form = reactive({ applicationId: '', applyReason: '', attachment: null, memberDistributions: [] })
 const feedback = ref({ type: '', message: '' })
 const attachmentInput = ref(null)
 const availabilityVersion = ref(0)
@@ -34,6 +34,26 @@ const finalHours = computed(() => {
 const estimatedCredits = computed(() =>
   finalHours.value > 0 ? (finalHours.value / hoursPerCredit).toFixed(2) : '0.00',
 )
+const allocatedHoursTotal = computed(() => form.memberDistributions.reduce((sum, member) => sum + Number(member.allocatedHours || 0), 0))
+const remainingHours = computed(() => finalHours.value - allocatedHoursTotal.value)
+const allocatedCreditsTotal = computed(() => form.memberDistributions.reduce((sum, member) => sum + Number(member.allocatedCredits || 0), 0))
+
+watch(selectedApplication, (application) => {
+  const members = application?.members?.length ? application.members : application ? [{ ...currentUser, role: 'captain' }] : []
+  form.memberDistributions = members.map((member) => ({
+    studentName: member.name,
+    studentId: member.studentId,
+    role: member.role === 'captain' ? 'captain' : 'member',
+    allocatedHours: 0,
+    allocatedCredits: 0,
+    remark: '',
+  }))
+})
+
+function updateMemberCredits(member) {
+  const hours = Number(member.allocatedHours)
+  member.allocatedCredits = Number.isFinite(hours) && hours >= 0 ? Number((hours / hoursPerCredit).toFixed(2)) : 0
+}
 
 function validateForm() {
   if (!form.applicationId) return '请选择已最终确认通过的项目'
@@ -43,6 +63,10 @@ function validateForm() {
   if (!isHoursArrived(selectedApplication.value)) return '只有课时已到账的项目才能申请学分兑换'
   if (hasActiveExchange(selectedApplication.value.id)) return '该项目已存在有效的兑换申请，请勿重复提交'
   if (finalHours.value <= 0) return '该项目暂无可兑换课时'
+  if (!form.memberDistributions.length) return '请填写成员课时 / 学分分配表'
+  if (form.memberDistributions.some((member) => !Number.isFinite(Number(member.allocatedHours)) || Number(member.allocatedHours) < 0)) return '每个成员分配课时不能小于 0'
+  if (allocatedHoursTotal.value < finalHours.value) return '成员分配课时总和不足，请继续分配。'
+  if (allocatedHoursTotal.value > finalHours.value) return '成员分配课时总和超过项目最终认定课时。'
   if (!form.attachment) return '请上传认定证明'
   return ''
 }
@@ -72,6 +96,8 @@ function createExchange(status) {
     projectTitle: application?.title ?? '',
     studentName: currentUser.name,
     studentId: currentUser.studentId,
+    captainId: currentUser.id,
+    captainName: currentUser.name,
     currentUserId: currentUser.id,
     source: application?.source ?? '',
     sourceText: application?.sourceText ?? '',
@@ -86,16 +112,7 @@ function createExchange(status) {
     estimatedCredits: Number(estimatedCredits.value),
     creditRule: { hoursPerCredit, text: `每 ${hoursPerCredit} 课时兑换 1 学分` },
     proofMaterials: form.attachment ? [{ ...form.attachment }] : [],
-    memberDistributions: (application?.members?.length ? application.members : [{ ...currentUser, role: 'captain' }]).map((member) => ({
-      id: member.id,
-      name: member.name,
-      studentId: member.studentId,
-      isCaptain: member.role === 'captain',
-      allocatedHours: member.id === currentUser.id ? finalHours.value : 0,
-      allocatedCredits: member.id === currentUser.id ? Number(estimatedCredits.value) : 0,
-      description: member.id === currentUser.id ? '本次兑换申请人' : '本次未分配兑换学分',
-      confirmStatus: member.id === currentUser.id ? 'confirmed' : 'pending',
-    })),
+    memberDistributions: form.memberDistributions.map((member) => ({ ...member })),
     applyReason: form.applyReason.trim(),
     status,
   })
@@ -178,6 +195,12 @@ function goBack() {
           </dl>
         </section>
 
+        <section v-if="selectedApplication" class="form-card">
+          <div class="section-heading"><div><h2>成员课时 / 学分分配</h2><p>队长分配课时，系统按每 8 课时兑换 1 学分实时换算。</p></div></div>
+          <div class="distribution-table"><table><thead><tr><th>成员姓名</th><th>学号</th><th>成员角色</th><th>分配课时</th><th>自动换算学分</th><th>备注</th></tr></thead><tbody><tr v-for="member in form.memberDistributions" :key="member.studentId"><td>{{ member.studentName }}</td><td>{{ member.studentId }}</td><td>{{ member.role === 'captain' ? '队长' : '成员' }}</td><td><input v-model.number="member.allocatedHours" min="0" step="0.5" type="number" @input="updateMemberCredits(member)" /></td><td>{{ Number(member.allocatedCredits || 0).toFixed(2) }}</td><td><input v-model="member.remark" placeholder="选填" /></td></tr></tbody></table></div>
+          <div class="distribution-summary"><article><span>项目最终认定课时</span><strong>{{ finalHours }}</strong></article><article><span>已分配课时总和</span><strong>{{ allocatedHoursTotal }}</strong></article><article><span>剩余未分配课时</span><strong :class="{ danger: remainingHours < 0 }">{{ remainingHours }}</strong></article><article><span>项目预计总学分</span><strong>{{ estimatedCredits }}</strong></article><article><span>已分配学分总和</span><strong>{{ allocatedCreditsTotal.toFixed(2) }}</strong></article></div>
+        </section>
+
         <section class="form-card">
           <div class="section-heading"><div><h2>自动兑换信息</h2><p>兑换课时和预计学分由系统自动计算。</p></div></div>
           <div class="form-grid">
@@ -203,4 +226,5 @@ function goBack() {
 
 <style scoped>
 .exchange-page{min-height:100vh;padding:40px 24px;background:#f3f6fb}.page-content{width:min(100%,1020px);margin:0 auto}.page-header{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:24px}.page-header h1{margin:0 0 8px;font-size:30px}.page-header p{color:#64748b}.summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:22px}.summary-grid article{padding:20px;border:1px solid #dbeafe;border-radius:14px;background:#fff}.summary-grid span,.summary-grid small{display:block;color:#64748b}.summary-grid strong{display:inline-block;margin:9px 5px 3px 0;color:#1d4ed8;font-size:30px}.summary-grid small{font-size:13px}.exchange-form{display:grid;gap:20px}.form-card{padding:24px;border:1px solid #e2e8f0;border-radius:16px;background:#fff;box-shadow:0 8px 24px rgba(15,23,42,.04)}.section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:20px}.section-heading h2{margin:0 0 6px;font-size:20px}.section-heading p{margin:0;color:#64748b;font-size:14px}.form-grid,.info-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.form-field--wide{grid-column:1/-1}.form-field label,.upload-control>span{display:block;margin-bottom:8px;color:#334155;font-weight:700}.form-field label span,.upload-control strong{color:#dc2626}.form-field input,.form-field select,.form-field textarea,.upload-control input{width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:9px;background:#fff;font:inherit}.form-field input[readonly]{color:#475569;background:#f8fafc}.form-field textarea{resize:vertical}.form-field small{display:block;margin-top:7px;color:#64748b;line-height:1.5}.info-grid{margin:0}.info-grid dt{color:#64748b;font-size:13px}.info-grid dd{margin:5px 0 0;font-weight:600}.empty-state{margin:14px 0 0;padding:18px;border-radius:10px;color:#64748b;background:#f8fafc;text-align:center}.upload-control{display:block;margin-top:18px}.upload-control input{padding:9px}.selected-file{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:12px;padding:14px;border:1px solid #bfdbfe;border-radius:10px;background:#eff6ff}.selected-file small{display:block;margin-top:4px;color:#64748b}.selected-file button{padding:7px 11px;border:1px solid #fecaca;border-radius:8px;color:#b91c1c;background:#fff;font:inherit;font-weight:700;cursor:pointer}.feedback{margin:0;padding:12px 16px;border-radius:10px}.feedback--error{color:#b91c1c;background:#fef2f2}.feedback--success{color:#166534;background:#f0fdf4}.form-actions{display:flex;justify-content:flex-end;gap:12px}@media(max-width:700px){.exchange-page{padding:24px 14px}.page-header,.section-heading{flex-direction:column}.summary-grid,.form-grid,.info-grid{grid-template-columns:1fr}.form-field--wide{grid-column:auto}.form-actions{flex-wrap:wrap}}
+.distribution-table{overflow-x:auto}.distribution-table table{width:100%;border-collapse:collapse}.distribution-table th,.distribution-table td{padding:11px;border-bottom:1px solid #e2e8f0;text-align:left;white-space:nowrap}.distribution-table th{color:#475569;background:#f8fafc;font-size:13px}.distribution-table input{min-width:110px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font:inherit}.distribution-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:18px}.distribution-summary article{padding:13px;border-radius:10px;background:#f8fafc}.distribution-summary span,.distribution-summary strong{display:block}.distribution-summary span{color:#64748b;font-size:12px}.distribution-summary strong{margin-top:5px;font-size:20px}.distribution-summary .danger{color:#dc2626}@media(max-width:900px){.distribution-summary{grid-template-columns:repeat(2,1fr)}}
 </style>

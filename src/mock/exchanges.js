@@ -37,6 +37,10 @@ function isAdvisorConfirmed(status) {
   return ['approved', 'confirmed'].includes(status)
 }
 
+function sumMemberValue(exchange, field) {
+  return (exchange?.memberDistributions || []).reduce((sum, member) => sum + Number(member[field] || 0), 0)
+}
+
 function getFinalApproveFailure(exchange) {
   if (!exchange) return '兑换申请不存在'
   if (!FINAL_PENDING_STATUSES.includes(exchange.status)) return '当前状态不可最终确认'
@@ -44,6 +48,16 @@ function getFinalApproveFailure(exchange) {
   if (exchange.exchanged) return '该申请已完成兑换'
   if (!isAdvisorConfirmed(exchange.advisorConfirmStatus)) return '指导老师确认状态无效'
   if (!exchange.memberDistributions?.length) return '成员学时 / 学分分配表不存在'
+  const allocatedHours = sumMemberValue(exchange, 'allocatedHours')
+  if (Math.abs(allocatedHours - Number(exchange.finalHours || 0)) > 0.000001) {
+    return '成员分配课时总和与项目最终认定课时不一致，请驳回后由学生重新提交。'
+  }
+  if (exchange.memberDistributions.some((member) => Number(member.allocatedHours) < 0)) return '成员分配课时不能小于 0'
+  const allocatedCredits = sumMemberValue(exchange, 'allocatedCredits')
+  const creditTolerance = Math.max(0.01, exchange.memberDistributions.length * 0.005)
+  if (Math.abs(allocatedCredits - Number(exchange.estimatedCredits || 0)) > creditTolerance + 0.000001) {
+    return '成员分配学分总和与项目预计总学分不一致'
+  }
   return ''
 }
 
@@ -89,11 +103,13 @@ export function addExchange(exchange) {
     projectTitle: '',
     studentName: '',
     studentId: '',
+    captainId: '',
+    captainName: '',
     teamName: '',
     taskName: '',
     source: '',
     sourceText: '',
-    hoursArrived: true,
+    hoursArrived: false,
     exchanged: false,
     advisorConfirmStatus: 'approved',
     advisorComment: '',
@@ -115,6 +131,14 @@ export function addExchange(exchange) {
     exchangeId,
     id: exchangeId,
     estimatedCredits: exchange.estimatedCredits ?? exchange.expectedCredits ?? 0,
+    memberDistributions: (exchange.memberDistributions || []).map((member) => ({
+      studentName: member.studentName ?? member.name ?? '',
+      studentId: member.studentId ?? '',
+      role: member.role ?? (member.isCaptain ? 'captain' : 'member'),
+      allocatedHours: Number(member.allocatedHours || 0),
+      allocatedCredits: Number((Number(member.allocatedHours || 0) / 8).toFixed(2)),
+      remark: member.remark ?? member.description ?? '',
+    })),
     proofMaterials: exchange.proofMaterials ?? (exchange.attachment ? [exchange.attachment] : []),
     applyReason: exchange.applyReason ?? exchange.description ?? '',
     submitTime: exchange.submitTime || nowText(),
@@ -130,6 +154,10 @@ export function getPendingConfirmationExchanges() {
 
 export function getExchangeFinalConfirmList() {
   return exchanges.filter((exchange) => FINAL_PENDING_STATUSES.includes(exchange.status))
+}
+
+export function getExchangeFinalApproveFailure(exchange) {
+  return getFinalApproveFailure(exchange)
 }
 
 export function finalApproveExchange(id, comment = '') {

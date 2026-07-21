@@ -3,8 +3,9 @@ import { computed } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
 import { EXCHANGE_STATUS, getExchanges } from '../mock/exchanges.js'
 
-const currentUser = { studentId: '2024001' }
-const items = computed(() => getExchanges().filter((item) => item.studentId === currentUser.studentId).sort((a, b) => String(b.submitTime).localeCompare(String(a.submitTime))))
+const currentUser = { id: 'stu001', studentId: '2024001' }
+const items = computed(() => getExchanges().filter((item) => item.captainId === currentUser.id || item.studentId === currentUser.studentId || item.memberDistributions?.some((member) => member.studentId === currentUser.studentId)).sort((a, b) => String(b.submitTime).localeCompare(String(a.submitTime))))
+function personalDistribution(item) { return item.memberDistributions?.find((member) => member.studentId === currentUser.studentId) || {} }
 function statusText(status) {
   if ([EXCHANGE_STATUS.COMPLETED, EXCHANGE_STATUS.FINAL_APPROVED].includes(status)) return '学分已到账'
   if ([EXCHANGE_STATUS.PENDING_CONFIRMATION, EXCHANGE_STATUS.PENDING_FINAL_CONFIRM].includes(status)) return '待管理员最终确认'
@@ -16,7 +17,7 @@ function statusText(status) {
 
 <template><main class="records-page"><div class="page-content">
   <header class="page-header"><div><p class="eyebrow">S603 · EXCHANGE RECORDS</p><h1>我的兑换记录</h1><p>查看学分兑换进度、最终确认结果和到账信息。</p></div><RouterLink class="back-link" to="/student/dashboard">返回</RouterLink></header>
-  <section class="list-panel"><div class="panel-header"><h2>兑换申请记录</h2><span>共 {{ items.length }} 条</span></div><div class="table-wrapper"><table><thead><tr><th>兑换申请编号</th><th>项目名称</th><th>最终认定课时</th><th>申请兑换学分</th><th>当前状态</th><th>管理员最终确认时间</th><th>操作</th></tr></thead><tbody><tr v-for="item in items" :key="item.id"><td><strong>{{ item.exchangeId }}</strong></td><td>{{ item.projectTitle }}</td><td>{{ item.finalHours }} 课时</td><td>{{ Number(item.estimatedCredits || 0).toFixed(2) }} 学分</td><td><StatusTag :status="item.status" :text="statusText(item.status)" /></td><td>{{ item.finalConfirmTime || '--' }}</td><td><RouterLink class="detail-link" :to="`/student/credit-exchange-records/${item.id}`">查看详情</RouterLink></td></tr><tr v-if="!items.length"><td class="empty" colspan="7">暂无学分兑换记录。</td></tr></tbody></table></div></section>
+  <section class="list-panel"><div class="panel-header"><h2>兑换申请记录</h2><span>共 {{ items.length }} 条</span></div><div class="table-wrapper"><table><thead><tr><th>项目名称</th><th>队长姓名</th><th>本人分配课时</th><th>本人分配学分</th><th>兑换状态</th><th>到账时间</th><th>操作</th></tr></thead><tbody><tr v-for="item in items" :key="item.id"><td><strong>{{ item.projectTitle }}</strong><small>{{ item.exchangeId }}</small></td><td>{{ item.captainName || item.studentName }}</td><td>{{ Number(personalDistribution(item).allocatedHours || 0) }} 课时</td><td>{{ Number(personalDistribution(item).allocatedCredits || 0).toFixed(2) }} 学分</td><td><StatusTag :status="item.status" :text="statusText(item.status)" /></td><td>{{ [EXCHANGE_STATUS.COMPLETED, EXCHANGE_STATUS.FINAL_APPROVED].includes(item.status) ? (item.finalConfirmTime || '--') : '--' }}</td><td><RouterLink class="detail-link" :to="`/student/credit-exchange-records/${item.id}`">查看详情</RouterLink></td></tr><tr v-if="!items.length"><td class="empty" colspan="7">暂无学分兑换记录。</td></tr></tbody></table></div></section>
 </div></main></template>
 
 <style scoped>

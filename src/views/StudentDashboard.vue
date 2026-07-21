@@ -5,9 +5,10 @@ import { EXCHANGE_STATUS, getAvailableExchangeApplications, getExchanges } from 
 const currentUser = { id: 'stu001', name: '张三', studentId: '2024001' }
 const completedStatuses = [EXCHANGE_STATUS.COMPLETED, EXCHANGE_STATUS.FINAL_APPROVED]
 const pendingStatuses = [EXCHANGE_STATUS.PENDING_CONFIRMATION, EXCHANGE_STATUS.PENDING_FINAL_CONFIRM]
-const studentExchanges = computed(() => getExchanges().filter((item) => item.studentId === currentUser.studentId))
-const creditedCredits = computed(() => studentExchanges.value.filter((item) => completedStatuses.includes(item.status)).reduce((sum, item) => sum + Number(item.estimatedCredits || 0), 0))
-const pendingCount = computed(() => studentExchanges.value.filter((item) => pendingStatuses.includes(item.status)).length)
+const studentExchanges = computed(() => getExchanges().filter((item) => item.studentId === currentUser.studentId || item.memberDistributions?.some((member) => member.studentId === currentUser.studentId)))
+function personalCredits(item) { return Number(item.memberDistributions?.find((member) => member.studentId === currentUser.studentId)?.allocatedCredits || 0) }
+const creditedCredits = computed(() => studentExchanges.value.filter((item) => completedStatuses.includes(item.status)).reduce((sum, item) => sum + personalCredits(item), 0))
+const pendingCredits = computed(() => studentExchanges.value.filter((item) => pendingStatuses.includes(item.status)).reduce((sum, item) => sum + personalCredits(item), 0))
 const availableProjectCount = computed(() => getAvailableExchangeApplications(currentUser.id).length)
 
 const entries = [
@@ -24,7 +25,7 @@ const entries = [
 
 <template><main class="dashboard-page"><div class="dashboard-content">
   <header class="dashboard-header"><div><p class="eyebrow">STUDENT PORTAL</p><h1>学生端首页</h1><p>欢迎进入课时 / 学分兑换系统学生工作台。</p></div>
-    <section class="credit-card" aria-label="我的学分"><div class="credit-card__title"><div><small>MY CREDITS</small><h2>我的学分</h2></div><RouterLink to="/student/credit-exchange-records">查看兑换记录</RouterLink></div><div class="credit-stats"><article><strong>{{ creditedCredits.toFixed(2) }}</strong><span>已到账学分</span></article><article><strong>{{ pendingCount }}</strong><span>待确认兑换申请</span></article><article><strong>{{ availableProjectCount }}</strong><span>可兑换项目</span></article></div></section>
+    <section class="credit-card" aria-label="我的学分"><div class="credit-card__title"><div><small>MY CREDITS</small><h2>我的学分</h2></div><RouterLink to="/student/credit-exchange-records">查看兑换记录</RouterLink></div><div class="credit-stats"><article><strong>{{ creditedCredits.toFixed(2) }}</strong><span>已到账学分</span></article><article><strong>{{ pendingCredits.toFixed(2) }}</strong><span>待到账学分</span></article><article><strong>{{ availableProjectCount }}</strong><span>可兑换项目</span></article></div></section>
   </header>
   <section class="entry-grid" aria-label="学生端功能入口"><RouterLink v-for="entry in entries" :key="entry.to" :to="entry.to" class="entry-card"><h2>{{ entry.title }}</h2><p>{{ entry.description }}</p></RouterLink></section>
 </div></main></template>
