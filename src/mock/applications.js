@@ -629,6 +629,29 @@ export function finalReject(id, comment = '') {
   return updateStatus(application, APPLICATION_STATUS.FINAL_REJECTED)
 }
 
+export function updateApplicationByAppealResult(applicationId, appeal) {
+  const application = findApplication(applicationId)
+  if (!application || appeal?.reviewResult !== 'approved') return application || null
+  const hours = Number(appeal.reviewHours)
+  if (!Number.isFinite(hours) || hours < 0) return null
+  const confirmedAt = nowText()
+  application.recognizedHours = hours
+  application.finalHours = hours
+  application.approvedHours = hours
+  application.finalStatus = 'approved'
+  application.status = APPLICATION_STATUS.FINAL_APPROVED
+  application.stage = APPLICATION_STAGE.FINISHED
+  application.appealAdjusted = true
+  application.appealId = appeal.appealId
+  application.appealFinalConfirmTime = confirmedAt
+  application.timelineEvents = [...(application.timelineEvents || []), {
+    type: 'appeal_final_confirmed',
+    title: `管理员最终确认申诉复审通过，课时结果已更新为 ${hours} 课时。`,
+    time: confirmedAt,
+  }]
+  return application
+}
+
 export function getAdvisorPendingApplications() {
   return applications.filter((application) => application.status === APPLICATION_STATUS.PENDING_ADVISOR)
 }

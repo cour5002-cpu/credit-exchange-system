@@ -49,7 +49,7 @@ function batchReject() {
 <template>
   <main class="final-page"><div class="page-content">
     <header class="page-header"><div><p class="eyebrow">A501 · FINAL CONFIRMATION</p><h1>学分兑换管理</h1><p>处理等待管理员最终确认的学分兑换申请。</p></div><RouterLink class="back-link" to="/admin/dashboard">返回</RouterLink></header>
-    <nav class="type-tabs" aria-label="最终确认类型"><RouterLink to="/admin/final-confirm">课时最终确认</RouterLink><RouterLink class="active" to="/admin/final-confirm/exchanges">学分兑换最终确认</RouterLink></nav>
+    <nav class="type-tabs" aria-label="最终确认类型"><RouterLink to="/admin/final-confirm">课时最终确认</RouterLink><RouterLink class="active" to="/admin/final-confirm/exchanges">学分兑换最终确认</RouterLink><RouterLink to="/admin/final-confirm/appeals">申诉复审最终确认</RouterLink></nav>
     <section class="filters"><label><span>搜索</span><input v-model="keyword" type="search" placeholder="申请编号、学生、团队或任务名称" /></label><label><span>批量处理意见</span><input v-model="batchComment" placeholder="批量驳回时必填" /></label></section>
     <section v-if="batchResult" class="result-card"><strong>{{ batchResult.action }}结果</strong><p>本次处理 {{ batchResult.total }} 条，成功 {{ batchResult.success }} 条，失败 {{ batchResult.failed }} 条。</p><ul v-if="batchResult.failedItems.length"><li v-for="failed in batchResult.failedItems" :key="failed.id">{{ failed.id }}：{{ failed.reason }}</li></ul></section>
     <section class="list-panel"><div class="panel-header"><div><h2>学分兑换最终确认</h2><span>共 {{ items.length }} 条，已选择 {{ selectedIds.length }} 条</span></div><div class="batch-actions"><button class="approve" type="button" @click="batchApprove">批量最终确认兑换</button><button class="reject" type="button" @click="batchReject">批量驳回兑换</button></div></div>

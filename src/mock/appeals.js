@@ -1,4 +1,4 @@
-import { getApplications } from './applications.js'
+import { getApplications, updateApplicationByAppealResult } from './applications.js'
 
 export const APPEAL_STATUS = Object.freeze({
   PENDING_ADMIN:'pending_admin', ADMIN_REJECTED:'admin_rejected', PENDING_REVIEW_ASSIGNMENT:'pending_review_assignment',
@@ -6,7 +6,7 @@ export const APPEAL_STATUS = Object.freeze({
 })
 const appeals=[]
 function nowText(){const date=new Date();const pad=(value)=>String(value).padStart(2,'0');return`${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`}
-const activeStatuses=new Set([APPEAL_STATUS.PENDING_ADMIN,APPEAL_STATUS.PENDING_REVIEW_ASSIGNMENT,APPEAL_STATUS.PENDING_RE_REVIEW,APPEAL_STATUS.RE_REVIEW_APPROVED])
+const activeStatuses=new Set([APPEAL_STATUS.PENDING_ADMIN,APPEAL_STATUS.PENDING_REVIEW_ASSIGNMENT,APPEAL_STATUS.PENDING_RE_REVIEW,APPEAL_STATUS.RE_REVIEW_APPROVED,APPEAL_STATUS.RE_REVIEW_REJECTED])
 const appealableStatuses=new Set(['final_approved','final_rejected','advisor_rejected','reviewer_rejected','rejected','modified_approved','reviewer_modified_approved'])
 export function getAppeals(){return appeals}
 export function getAppealById(appealId){return appeals.find((appeal)=>appeal.appealId===appealId)}
@@ -27,3 +27,17 @@ export function getReviewerPendingAppeals(reviewTeacherId){return appeals.filter
 export function approveAppealReview(appealId,reviewHours,comment=''){const appeal=getAppealById(appealId);const hours=Number(reviewHours);if(!appeal||appeal.status!==APPEAL_STATUS.PENDING_RE_REVIEW||!Number.isFinite(hours)||hours<0||!comment.trim())return null;const reviewedAt=nowText();completeCurrentTimeline(appeal);appeal.status=APPEAL_STATUS.RE_REVIEW_APPROVED;appeal.reviewResult='approved';appeal.reviewHours=hours;appeal.reviewComment=comment.trim();appeal.reviewTime=reviewedAt;appeal.timeline.push({title:'审核老师复审通过，等待管理员最终确认。',time:reviewedAt,status:'current'});return appeal}
 export function rejectAppealReview(appealId,comment=''){const appeal=getAppealById(appealId);if(!appeal||appeal.status!==APPEAL_STATUS.PENDING_RE_REVIEW||!comment.trim())return null;const reviewedAt=nowText();completeCurrentTimeline(appeal);appeal.status=APPEAL_STATUS.RE_REVIEW_REJECTED;appeal.reviewResult='rejected';appeal.reviewComment=comment.trim();appeal.reviewTime=reviewedAt;appeal.timeline.push({title:'审核老师复审驳回，等待管理员最终确认。',time:reviewedAt,status:'current'});return appeal}
 export function getAdminPendingAppealFinalConfirm(){return appeals.filter((appeal)=>[APPEAL_STATUS.RE_REVIEW_APPROVED,APPEAL_STATUS.RE_REVIEW_REJECTED].includes(appeal.status))}
+export function finalConfirmAppeal(appealId,comment=''){
+  const appeal=getAppealById(appealId)
+  if(!appeal||![APPEAL_STATUS.RE_REVIEW_APPROVED,APPEAL_STATUS.RE_REVIEW_REJECTED].includes(appeal.status))return null
+  const approved=appeal.status===APPEAL_STATUS.RE_REVIEW_APPROVED&&appeal.reviewResult==='approved'
+  if(approved&&!updateApplicationByAppealResult(appeal.applicationId,appeal))return null
+  const confirmedAt=nowText()
+  completeCurrentTimeline(appeal)
+  appeal.status=APPEAL_STATUS.FINAL_CONFIRMED
+  appeal.finalResult=approved?'approved':'rejected'
+  appeal.finalAdminComment=comment.trim()
+  appeal.finalConfirmTime=confirmedAt
+  appeal.timeline.push({title:approved?'管理员最终确认申诉复审通过，课时结果已更新。':'管理员最终确认申诉复审驳回，原课时结果保持不变。',time:confirmedAt,status:'completed'})
+  return appeal
+}

@@ -252,6 +252,8 @@ const router = createRouter({
     { path:'/admin/appeals-complaints',name:'admin-appeals',component:()=>import('../views/AdminAppealsView.vue') },
     { path:'/admin/appeals-complaints/assign',name:'admin-appeal-assignment',component:()=>import('../views/AdminAppealAssignmentListView.vue') },
     { path:'/admin/appeals-complaints/assign/:id',name:'admin-appeal-assignment-detail',component:()=>import('../views/AdminAppealAssignmentDetailView.vue') },
+    { path:'/admin/appeals-complaints/final-confirm',redirect:'/admin/final-confirm/appeals' },
+    { path:'/admin/appeals-complaints/final-confirm/:id',redirect:(to)=>`/admin/final-confirm/appeals/${to.params.id}` },
     { path:'/admin/appeals-complaints/:id',name:'admin-appeal-detail',component:()=>import('../views/AdminAppealDetailView.vue') },
     {
       path: '/admin/tasks',
@@ -307,6 +309,16 @@ const router = createRouter({
       path: '/admin/final-confirm/exchanges/:id',
       name: 'admin-credit-exchange-final-confirm-detail',
       component: () => import('../views/AdminCreditExchangeDetailView.vue'),
+    },
+    {
+      path: '/admin/final-confirm/appeals',
+      name: 'admin-appeal-final-confirm',
+      component: () => import('../views/AdminAppealFinalConfirmListView.vue'),
+    },
+    {
+      path: '/admin/final-confirm/appeals/:id',
+      name: 'admin-appeal-final-confirm-detail',
+      component: () => import('../views/AdminAppealFinalConfirmDetailView.vue'),
     },
     {
       path: '/admin/final-confirm/:id',
