@@ -152,6 +152,16 @@ const router = createRouter({
       component: () => import('../views/AdminTasksView.vue'),
     },
     {
+      path: '/admin/tasks/publish-confirm',
+      name: 'admin-task-publish-confirm',
+      component: () => import('../views/AdminTaskPublishConfirmListView.vue'),
+    },
+    {
+      path: '/admin/tasks/publish-confirm/:id',
+      name: 'admin-task-publish-confirm-detail',
+      component: () => import('../views/AdminTaskPublishConfirmDetailView.vue'),
+    },
+    {
       path: '/admin/task-categories',
       name: 'admin-task-categories',
       component: () => import('../views/TaskCategoriesView.vue'),

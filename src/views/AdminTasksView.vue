@@ -14,10 +14,10 @@
           <h2>任务列表</h2>
           <p>查看和维护系统中的任务信息，详细功能后续完善。</p>
         </article>
-        <article class="entry-card static-entry-card">
+        <RouterLink to="/admin/tasks/publish-confirm" class="entry-card">
           <h2>任务发布确认</h2>
-          <p>确认指导老师提交的任务发布申请，详细功能后续完善。</p>
-        </article>
+          <p>确认指导老师提交的任务发布申请。</p>
+        </RouterLink>
         <RouterLink to="/admin/task-categories" class="entry-card">
           <h2>任务类别管理</h2>
           <p>维护任务类别、发布类型和启用状态。</p>

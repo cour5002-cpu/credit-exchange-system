@@ -68,7 +68,7 @@ function normalizeTask(task) {
 export function getTasks() { return tasks }
 export function getTask(taskId) { return tasks.find((task) => task.taskId === taskId) }
 export function getAdvisorTasks(advisorId) { return tasks.filter((task) => task.advisorId === advisorId && task.source === 'advisor') }
-export function getPendingAdminPublishTasks() { return tasks.filter((task) => task.status === TASK_STATUS.PENDING_ADMIN_PUBLISH) }
+export function getPendingAdminPublishTasks() { return tasks.filter((task) => task.status === TASK_STATUS.PENDING_ADMIN_PUBLISH && task.source === 'advisor') }
 export function getPublishedTasks() { return tasks.filter((task) => task.status === TASK_STATUS.PUBLISHED) }
 export function getTaskTypeText(type) { return TASK_TYPE_OPTIONS.find((option) => option.value === type)?.label || type || '--' }
 
@@ -86,4 +86,62 @@ export function submitTaskForPublish(data) {
   const next = normalizeTask({ ...existing, ...data, status: TASK_STATUS.PENDING_ADMIN_PUBLISH, submitTime: nowText(), publishTime: '', adminComment: '', adminConfirmTime: '' })
   if (existing) Object.assign(existing, next); else tasks.push(next)
   return existing || next
+}
+
+export function adminApproveTaskPublish(taskId, comment = '') {
+  const task = getTask(taskId)
+  if (!task || task.status !== TASK_STATUS.PENDING_ADMIN_PUBLISH || task.source !== 'advisor') return null
+  const confirmedAt = nowText()
+  task.status = TASK_STATUS.PUBLISHED
+  task.adminComment = comment.trim()
+  task.adminConfirmTime = confirmedAt
+  task.publishTime = confirmedAt
+  return task
+}
+
+export function adminRejectTaskPublish(taskId, comment) {
+  const task = getTask(taskId)
+  if (!task || task.status !== TASK_STATUS.PENDING_ADMIN_PUBLISH || task.source !== 'advisor' || !comment?.trim()) return null
+  task.status = TASK_STATUS.PUBLISH_REJECTED
+  task.adminComment = comment.trim()
+  task.adminConfirmTime = nowText()
+  task.publishTime = ''
+  return task
+}
+
+function createBatchResult(taskIds) {
+  return { total: taskIds.length, success: 0, failed: 0, failedItems: [] }
+}
+
+export function batchApproveTaskPublish(taskIds, comment = '') {
+  const ids = [...new Set(taskIds)]
+  const result = createBatchResult(ids)
+  ids.forEach((taskId) => {
+    const task = getTask(taskId)
+    let reason = ''
+    if (!task) reason = '任务不存在'
+    else if (task.source !== 'advisor') reason = '仅支持确认指导老师发布的任务'
+    else if (task.status !== TASK_STATUS.PENDING_ADMIN_PUBLISH) reason = '当前状态不可确认发布'
+    if (reason) { result.failed += 1; result.failedItems.push({ taskId, reason }); return }
+    adminApproveTaskPublish(taskId, comment)
+    result.success += 1
+  })
+  return result
+}
+
+export function batchRejectTaskPublish(taskIds, comment) {
+  const ids = [...new Set(taskIds)]
+  const result = createBatchResult(ids)
+  ids.forEach((taskId) => {
+    const task = getTask(taskId)
+    let reason = ''
+    if (!comment?.trim()) reason = '批量驳回必须填写处理意见'
+    else if (!task) reason = '任务不存在'
+    else if (task.source !== 'advisor') reason = '仅支持驳回指导老师发布的任务'
+    else if (task.status !== TASK_STATUS.PENDING_ADMIN_PUBLISH) reason = '当前状态不可驳回'
+    if (reason) { result.failed += 1; result.failedItems.push({ taskId, reason }); return }
+    adminRejectTaskPublish(taskId, comment)
+    result.success += 1
+  })
+  return result
 }
