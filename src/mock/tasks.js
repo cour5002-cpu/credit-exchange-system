@@ -54,7 +54,7 @@ function nowText() {
 
 function normalizeTask(task) {
   const taskId = task.taskId || `TASK-${Date.now()}`
-  const normalized = { taskId, title: '', taskType: '', hours: 0, description: '', requirement: '', resultRequirement: '', advisorId: '', advisorName: '', source: 'advisor', registrationDeadline: '', attachments: [], status: TASK_STATUS.DRAFT, submitTime: '', publishTime: '', adminComment: '', adminConfirmTime: '', applicants: [], selectedStudents: [], leaderId: '', leaderName: '', ...task, taskId }
+  const normalized = { taskId, title: '', taskType: '', hours: 0, description: '', requirement: '', resultRequirement: '', advisorId: '', advisorName: '', source: 'advisor', registrationDeadline: '', attachments: [], status: TASK_STATUS.DRAFT, submitTime: '', publishTime: '', adminComment: '', adminConfirmTime: '', applicants: [], selectedStudents: [], leaderId: '', leaderName: '', selectionTime: '', leaderAssignTime: '', ...task, taskId }
   normalized.attachments = (task.attachments || []).map((file, index) => ({
     id: file.id || `TASK-ATT-${Date.now()}-${index}`,
     name: file.name || file.fileName || '',
@@ -109,6 +109,7 @@ export function updateApplicantSelection(taskId, selections) {
   task.leaderId = ''
   task.leaderName = ''
   task.status = TASK_STATUS.SELECTING
+  task.selectionTime = nowText()
   return { success: true, message: '筛选结果已保存，请继续指定队长。', task }
 }
 
@@ -126,6 +127,7 @@ export function assignTaskLeader(taskId, studentId) {
   task.leaderName = leader.studentName
   task.selectedStudents = getSelectedStudents(taskId).map((student) => ({ ...student }))
   task.status = TASK_STATUS.LEADER_ASSIGNED
+  task.leaderAssignTime = nowText()
   return { success: true, message: '队长指定成功。', task, leader }
 }
 
