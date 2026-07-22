@@ -4,7 +4,6 @@ const placeholderRoutes = [
   ['/student/tasks', 'student-tasks', '我的任务', '查看和管理分配给你的任务。'],
   ['/student/feedback', 'student-feedback', '问题反馈', '提交使用过程中遇到的问题。'],
   ['/student/notifications', 'student-notifications', '信息通知', '查看学生端通知消息。'],
-  ['/teacher/tasks', 'teacher-tasks', '我的任务', '查看和管理指导任务。'],
   ['/teacher/notifications', 'teacher-notifications', '信息通知', '查看指导老师端通知消息。'],
   ['/reviewer/notifications', 'reviewer-notifications', '信息通知', '查看审核老师端通知消息。'],
   ['/admin/appeals-complaints', 'admin-appeals-complaints', '申诉与投诉', '处理用户提交的申诉与投诉。'],
@@ -79,6 +78,31 @@ const router = createRouter({
       path: '/teacher/dashboard',
       name: 'teacher-dashboard',
       component: () => import('../views/TeacherDashboard.vue'),
+    },
+    {
+      path: '/teacher/tasks',
+      name: 'teacher-tasks',
+      component: () => import('../views/TeacherTaskListView.vue'),
+    },
+    {
+      path: '/teacher/tasks/:id',
+      name: 'teacher-task-detail',
+      component: () => import('../views/TeacherTaskDetailView.vue'),
+    },
+    {
+      path: '/teacher/tasks/:id/applicants',
+      name: 'teacher-task-applicants',
+      component: () => import('../views/TeacherTaskApplicantsView.vue'),
+    },
+    {
+      path: '/teacher/tasks/:id/applicants/select',
+      name: 'teacher-task-applicant-selection',
+      component: () => import('../views/TeacherTaskApplicantSelectionView.vue'),
+    },
+    {
+      path: '/teacher/tasks/:id/leader',
+      name: 'teacher-task-leader',
+      component: () => import('../views/TeacherTaskLeaderView.vue'),
     },
     {
       path: '/teacher/publish-task',

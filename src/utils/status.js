@@ -21,6 +21,7 @@ const STATUS_META = {
   closed: { text: '报名已截止', color: 'default' },
   selecting: { text: '待筛选报名学生', color: 'warning' },
   selected: { text: '已完成筛选', color: 'success' },
+  leader_assigned: { text: '已指定队长', color: 'success' },
   in_progress: { text: '进行中', color: 'info' },
   result_submitted: { text: '成果已提交', color: 'info' },
   finished: { text: '已完成', color: 'success' },

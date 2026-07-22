@@ -6,6 +6,7 @@ export const TASK_STATUS = Object.freeze({
   CLOSED: 'closed',
   SELECTING: 'selecting',
   SELECTED: 'selected',
+  LEADER_ASSIGNED: 'leader_assigned',
   IN_PROGRESS: 'in_progress',
   RESULT_SUBMITTED: 'result_submitted',
   FINISHED: 'finished',
@@ -80,6 +81,60 @@ export function hasStudentApplied(taskId, studentId) {
 
 export function getStudentAppliedTasks(studentId) {
   return tasks.filter((task) => task.applicants?.some((applicant) => applicant.studentId === studentId))
+}
+
+export function getTaskApplicants(taskId) {
+  return getTask(taskId)?.applicants || []
+}
+
+export function getSelectedStudents(taskId) {
+  return getTaskApplicants(taskId).filter((applicant) => applicant.selected || applicant.applyStatus === 'selected')
+}
+
+export function updateApplicantSelection(taskId, selections) {
+  const task = getTask(taskId)
+  if (!task || !Array.isArray(selections)) return { success: false, message: '任务或筛选数据不存在。' }
+  const selectedCount = selections.filter((item) => item.selected).length
+  if (!selectedCount) return { success: false, message: '至少选中 1 名学生才能完成筛选。' }
+  const selectionMap = new Map(selections.map((item) => [item.studentId, item]))
+  task.applicants.forEach((applicant) => {
+    const selection = selectionMap.get(applicant.studentId)
+    if (!selection) return
+    applicant.selected = Boolean(selection.selected)
+    applicant.applyStatus = applicant.selected ? 'selected' : 'not_selected'
+    applicant.selectionComment = String(selection.selectionComment || '').trim()
+    applicant.isLeader = false
+  })
+  task.selectedStudents = getSelectedStudents(taskId).map((student) => ({ ...student }))
+  task.leaderId = ''
+  task.leaderName = ''
+  task.status = TASK_STATUS.SELECTING
+  return { success: true, message: '筛选结果已保存，请继续指定队长。', task }
+}
+
+export function assignTaskLeader(taskId, studentId) {
+  const task = getTask(taskId)
+  if (!task) return { success: false, message: '任务不存在。' }
+  const selectedStudents = getSelectedStudents(taskId)
+  if (!selectedStudents.length) return { success: false, message: '请先筛选至少 1 名参与学生。' }
+  const leader = selectedStudents.length === 1
+    ? selectedStudents[0]
+    : selectedStudents.find((student) => student.studentId === studentId)
+  if (!leader) return { success: false, message: '必须从已选中学生中指定队长。' }
+  task.applicants.forEach((applicant) => { applicant.isLeader = applicant.studentId === leader.studentId })
+  task.leaderId = leader.studentId
+  task.leaderName = leader.studentName
+  task.selectedStudents = getSelectedStudents(taskId).map((student) => ({ ...student }))
+  task.status = TASK_STATUS.LEADER_ASSIGNED
+  return { success: true, message: '队长指定成功。', task, leader }
+}
+
+export function getStudentSelectedTasks(studentId) {
+  return tasks.filter((task) => task.applicants?.some((applicant) => applicant.studentId === studentId && (applicant.selected || applicant.applyStatus === 'selected')))
+}
+
+export function getStudentRejectedTasks(studentId) {
+  return tasks.filter((task) => task.applicants?.some((applicant) => applicant.studentId === studentId && applicant.applyStatus === 'not_selected'))
 }
 
 export function applyTask(taskId, student) {
