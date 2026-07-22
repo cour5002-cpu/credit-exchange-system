@@ -269,6 +269,16 @@ const router = createRouter({
       component: () => import('../views/AdminAcceptanceListView.vue'),
     },
     {
+      path: '/admin/extensions',
+      name: 'admin-special-extension-review',
+      component: () => import('../views/AdminSpecialExtensionListView.vue'),
+    },
+    {
+      path: '/admin/extensions/:id',
+      name: 'admin-special-extension-review-detail',
+      component: () => import('../views/AdminSpecialExtensionDetailView.vue'),
+    },
+    {
       path: '/admin/review-assign/:id',
       name: 'admin-acceptance-detail',
       component: () => import('../views/AdminAcceptanceDetailView.vue'),

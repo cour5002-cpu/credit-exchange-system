@@ -578,6 +578,39 @@ export function rejectNormalExtension(id, comment = '') {
   return updateStatus(application, APPLICATION_STATUS.PENDING_MATERIAL)
 }
 
+export function getAdminPendingSpecialExtensions() {
+  return applications.filter((application) => application.status === APPLICATION_STATUS.PENDING_ADMIN_SPECIAL_EXTENSION
+    && application.extensionType === 'special')
+}
+
+export function approveSpecialExtension(id, comment = '') {
+  const application = findApplication(id)
+  if (!application || application.status !== APPLICATION_STATUS.PENDING_ADMIN_SPECIAL_EXTENSION || application.extensionType !== 'special') return null
+  const confirmTime = nowText()
+  application.extensionStatus = 'approved'
+  application.extensionAdminComment = comment.trim()
+  application.extensionAdminConfirmTime = confirmTime
+  application.extensionComment = comment.trim()
+  application.extensionConfirmTime = confirmTime
+  application.expectedResultDate = application.newExpectedResultTime
+  application.expectedResultTime = application.newExpectedResultTime
+  application.timelineEvents = [...(application.timelineEvents || []), { type: 'special_extension_approved', title: `管理员已通过特殊延期申请，新的成果提交时间为 ${application.newExpectedResultTime}。`, time: confirmTime }]
+  return updateStatus(application, APPLICATION_STATUS.PENDING_MATERIAL)
+}
+
+export function rejectSpecialExtension(id, comment = '') {
+  const application = findApplication(id)
+  if (!application || application.status !== APPLICATION_STATUS.PENDING_ADMIN_SPECIAL_EXTENSION || application.extensionType !== 'special' || !comment.trim()) return null
+  const confirmTime = nowText()
+  application.extensionStatus = 'rejected'
+  application.extensionAdminComment = comment.trim()
+  application.extensionAdminConfirmTime = confirmTime
+  application.extensionComment = comment.trim()
+  application.extensionConfirmTime = confirmTime
+  application.timelineEvents = [...(application.timelineEvents || []), { type: 'special_extension_rejected', title: '管理员已驳回特殊延期申请。', time: confirmTime, comment: comment.trim() }]
+  return updateStatus(application, APPLICATION_STATUS.PENDING_MATERIAL)
+}
+
 export function finalApprove(id, comment = '') {
   const application = findApplication(id)
   if (!application) return null

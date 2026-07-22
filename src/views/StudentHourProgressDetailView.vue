@@ -139,7 +139,7 @@ function goBack() {
             <div><dt>提交时间</dt><dd>{{ application.submitTime }}</dd></div>
             <div><dt>预计成果提交时间</dt><dd>{{ application.expectedResultDate || '--' }}</dd></div>
             <div v-if="application.extensionApplied"><dt>延期处理状态</dt><dd>{{ { pending_advisor: '待指导老师确认', pending_admin: '待管理员审核', approved: '已通过', rejected: '已驳回' }[application.extensionStatus] || application.extensionStatus }}</dd></div>
-            <div v-if="application.extensionAdvisorComment"><dt>延期确认意见</dt><dd>{{ application.extensionAdvisorComment }}</dd></div>
+            <div v-if="application.extensionAdvisorComment || application.extensionAdminComment"><dt>延期确认意见</dt><dd>{{ application.extensionAdvisorComment || application.extensionAdminComment }}</dd></div>
             <div><dt>队长</dt><dd>{{ application.members.find((member) => member.id === application.captainId)?.name || '--' }}</dd></div>
           </dl>
           <div class="table-wrapper">
