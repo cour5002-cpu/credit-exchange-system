@@ -77,6 +77,7 @@ function createApplication(data) {
 
   return {
     id: '',
+    applicationId: '',
     title: '',
     studentName: '',
     studentId: '',
@@ -292,9 +293,11 @@ export function getApplications() {
 }
 
 export function addApplication(application) {
+  const applicationId = application.applicationId || application.id || `APP-${Date.now()}`
   const addedApplication = createApplication({
     ...application,
-    id: application.id || `APP-${Date.now()}`,
+    id: applicationId,
+    applicationId,
     submitTime: application.submitTime || nowText(),
     status: APPLICATION_STATUS.PENDING_ADVISOR,
     stage: APPLICATION_STAGE.ADVISOR,

@@ -4,8 +4,9 @@ import { useRouter } from 'vue-router'
 import AttachmentNotice from '../components/AttachmentNotice.vue'
 import MemberInputTable from '../components/MemberInputTable.vue'
 import StageDescription from '../components/StageDescription.vue'
-import { addApplication } from '../mock/applications.js'
+import { addApplication, getApplications } from '../mock/applications.js'
 import { getApprovedTaskResultsForStudent, markTaskResultApplicationCreated } from '../mock/taskResults.js'
+import { getTaskById } from '../mock/tasks.js'
 
 const router = useRouter()
 
@@ -53,11 +54,19 @@ const feedback = ref({ type: '', message: '' })
 const observerPanelExpanded = ref(false)
 const observerSearch = ref('')
 const taskResultVersion = ref(0)
-const approvedTaskResults = computed(() => { taskResultVersion.value; return getApprovedTaskResultsForStudent(currentUser.studentId) })
+const approvedTaskResults = computed(() => {
+  taskResultVersion.value
+  const unavailableResultIds = new Set(getApplications()
+    .filter((item) => item.resultId && !['advisor_rejected', 'reviewer_rejected', 'final_rejected', 'cancelled'].includes(item.status))
+    .map((item) => item.resultId))
+  return getApprovedTaskResultsForStudent(currentUser.studentId)
+    .filter((result) => !unavailableResultIds.has(result.resultId))
+})
 const selectedTask = computed(() => {
   const result = approvedTaskResults.value.find((item) => item.resultId === form.taskId)
   if (!result) return null
-  return { ...result, id: result.resultId, title: result.taskTitle, publisher: `${result.advisorName}老师`, hours: result.taskHours, captainId: result.leaderId, members: result.teamMembers }
+  const sourceTask = getTaskById(result.taskId)
+  return { ...result, id: result.resultId, title: result.taskTitle, publisher: `${result.advisorName}老师`, hours: result.hours || result.taskHours || sourceTask?.hours || 0, captainId: result.leaderId, members: result.teamMembers }
 })
 const selectedTaskCaptain = computed(() =>
   selectedTask.value?.members.find((member) => member.id === selectedTask.value.captainId) ?? null,
@@ -81,10 +90,7 @@ const permissionState = computed(() => {
   if (!isSelectedTaskMember.value) {
     return { allowed: false, message: '你不是该任务成员，不能提交该任务的课时申请。' }
   }
-  if (!isSelectedTaskCaptain.value) {
-    return { allowed: false, message: '你不是该任务队长，不能提交该任务的课时申请，请联系队长提交。' }
-  }
-  return { allowed: true, message: '你是该任务队长，可以提交课时申请。' }
+  return { allowed: true, message: isSelectedTaskCaptain.value ? '你是该任务队长，可以提交课时申请。' : '你是该任务成员，可以基于已确认成果提交课时申请。' }
 })
 const canSubmitApplication = computed(() => permissionState.value.allowed)
 const observerTeacherOptions = computed(() =>
@@ -179,6 +185,15 @@ function submitApplication() {
   }
 
   const task = selectedTask.value
+  if (form.source === 'task') {
+    const duplicated = getApplications().some((item) => item.resultId === task?.resultId && !['advisor_rejected', 'reviewer_rejected', 'final_rejected', 'cancelled'].includes(item.status))
+    if (duplicated) {
+      feedback.value = { type: 'error', message: '该任务成果已生成课时申请，请勿重复提交。' }
+      window.alert(feedback.value.message)
+      taskResultVersion.value += 1
+      return
+    }
+  }
   const applicationMembers = form.source === 'task'
     ? task.members.map((member) => ({ ...member }))
     : form.members.map((member) => ({
@@ -208,7 +223,13 @@ function submitApplication() {
     taskTitle: task?.taskTitle ?? '',
     resultId: task?.resultId ?? '',
     leaderId: task?.leaderId ?? '',
+    leaderName: task?.leaderName ?? '',
     teamMembers: form.source === 'task' ? applicationMembers.map((member) => ({ ...member })) : [],
+    advisorId: task?.advisorId ?? mainAdvisor?.id ?? '',
+    advisorName: task?.advisorName ?? mainAdvisor?.name ?? '',
+    resultDescription: task?.resultDescription ?? '',
+    resultMaterials: form.source === 'task' ? task.resultMaterials.map((file) => ({ ...file })) : [],
+    proofMaterials: form.source === 'task' ? task.proofMaterials.map((file) => ({ ...file })) : [],
     captainId: form.source === 'task' ? task.captainId : currentUser.id,
     currentUserId: currentUser.id,
     members: applicationMembers,
@@ -234,9 +255,13 @@ function submitApplication() {
     form.requestedHours = ''
   }
 
-  feedback.value = { type: 'success', message: '课时申请提交成功，已进入指导老师确认环节。' }
+  feedback.value = { type: 'success', message: '课时申请已提交，等待指导老师确认。' }
   window.alert(feedback.value.message)
+  router.push('/student/hour-progress')
 }
+
+function previewTaskResultFile() { window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。') }
+function downloadTaskResultFile() { window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。') }
 
 function goBack() {
   router.push('/student/dashboard')
@@ -344,6 +369,11 @@ function goBack() {
 
           <div v-if="form.source === 'task' && selectedTask" class="task-summary">
             <div>
+              <span>任务名称</span>
+              <strong>{{ selectedTask.taskTitle }}</strong>
+              <small>{{ selectedTask.taskId }}</small>
+            </div>
+            <div>
               <span>任务队长</span>
               <strong>{{ selectedTaskCaptain?.name ?? '未设置' }}</strong>
               <small>{{ selectedTaskCaptain?.studentId ?? '--' }}</small>
@@ -358,8 +388,29 @@ function goBack() {
               <strong>{{ selectedTask.resultMaterials.length }} 项</strong>
               <small>证明材料 {{ selectedTask.proofMaterials.length }} 项</small>
             </div>
+            <div>
+              <span>指导老师</span>
+              <strong>{{ selectedTask.advisorName }}</strong>
+              <small>{{ selectedTask.advisorId }}</small>
+            </div>
+            <div>
+              <span>成果确认时间</span>
+              <strong>{{ selectedTask.advisorConfirmTime || '--' }}</strong>
+              <small>{{ selectedTask.advisorComment || '暂无确认意见' }}</small>
+            </div>
+            <div class="task-summary-wide">
+              <span>成果说明</span>
+              <strong>{{ selectedTask.resultDescription }}</strong>
+            </div>
           </div>
-          <p v-if="form.source === 'task' && !approvedTaskResults.length" class="task-member-empty">暂无已由指导老师确认通过、且尚未创建课时申请的任务成果。</p>
+          <div v-if="form.source === 'task' && selectedTask" class="task-member-table">
+            <table><thead><tr><th>团队成员</th><th>学号</th><th>学院</th><th>专业</th><th>角色</th></tr></thead><tbody><tr v-for="member in selectedTask.members" :key="member.studentId"><td>{{ member.name }}</td><td>{{ member.studentId }}</td><td>{{ member.college || '--' }}</td><td>{{ member.major || '--' }}</td><td>{{ member.role === 'captain' ? '队长' : '成员' }}</td></tr></tbody></table>
+          </div>
+          <div v-if="form.source === 'task' && selectedTask" class="task-result-files">
+            <h3>成果材料</h3><article v-for="file in selectedTask.resultMaterials" :key="file.id"><div><strong>{{ file.name || file.fileName }}</strong><small>{{ file.type || file.fileType || '未知类型' }} · {{ file.size || file.fileSize || '--' }} · {{ file.uploadedAt || file.uploadTime || '--' }}</small></div><div><button type="button" @click="previewTaskResultFile">预览</button><button type="button" @click="downloadTaskResultFile">下载</button></div></article><p v-if="!selectedTask.resultMaterials.length">暂无附件材料</p>
+            <h3>证明材料</h3><article v-for="file in selectedTask.proofMaterials" :key="file.id"><div><strong>{{ file.name || file.fileName }}</strong><small>{{ file.type || file.fileType || '未知类型' }} · {{ file.size || file.fileSize || '--' }} · {{ file.uploadedAt || file.uploadTime || '--' }}</small></div><div><button type="button" @click="previewTaskResultFile">预览</button><button type="button" @click="downloadTaskResultFile">下载</button></div></article><p v-if="!selectedTask.proofMaterials.length">暂无附件材料</p>
+          </div>
+          <p v-if="form.source === 'task' && !approvedTaskResults.length" class="task-member-empty">暂无可申请课时的已确认任务成果。请先由队长上传成果，并等待指导老师确认通过。</p>
 
           <AttachmentNotice
             v-if="form.applicationType === 'with_result'"
@@ -554,6 +605,13 @@ function goBack() {
 .task-summary div { display: grid; gap: 4px; }
 .task-summary span, .task-summary small { color: #64748b; font-size: 13px; }
 .task-summary strong { color: #1e3a8a; }
+.task-summary-wide { grid-column: 1 / -1; }
+.task-result-files { display: grid; gap: 10px; margin-top: 18px; }
+.task-result-files h3 { margin: 10px 0 0; }
+.task-result-files article { display: flex; justify-content: space-between; gap: 14px; padding: 13px; border: 1px solid #e2e8f0; border-radius: 9px; background: #f8fafc; }
+.task-result-files small { display: block; margin-top: 5px; color: #64748b; }
+.task-result-files article > div:last-child { display: flex; gap: 8px; }
+.task-result-files button { padding: 7px 10px; border: 1px solid #bfdbfe; border-radius: 8px; color: #2563eb; background: #fff; font-weight: 700; }
 .task-member-table { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 12px; }
 .task-member-table table { width: 100%; border-collapse: collapse; }
 .task-member-table th, .task-member-table td { padding: 12px 14px; border-bottom: 1px solid #e2e8f0; text-align: left; }
