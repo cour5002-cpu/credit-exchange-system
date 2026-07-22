@@ -6,7 +6,6 @@ const placeholderRoutes = [
   ['/student/feedback', 'student-feedback', '问题反馈', '提交使用过程中遇到的问题。'],
   ['/student/notifications', 'student-notifications', '信息通知', '查看学生端通知消息。'],
   ['/teacher/tasks', 'teacher-tasks', '我的任务', '查看和管理指导任务。'],
-  ['/teacher/publish-task', 'teacher-publish-task', '发布任务', '创建并发布新的任务。'],
   ['/teacher/notifications', 'teacher-notifications', '信息通知', '查看指导老师端通知消息。'],
   ['/reviewer/notifications', 'reviewer-notifications', '信息通知', '查看审核老师端通知消息。'],
   ['/admin/appeals-complaints', 'admin-appeals-complaints', '申诉与投诉', '处理用户提交的申诉与投诉。'],
@@ -71,6 +70,26 @@ const router = createRouter({
       path: '/teacher/dashboard',
       name: 'teacher-dashboard',
       component: () => import('../views/TeacherDashboard.vue'),
+    },
+    {
+      path: '/teacher/publish-task',
+      name: 'teacher-publish-task-management',
+      component: () => import('../views/TeacherTaskPublishListView.vue'),
+    },
+    {
+      path: '/teacher/publish-task/new',
+      name: 'teacher-publish-task-create',
+      component: () => import('../views/TeacherTaskPublishFormView.vue'),
+    },
+    {
+      path: '/teacher/publish-task/:id/edit',
+      name: 'teacher-publish-task-edit',
+      component: () => import('../views/TeacherTaskPublishFormView.vue'),
+    },
+    {
+      path: '/teacher/publish-task/:id',
+      name: 'teacher-publish-task-detail',
+      component: () => import('../views/TeacherTaskPublishDetailView.vue'),
     },
     {
       path: '/teacher/confirm',
