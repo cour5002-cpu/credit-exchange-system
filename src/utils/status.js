@@ -9,6 +9,8 @@ const STATUS_META = {
   pending_material: { text: '待补交成果', color: 'warning' },
   material_submitted: { text: '成果已补交，待指导老师再次确认', color: 'info' },
   supplement_rejected: { text: '补交成果已驳回', color: 'danger' },
+  pending_advisor_extension: { text: '延期申请待指导老师确认', color: 'warning' },
+  pending_admin_special_extension: { text: '特殊延期待管理员审核', color: 'warning' },
   advisor_approved: { text: '指导老师已确认', color: 'success' },
   advisor_rejected: { text: '指导老师已驳回', color: 'danger' },
   pending_admin_accept: { text: '待管理员受理并分配', color: 'warning' },

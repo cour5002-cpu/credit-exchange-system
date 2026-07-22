@@ -7,6 +7,8 @@ export const APPLICATION_STATUS = Object.freeze({
   PENDING_MATERIAL: 'pending_material',
   MATERIAL_SUBMITTED: 'material_submitted',
   SUPPLEMENT_REJECTED: 'supplement_rejected',
+  PENDING_ADVISOR_EXTENSION: 'pending_advisor_extension',
+  PENDING_ADMIN_SPECIAL_EXTENSION: 'pending_admin_special_extension',
   ADVISOR_APPROVED: 'advisor_approved',
   ADVISOR_REJECTED: 'advisor_rejected',
   PENDING_ADMIN_ACCEPT: 'pending_admin_accept',
@@ -47,6 +49,8 @@ const statusStageMap = {
   pending_material: APPLICATION_STAGE.STUDENT,
   material_submitted: APPLICATION_STAGE.ADVISOR,
   supplement_rejected: APPLICATION_STAGE.STUDENT,
+  pending_advisor_extension: APPLICATION_STAGE.ADVISOR,
+  pending_admin_special_extension: APPLICATION_STAGE.ADMIN_ACCEPT,
   advisor_approved: APPLICATION_STAGE.ADVISOR,
   advisor_rejected: APPLICATION_STAGE.FINISHED,
   pending_admin_accept: APPLICATION_STAGE.ADMIN_ACCEPT,
@@ -131,6 +135,8 @@ function createApplication(data) {
     attachments: [],
     resultDescription: '', resultMaterials: [], proofMaterials: [], expectedResultDate: '',
     supplementTime: '', supplementCount: 0, allowResultSupplement: false, timelineEvents: [],
+    extensionApplied: false, extensionType: '', originalExpectedResultTime: '', newExpectedResultTime: '',
+    extensionReason: '', extensionMaterials: [], extensionSubmitTime: '', extensionStatus: '',
     ...data,
     reviewerId: resolveReviewerId(data),
     sourceText: data.sourceText ?? sourceTextMap[data.source] ?? '',
@@ -432,8 +438,16 @@ export function canSupplementResult(applicationOrId) {
   const application = typeof applicationOrId === 'string' ? findApplication(applicationOrId) : applicationOrId
   if (!application) return false
   if (Number(application.supplementCount || 0) >= 1 && application.status !== APPLICATION_STATUS.SUPPLEMENT_REJECTED) return false
-  return supplementStatuses.has(application.status)
-    || (application.allowResultSupplement === true && [APPLICATION_STATUS.ADVISOR_REJECTED, APPLICATION_STATUS.REVIEWER_REJECTED].includes(application.status))
+  if (application.resultMaterials?.length && application.status !== APPLICATION_STATUS.SUPPLEMENT_REJECTED) return false
+  const rejectedAndRetryable = application.allowResultSupplement === true
+    && [APPLICATION_STATUS.ADVISOR_REJECTED, APPLICATION_STATUS.REVIEWER_REJECTED, APPLICATION_STATUS.SUPPLEMENT_REJECTED].includes(application.status)
+  if (rejectedAndRetryable) return true
+  if (application.applyType !== 'without_result' || !supplementStatuses.has(application.status)) return false
+  const deadline = application.expectedResultDate || application.newExpectedResultTime
+  if (!deadline) return false
+  const today = new Date(); const pad = (value) => String(value).padStart(2, '0')
+  const todayText = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`
+  return todayText <= deadline
 }
 
 export function supplementApplicationResult(id, payload) {
@@ -476,6 +490,58 @@ export function advisorRejectSupplement(id, comment = '') {
   application.supplementAdvisorConfirmTime = nowText()
   application.allowResultSupplement = true
   return updateStatus(application, APPLICATION_STATUS.SUPPLEMENT_REJECTED)
+}
+
+const extensionAllowedStatuses = new Set([APPLICATION_STATUS.PENDING_MATERIAL, APPLICATION_STATUS.PENDING_RESULT, 'waiting_result'])
+
+export function canApplyExtension(applicationOrId) {
+  const application = typeof applicationOrId === 'string' ? findApplication(applicationOrId) : applicationOrId
+  return Boolean(application
+    && application.applyType === 'without_result'
+    && extensionAllowedStatuses.has(application.status)
+    && !application.resultMaterials?.length
+    && !application.extensionApplied)
+}
+
+export function getExtensionType(originalTime, newTime) {
+  const original = new Date(`${originalTime}T00:00:00`)
+  const next = new Date(`${newTime}T00:00:00`)
+  if (Number.isNaN(original.getTime()) || Number.isNaN(next.getTime()) || next <= original) return ''
+  const days = Math.ceil((next - original) / 86400000)
+  return days <= 30 ? 'normal' : 'special'
+}
+
+export function submitExtensionApplication(id, payload) {
+  const application = findApplication(id)
+  if (!canApplyExtension(application) || !payload?.newExpectedResultTime || !payload?.extensionReason?.trim()) return null
+  const originalExpectedResultTime = application.expectedResultDate || application.originalExpectedResultTime
+  const extensionType = getExtensionType(originalExpectedResultTime, payload.newExpectedResultTime)
+  if (!extensionType) return null
+  const extensionSubmitTime = nowText()
+  application.extensionApplied = true
+  application.extensionType = extensionType
+  application.originalExpectedResultTime = originalExpectedResultTime
+  application.newExpectedResultTime = payload.newExpectedResultTime
+  application.extensionReason = payload.extensionReason.trim()
+  application.extensionMaterials = (payload.extensionMaterials || []).map((file) => ({ ...file }))
+  application.extensionSubmitTime = extensionSubmitTime
+  application.extensionStatus = extensionType === 'normal' ? 'pending_advisor' : 'pending_admin'
+  application.timelineEvents = [...(application.timelineEvents || []), { type: 'extension_submitted', title: '学生已提交延期申请，等待处理。', time: extensionSubmitTime }]
+  return updateStatus(application, extensionType === 'normal' ? APPLICATION_STATUS.PENDING_ADVISOR_EXTENSION : APPLICATION_STATUS.PENDING_ADMIN_SPECIAL_EXTENSION)
+}
+
+export function approveExtensionApplication(id, comment = '') {
+  const application = findApplication(id)
+  const validStatus = application?.extensionType === 'normal'
+    ? APPLICATION_STATUS.PENDING_ADVISOR_EXTENSION
+    : APPLICATION_STATUS.PENDING_ADMIN_SPECIAL_EXTENSION
+  if (!application || application.status !== validStatus) return null
+  application.extensionStatus = 'approved'
+  application.extensionComment = comment.trim()
+  application.extensionConfirmTime = nowText()
+  application.expectedResultDate = application.newExpectedResultTime
+  application.timelineEvents = [...(application.timelineEvents || []), { type: 'extension_approved', title: '延期申请已通过，请在新的预计时间前补交成果。', time: application.extensionConfirmTime }]
+  return updateStatus(application, APPLICATION_STATUS.PENDING_MATERIAL)
 }
 
 export function finalApprove(id, comment = '') {

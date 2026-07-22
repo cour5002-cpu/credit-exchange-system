@@ -89,6 +89,11 @@ const router = createRouter({
       component: () => import('../views/StudentHourResultSupplementView.vue'),
     },
     {
+      path: '/student/hour-progress/:id/extension',
+      name: 'student-hour-extension',
+      component: () => import('../views/StudentHourExtensionView.vue'),
+    },
+    {
       path: '/student/credit-exchange',
       name: 'student-credit-exchange',
       component: () => import('../views/StudentCreditExchangeView.vue'),
