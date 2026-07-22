@@ -1,7 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 const placeholderRoutes = [
-  ['/student/tasks', 'student-tasks', '我的任务', '查看和管理分配给你的任务。'],
   ['/student/feedback', 'student-feedback', '问题反馈', '提交使用过程中遇到的问题。'],
   ['/student/notifications', 'student-notifications', '信息通知', '查看学生端通知消息。'],
   ['/teacher/notifications', 'teacher-notifications', '信息通知', '查看指导老师端通知消息。'],
@@ -33,6 +32,31 @@ const router = createRouter({
       path: '/student/dashboard',
       name: 'student-dashboard',
       component: () => import('../views/StudentDashboard.vue'),
+    },
+    {
+      path: '/student/tasks',
+      name: 'student-tasks',
+      component: () => import('../views/StudentTasksView.vue'),
+    },
+    {
+      path: '/student/tasks/:id',
+      name: 'student-task-detail',
+      component: () => import('../views/StudentTaskDetailView.vue'),
+    },
+    {
+      path: '/student/tasks/:id/result',
+      name: 'student-task-apply-result',
+      component: () => import('../views/StudentTaskApplyResultView.vue'),
+    },
+    {
+      path: '/student/tasks/:id/team',
+      name: 'student-task-team',
+      component: () => import('../views/StudentTaskTeamView.vue'),
+    },
+    {
+      path: '/student/tasks/:id/result-submit',
+      name: 'student-task-result-submit',
+      component: () => import('../views/StudentTaskResultSubmitView.vue'),
     },
     {
       path: '/student/task-square',
@@ -138,6 +162,16 @@ const router = createRouter({
       path: '/teacher/confirm/exchanges/:id',
       name: 'teacher-credit-exchange-confirm-detail',
       component: () => import('../views/TeacherCreditExchangeDetailView.vue'),
+    },
+    {
+      path: '/teacher/confirm/results',
+      name: 'teacher-task-result-confirm',
+      component: () => import('../views/TeacherTaskResultConfirmListView.vue'),
+    },
+    {
+      path: '/teacher/confirm/results/:id',
+      name: 'teacher-task-result-confirm-detail',
+      component: () => import('../views/TeacherTaskResultConfirmDetailView.vue'),
     },
     {
       path: '/teacher/confirm/:id',

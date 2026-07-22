@@ -34,6 +34,7 @@ const filteredConfirmations = computed(() => {
       <nav class="type-tabs" aria-label="待确认事项类型">
         <RouterLink class="active" to="/teacher/confirm">课时申请确认</RouterLink>
         <RouterLink to="/teacher/confirm/exchanges">学分兑换确认</RouterLink>
+        <RouterLink to="/teacher/confirm/results">成果确认</RouterLink>
       </nav>
 
       <section class="filter-panel" aria-label="确认事项筛选">

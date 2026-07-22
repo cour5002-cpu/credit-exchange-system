@@ -22,7 +22,7 @@ export const TASK_TYPE_OPTIONS = Object.freeze([
 
 const tasks = [
   {
-    taskId: 'TASK-2026-001', title: '校园数字化志愿服务', taskType: 'volunteer_service',
+    taskId: 'TASK-2026-001', title: '校园数字化志愿服务', taskType: 'volunteer_service', hours: 16,
     description: '协助整理校园活动数字档案，并完成现场志愿服务。', requirement: '责任心强，能够按时参加线下活动。',
     resultRequirement: '提交服务记录、活动照片及不少于 800 字的总结。', advisorId: 'T001', advisorName: '张明', source: 'advisor',
     registrationDeadline: '2026-08-20 18:00', attachments: [{ id: 'TASK-ATT-001', name: '任务安排说明.pdf', type: 'PDF', size: '1.2 MB', uploadedAt: '2026-07-20 10:15' }],
@@ -30,7 +30,7 @@ const tasks = [
     applicants: [], selectedStudents: [], leaderId: '', leaderName: '',
   },
   {
-    taskId: 'TASK-2026-002', title: '创新项目调研助手', taskType: 'innovation',
+    taskId: 'TASK-2026-002', title: '创新项目调研助手', taskType: 'innovation', hours: 20,
     description: '参与创新创业项目的用户访谈和竞品资料整理。', requirement: '具备基础调研与文档整理能力。',
     resultRequirement: '提交调研纪要、竞品分析表及个人工作总结。', advisorId: 'T001', advisorName: '张明', source: 'advisor',
     registrationDeadline: '2026-08-25 18:00', attachments: [], status: TASK_STATUS.PUBLISH_REJECTED,
@@ -38,7 +38,7 @@ const tasks = [
     applicants: [], selectedStudents: [], leaderId: '', leaderName: '',
   },
   {
-    taskId: 'TASK-2026-003', title: '社区科普活动策划', taskType: 'social_practice',
+    taskId: 'TASK-2026-003', title: '社区科普活动策划', taskType: 'social_practice', hours: 24,
     description: '面向社区青少年策划并实施一次信息安全科普活动。', requirement: '可组队报名，有宣讲或活动策划经验者优先。',
     resultRequirement: '提交策划书、现场记录、参与反馈和成果总结。', advisorId: 'T001', advisorName: '张明', source: 'advisor',
     registrationDeadline: '2026-08-15 18:00', attachments: [], status: TASK_STATUS.PUBLISHED,
@@ -54,7 +54,7 @@ function nowText() {
 
 function normalizeTask(task) {
   const taskId = task.taskId || `TASK-${Date.now()}`
-  const normalized = { taskId, title: '', taskType: '', description: '', requirement: '', resultRequirement: '', advisorId: '', advisorName: '', source: 'advisor', registrationDeadline: '', attachments: [], status: TASK_STATUS.DRAFT, submitTime: '', publishTime: '', adminComment: '', adminConfirmTime: '', applicants: [], selectedStudents: [], leaderId: '', leaderName: '', ...task, taskId }
+  const normalized = { taskId, title: '', taskType: '', hours: 0, description: '', requirement: '', resultRequirement: '', advisorId: '', advisorName: '', source: 'advisor', registrationDeadline: '', attachments: [], status: TASK_STATUS.DRAFT, submitTime: '', publishTime: '', adminComment: '', adminConfirmTime: '', applicants: [], selectedStudents: [], leaderId: '', leaderName: '', ...task, taskId }
   normalized.attachments = (task.attachments || []).map((file, index) => ({
     id: file.id || `TASK-ATT-${Date.now()}-${index}`,
     name: file.name || file.fileName || '',
@@ -135,6 +135,46 @@ export function getStudentSelectedTasks(studentId) {
 
 export function getStudentRejectedTasks(studentId) {
   return tasks.filter((task) => task.applicants?.some((applicant) => applicant.studentId === studentId && applicant.applyStatus === 'not_selected'))
+}
+
+export function getStudentApplyResult(taskId, studentId) {
+  const task = getTask(taskId)
+  const applicant = task?.applicants?.find((item) => item.studentId === studentId)
+  if (!task || !applicant) return null
+  return {
+    taskId: task.taskId,
+    applyTime: applicant.applyTime || '',
+    applyStatus: applicant.applyStatus || 'applied',
+    selected: Boolean(applicant.selected || applicant.applyStatus === 'selected'),
+    isLeader: Boolean(applicant.isLeader || task.leaderId === studentId),
+    selectionComment: applicant.selectionComment || '',
+  }
+}
+
+export function getStudentTaskDetail(taskId, studentId) {
+  const task = getTask(taskId)
+  if (!task) return null
+  const applicant = task.applicants?.find((item) => item.studentId === studentId)
+  const selectedStudent = task.selectedStudents?.find((item) => item.studentId === studentId)
+  if (!applicant && !selectedStudent && task.leaderId !== studentId) return null
+  return { task, applicant: applicant || selectedStudent, applyResult: getStudentApplyResult(taskId, studentId), isLeader: task.leaderId === studentId || Boolean(applicant?.isLeader) }
+}
+
+export function getTaskTeamInfo(taskId, studentId) {
+  const detail = getStudentTaskDetail(taskId, studentId)
+  if (!detail) return { success: false, message: '未找到相关任务。' }
+  const selected = detail.applicant?.selected || detail.applicant?.applyStatus === 'selected' || detail.task.leaderId === studentId
+  if (!selected) return { success: false, message: '你未被选中，无法查看团队信息。', task: detail.task }
+  const members = getSelectedStudents(taskId).map((student) => ({ ...student, isLeader: student.studentId === detail.task.leaderId || Boolean(student.isLeader) }))
+  const leader = members.find((member) => member.isLeader) || null
+  return { success: true, message: '', task: detail.task, leader, members }
+}
+
+export function markTaskResultSubmitted(taskId, studentId) {
+  const task = getTask(taskId)
+  if (!task || task.leaderId !== studentId) return null
+  task.status = TASK_STATUS.RESULT_SUBMITTED
+  return task
 }
 
 export function applyTask(taskId, student) {

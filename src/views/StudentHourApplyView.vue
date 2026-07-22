@@ -5,6 +5,7 @@ import AttachmentNotice from '../components/AttachmentNotice.vue'
 import MemberInputTable from '../components/MemberInputTable.vue'
 import StageDescription from '../components/StageDescription.vue'
 import { addApplication } from '../mock/applications.js'
+import { getApprovedTaskResultsForStudent, markTaskResultApplicationCreated } from '../mock/taskResults.js'
 
 const router = useRouter()
 
@@ -23,30 +24,6 @@ const teachers = [
   { id: 'T003', name: '王芳', department: '艺术学院' },
   { id: 'T004', name: '陈强', department: '校团委' },
   { id: 'T005', name: '赵敏', department: '创新创业学院' },
-]
-
-const mockTasks = [
-  {
-    id: 'TASK-001', title: '校园数据分析项目', publisher: '张明老师', hours: 8, captainId: 'stu001',
-    members: [
-      { id: 'stu001', name: '张三', studentId: '2024001', role: 'captain' },
-      { id: 'stu002', name: '李四', studentId: '2024002', role: 'member' },
-    ],
-  },
-  {
-    id: 'TASK-002', title: '学科竞赛作品提交', publisher: '李华老师', hours: 10, captainId: 'stu002',
-    members: [
-      { id: 'stu002', name: '李四', studentId: '2024002', role: 'captain' },
-      { id: 'stu001', name: '张三', studentId: '2024001', role: 'member' },
-    ],
-  },
-  {
-    id: 'TASK-003', title: '志愿服务数据整理', publisher: '陈强老师', hours: 6, captainId: 'stu003',
-    members: [
-      { id: 'stu003', name: '王五', studentId: '2024003', role: 'captain' },
-      { id: 'stu004', name: '赵六', studentId: '2024004', role: 'member' },
-    ],
-  },
 ]
 
 function createCurrentUserMember() {
@@ -75,15 +52,21 @@ const form = reactive({
 const feedback = ref({ type: '', message: '' })
 const observerPanelExpanded = ref(false)
 const observerSearch = ref('')
-const selectedTask = computed(() => mockTasks.find((task) => task.id === form.taskId) ?? null)
+const taskResultVersion = ref(0)
+const approvedTaskResults = computed(() => { taskResultVersion.value; return getApprovedTaskResultsForStudent(currentUser.studentId) })
+const selectedTask = computed(() => {
+  const result = approvedTaskResults.value.find((item) => item.resultId === form.taskId)
+  if (!result) return null
+  return { ...result, id: result.resultId, title: result.taskTitle, publisher: `${result.advisorName}老师`, hours: result.taskHours, captainId: result.leaderId, members: result.teamMembers }
+})
 const selectedTaskCaptain = computed(() =>
   selectedTask.value?.members.find((member) => member.id === selectedTask.value.captainId) ?? null,
 )
 const isSelectedTaskMember = computed(() =>
-  Boolean(selectedTask.value?.members.some((member) => member.id === currentUser.id)),
+  Boolean(selectedTask.value?.members.some((member) => member.studentId === currentUser.studentId)),
 )
 const isSelectedTaskCaptain = computed(() =>
-  Boolean(selectedTask.value && selectedTask.value.captainId === currentUser.id),
+  Boolean(selectedTask.value && selectedTask.value.captainId === currentUser.studentId),
 )
 const isSelfApplicationLeader = computed(() =>
   form.members.some((member) => member.id === currentUser.id && member.isLeader),
@@ -142,6 +125,10 @@ function handleSourceChange() {
 
 function handleTaskChange() {
   form.requestedHours = selectedTask.value?.hours ?? ''
+  form.applicationType = 'with_result'
+  form.primaryTeacherId = selectedTask.value?.advisorId ?? ''
+  if (selectedTask.value) form.title = `${selectedTask.value.taskTitle}课时申请`
+  handlePrimaryTeacherChange()
   feedback.value = { type: '', message: '' }
 }
 
@@ -202,26 +189,33 @@ function submitApplication() {
         major: member.major,
         role: member.isLeader ? 'captain' : 'member',
       }))
-  const mainAdvisor = teachers.find((teacher) => teacher.id === form.primaryTeacherId) ?? null
+  const mainAdvisor = form.source === 'task'
+    ? { id: task.advisorId, name: task.advisorName, department: '' }
+    : teachers.find((teacher) => teacher.id === form.primaryTeacherId) ?? null
   const viewAdvisors = form.observerTeacherIds
     .map((id) => teachers.find((teacher) => teacher.id === id))
     .filter(Boolean)
 
-  addApplication({
+  const addedApplication = addApplication({
     title: form.title.trim(),
     studentName: currentUser.name,
     studentId: currentUser.studentId,
-    source: form.source === 'student' ? 'self' : 'task',
+    source: form.source === 'student' ? 'self' : 'task_result',
+    sourceText: form.source === 'student' ? '学生自主申请' : '任务成果申请',
     applyType: form.applicationType,
     requestedHours: Number(form.requestedHours),
-    taskId: task?.id ?? '',
-    taskTitle: task?.title ?? '',
+    taskId: task?.taskId ?? '',
+    taskTitle: task?.taskTitle ?? '',
+    resultId: task?.resultId ?? '',
+    leaderId: task?.leaderId ?? '',
+    teamMembers: form.source === 'task' ? applicationMembers.map((member) => ({ ...member })) : [],
     captainId: form.source === 'task' ? task.captainId : currentUser.id,
     currentUserId: currentUser.id,
     members: applicationMembers,
     mainAdvisor: mainAdvisor ? { ...mainAdvisor } : null,
     viewAdvisors: viewAdvisors.map((advisor) => ({ ...advisor })),
-    attachments: [
+    materials: form.source === 'task' ? [...task.resultMaterials, ...task.proofMaterials].map((file) => ({ ...file })) : [],
+    attachments: form.source === 'task' ? [...task.resultMaterials, ...task.proofMaterials].map((file) => ({ ...file })) : [
       {
         id: `ATT-${Date.now()}`,
         name: form.applicationType === 'with_result' ? '成果证明材料.pdf' : '团队成员承诺书.pdf',
@@ -232,6 +226,13 @@ function submitApplication() {
       },
     ],
   })
+
+  if (form.source === 'task') {
+    markTaskResultApplicationCreated(task.resultId, addedApplication.id)
+    taskResultVersion.value += 1
+    form.taskId = ''
+    form.requestedHours = ''
+  }
 
   feedback.value = { type: 'success', message: '课时申请提交成功，已进入指导老师确认环节。' }
   window.alert(feedback.value.message)
@@ -304,17 +305,17 @@ function goBack() {
                 <span><strong>有成果申请</strong><small>当前已有可供审核的成果材料</small></span>
               </label>
               <label class="option-card">
-                <input v-model="form.applicationType" type="radio" value="without_result" :disabled="!canSubmitApplication" />
+                <input v-model="form.applicationType" type="radio" value="without_result" :disabled="!canSubmitApplication || form.source === 'task'" />
                 <span><strong>无成果申请</strong><small>成果将在后续约定时间内补充提交</small></span>
               </label>
             </fieldset>
 
             <div v-if="form.source === 'task'" class="form-field form-field-wide">
-              <label for="source-task">关联任务 <span class="required-mark">*</span></label>
+              <label for="source-task">已确认任务成果 <span class="required-mark">*</span></label>
               <select id="source-task" v-model="form.taskId" @change="handleTaskChange">
-                <option value="">请选择任务</option>
-                <option v-for="task in mockTasks" :key="task.id" :value="task.id">
-                  {{ task.title }} · {{ task.publisher }} · {{ task.hours }} 课时
+                <option value="">请选择指导老师已确认的任务成果</option>
+                <option v-for="task in approvedTaskResults" :key="task.resultId" :value="task.resultId">
+                  {{ task.taskTitle }} · {{ task.advisorName }}老师 · {{ task.taskHours }} 课时
                 </option>
               </select>
             </div>
@@ -352,7 +353,13 @@ function goBack() {
               <strong>{{ selectedTask.members.length }} 人</strong>
               <small>成员信息由任务自动带出</small>
             </div>
+            <div>
+              <span>成果材料</span>
+              <strong>{{ selectedTask.resultMaterials.length }} 项</strong>
+              <small>证明材料 {{ selectedTask.proofMaterials.length }} 项</small>
+            </div>
           </div>
+          <p v-if="form.source === 'task' && !approvedTaskResults.length" class="task-member-empty">暂无已由指导老师确认通过、且尚未创建课时申请的任务成果。</p>
 
           <AttachmentNotice
             v-if="form.applicationType === 'with_result'"
