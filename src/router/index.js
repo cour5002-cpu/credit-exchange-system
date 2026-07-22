@@ -9,7 +9,7 @@ const placeholderRoutes = [
   ['/admin/extensions', 'admin-extensions', '特殊延期', '管理特殊情况的延期申请。'],
   ['/admin/statistics', 'admin-statistics', '数据统计', '查看系统业务统计数据。'],
   ['/admin/notifications', 'admin-notifications', '信息通知', '查看管理员端通知消息。'],
-].map(([path, name, title, description]) => ({
+].filter(([path]) => !['/student/notifications','/teacher/notifications','/reviewer/notifications','/admin/notifications'].includes(path)).map(([path, name, title, description]) => ({
   path,
   name,
   component: () => import('../views/PlaceholderView.vue'),
@@ -28,6 +28,14 @@ const router = createRouter({
       name: 'login',
       component: () => import('../views/LoginView.vue'),
     },
+    { path:'/student/notifications',name:'student-notification-list',component:()=>import('../views/NotificationListView.vue'),props:{role:'student',userId:'2024001',pageCode:'S301',portalName:'学生端',backPath:'/student/dashboard',detailBase:'/student/notifications'} },
+    { path:'/student/notifications/:id',name:'student-notification-detail',component:()=>import('../views/NotificationDetailView.vue'),props:{role:'student',userId:'2024001',pageCode:'S302',listPath:'/student/notifications'} },
+    { path:'/teacher/notifications',name:'teacher-notification-list',component:()=>import('../views/NotificationListView.vue'),props:{role:'advisor',userId:'T001',pageCode:'T801',portalName:'指导老师端',backPath:'/teacher/dashboard',detailBase:'/teacher/notifications'} },
+    { path:'/teacher/notifications/:id',name:'teacher-notification-detail',component:()=>import('../views/NotificationDetailView.vue'),props:{role:'advisor',userId:'T001',pageCode:'T802',listPath:'/teacher/notifications'} },
+    { path:'/reviewer/notifications',name:'reviewer-notification-list',component:()=>import('../views/NotificationListView.vue'),props:{role:'reviewer',userId:'reviewer001',pageCode:'R501',portalName:'审核老师端',backPath:'/reviewer/dashboard',detailBase:'/reviewer/notifications'} },
+    { path:'/reviewer/notifications/:id',name:'reviewer-notification-detail',component:()=>import('../views/NotificationDetailView.vue'),props:{role:'reviewer',userId:'reviewer001',pageCode:'R502',listPath:'/reviewer/notifications'} },
+    { path:'/admin/notifications',name:'admin-notification-list',component:()=>import('../views/NotificationListView.vue'),props:{role:'admin',userId:'ADMIN001',pageCode:'A1101',portalName:'管理端',backPath:'/admin/dashboard',detailBase:'/admin/notifications'} },
+    { path:'/admin/notifications/:id',name:'admin-notification-detail',component:()=>import('../views/NotificationDetailView.vue'),props:{role:'admin',userId:'ADMIN001',pageCode:'A1102',listPath:'/admin/notifications'} },
     {
       path: '/student/dashboard',
       name: 'student-dashboard',
@@ -254,7 +262,7 @@ const router = createRouter({
     {
       path: '/admin/processed-records',
       name: 'admin-processed-records',
-      component: () => import('../views/AdminProcessedRecordsView.vue'),
+      redirect: '/admin/tasks/processed-records',
     },
     { path:'/admin/appeals-complaints',name:'admin-appeals',component:()=>import('../views/AdminAppealsView.vue') },
     { path:'/admin/appeals-complaints/assign',name:'admin-appeal-assignment',component:()=>import('../views/AdminAppealAssignmentListView.vue') },
@@ -268,6 +276,26 @@ const router = createRouter({
       path: '/admin/tasks',
       name: 'admin-tasks',
       component: () => import('../views/AdminTasksView.vue'),
+    },
+    {
+      path: '/admin/tasks/list',
+      name: 'admin-task-list',
+      component: () => import('../views/AdminTaskListView.vue'),
+    },
+    {
+      path: '/admin/tasks/list/:id',
+      name: 'admin-task-detail',
+      component: () => import('../views/AdminTaskDetailView.vue'),
+    },
+    {
+      path: '/admin/tasks/publish',
+      name: 'admin-task-publish',
+      component: () => import('../views/AdminTaskPublishView.vue'),
+    },
+    {
+      path: '/admin/tasks/processed-records',
+      name: 'admin-task-processed-records',
+      component: () => import('../views/AdminProcessedRecordsView.vue'),
     },
     {
       path: '/admin/tasks/publish-confirm',

@@ -20,6 +20,12 @@ export const TASK_TYPE_OPTIONS = Object.freeze([
   { value: 'campus_service', label: '校园服务' },
 ])
 
+export const ADMIN_TASK_ADVISORS = Object.freeze([
+  { advisorId: 'T001', advisorName: '张明', college: '计算机学院' },
+  { advisorId: 'T002', advisorName: '李华', college: '管理学院' },
+  { advisorId: 'T003', advisorName: '王芳', college: '艺术学院' },
+])
+
 const tasks = [
   {
     taskId: 'TASK-2026-001', title: '校园数字化志愿服务', taskType: 'volunteer_service', hours: 16,
@@ -54,7 +60,7 @@ function nowText() {
 
 function normalizeTask(task) {
   const taskId = task.taskId || `TASK-${Date.now()}`
-  const normalized = { taskId, title: '', taskType: '', hours: 0, description: '', requirement: '', resultRequirement: '', advisorId: '', advisorName: '', source: 'advisor', registrationDeadline: '', attachments: [], status: TASK_STATUS.DRAFT, submitTime: '', publishTime: '', adminComment: '', adminConfirmTime: '', applicants: [], selectedStudents: [], leaderId: '', leaderName: '', selectionTime: '', leaderAssignTime: '', ...task, taskId }
+  const normalized = { taskId, title: '', taskType: '', hours: 0, description: '', requirement: '', resultRequirement: '', category: '', advisorId: '', advisorName: '', source: 'advisor', publishSource: '', publisherRole: '', publisherName: '', registrationStartTime: '', registrationDeadline: '', resultDeadline: '', maxParticipants: 0, attachments: [], status: TASK_STATUS.DRAFT, submitTime: '', publishTime: '', adminComment: '', adminConfirmTime: '', applicants: [], selectedStudents: [], leaderId: '', leaderName: '', selectionTime: '', leaderAssignTime: '', ...task, taskId }
   normalized.attachments = (task.attachments || []).map((file, index) => ({
     id: file.id || `TASK-ATT-${Date.now()}-${index}`,
     name: file.name || file.fileName || '',
@@ -73,6 +79,22 @@ export function getAdvisorTasks(advisorId) { return tasks.filter((task) => task.
 export function getPendingAdminPublishTasks() { return tasks.filter((task) => task.status === TASK_STATUS.PENDING_ADMIN_PUBLISH && task.source === 'advisor') }
 export function getPublishedTasks() { return tasks.filter((task) => task.status === TASK_STATUS.PUBLISHED) }
 export function getTaskTypeText(type) { return TASK_TYPE_OPTIONS.find((option) => option.value === type)?.label || type || '--' }
+
+export function adminDirectPublishTask(data, admin = { id: 'ADMIN001', name: '系统管理员' }) {
+  if (!data?.title?.trim() || !data?.taskType || !data?.description?.trim() || !data?.requirement?.trim() || !data?.resultRequirement?.trim() || !data?.registrationDeadline || !data?.resultDeadline || Number(data?.hours) <= 0) return null
+  const publishedAt = nowText()
+  const task = normalizeTask({
+    ...data,
+    taskId: data.taskId || `TASK-ADMIN-${Date.now()}`,
+    title: data.title.trim(),
+    source: 'admin', publishSource: 'admin', publisherRole: 'admin', publisherName: admin.name,
+    status: TASK_STATUS.PUBLISHED, submitTime: publishedAt, publishTime: publishedAt,
+    adminConfirmTime: publishedAt, adminComment: '管理员直接发布任务。',
+    applicants: [], selectedStudents: [], leaderId: '', leaderName: '',
+  })
+  tasks.push(task)
+  return task
+}
 
 export function hasStudentApplied(taskId, studentId) {
   const task = getTask(taskId)
