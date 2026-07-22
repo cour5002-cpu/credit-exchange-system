@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
-import { APPLICATION_STATUS, getApplications } from '../mock/applications.js'
+import { APPLICATION_STATUS, canSupplementResult, getApplications } from '../mock/applications.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -14,13 +14,17 @@ const application = computed(() =>
 const timeline = computed(() => {
   if (!application.value) return []
   const item = application.value
-  return [
+  const steps = [
     { key: 'student', title: '学生提交申请', state: 'completed', time: item.submitTime, comment: '' },
     getTimelineStep('advisor', '指导老师确认', item),
     getTimelineStep('admin', '管理员受理并分配', item),
     getTimelineStep('reviewer', '审核老师审核', item),
     getTimelineStep('final', '管理员最终确认', item),
   ]
+  const supplement = item.timelineEvents?.findLast?.((event) => event.type === 'result_supplemented')
+    || [...(item.timelineEvents || [])].reverse().find((event) => event.type === 'result_supplemented')
+  if (supplement) steps.splice(1, 0, { key: 'supplement', title: supplement.title, state: 'completed', time: supplement.time, comment: '' })
+  return steps
 })
 
 const result = computed(() => {
@@ -30,6 +34,7 @@ const result = computed(() => {
     advisor_rejected: { title: '指导老师已驳回', reason: item.advisorComment, type: 'rejected' },
     reviewer_rejected: { title: '审核老师已驳回', reason: item.reviewComment, type: 'rejected' },
     final_rejected: { title: '最终驳回', reason: item.finalComment, type: 'rejected' },
+    supplement_rejected: { title: '补交成果已驳回', reason: item.supplementAdvisorComment, type: 'rejected' },
     final_approved: { title: '最终通过', reason: `最终认定 ${item.recognizedHours} 小时`, type: 'approved' },
   }
   return resultMap[item.status] ?? null
@@ -194,7 +199,7 @@ function goBack() {
           <p v-else class="empty">暂无上传材料</p>
         </section>
 
-        <div class="actions"><button type="button" @click="goBack">返回申请列表</button></div>
+        <div class="actions"><RouterLink v-if="canSupplementResult(application)" :to="`/student/hour-progress/${application.id}/supplement-result`">补交成果</RouterLink><button type="button" @click="goBack">返回申请列表</button></div>
       </template>
       <section v-else class="card empty"><h1>未找到申请</h1><p>该申请不存在，或不属于当前学生。</p><button type="button" @click="goBack">返回申请列表</button></section>
     </div>

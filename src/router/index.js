@@ -84,6 +84,11 @@ const router = createRouter({
       component: () => import('../views/StudentHourProgressDetailView.vue'),
     },
     {
+      path: '/student/hour-progress/:id/supplement-result',
+      name: 'student-hour-result-supplement',
+      component: () => import('../views/StudentHourResultSupplementView.vue'),
+    },
+    {
       path: '/student/credit-exchange',
       name: 'student-credit-exchange',
       component: () => import('../views/StudentCreditExchangeView.vue'),
@@ -172,6 +177,16 @@ const router = createRouter({
       path: '/teacher/confirm/results/:id',
       name: 'teacher-task-result-confirm-detail',
       component: () => import('../views/TeacherTaskResultConfirmDetailView.vue'),
+    },
+    {
+      path: '/teacher/confirm/supplements',
+      name: 'teacher-supplement-confirm',
+      component: () => import('../views/TeacherSupplementConfirmListView.vue'),
+    },
+    {
+      path: '/teacher/confirm/supplements/:id',
+      name: 'teacher-supplement-confirm-detail',
+      component: () => import('../views/TeacherSupplementConfirmDetailView.vue'),
     },
     {
       path: '/teacher/confirm/:id',

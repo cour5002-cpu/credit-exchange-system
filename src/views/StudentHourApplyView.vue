@@ -218,6 +218,7 @@ function submitApplication() {
     source: form.source === 'student' ? 'self' : 'task_result',
     sourceText: form.source === 'student' ? '学生自主申请' : '任务成果申请',
     applyType: form.applicationType,
+    expectedResultDate: form.expectedResultDate,
     requestedHours: Number(form.requestedHours),
     taskId: task?.taskId ?? '',
     taskTitle: task?.taskTitle ?? '',

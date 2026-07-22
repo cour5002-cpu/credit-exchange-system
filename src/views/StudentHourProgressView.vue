@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
-import { APPLICATION_STATUS, getApplications } from '../mock/applications.js'
+import { APPLICATION_STATUS, canSupplementResult, getApplications } from '../mock/applications.js'
 import { getStatusText } from '../utils/status.js'
 
 const currentUser = { id: 'stu001', name: '张三', studentId: '2024001' }
@@ -10,6 +10,11 @@ const keyword = ref('')
 
 const statusOptions = [
   APPLICATION_STATUS.PENDING_ADVISOR,
+  APPLICATION_STATUS.PENDING_RESULT,
+  APPLICATION_STATUS.NEED_SUPPLEMENT_RESULT,
+  APPLICATION_STATUS.PENDING_MATERIAL,
+  APPLICATION_STATUS.MATERIAL_SUBMITTED,
+  APPLICATION_STATUS.SUPPLEMENT_REJECTED,
   APPLICATION_STATUS.PENDING_ADMIN_ACCEPT,
   APPLICATION_STATUS.PENDING_REVIEWER,
   APPLICATION_STATUS.PENDING_ADMIN_FINAL,
@@ -87,6 +92,7 @@ const applications = computed(() => {
                   <RouterLink class="detail-link" :to="`/student/hour-progress/${application.id}`">
                     查看详情
                   </RouterLink>
+                  <RouterLink v-if="canSupplementResult(application)" class="detail-link" :to="`/student/hour-progress/${application.id}/supplement-result`">补交成果</RouterLink>
                 </td>
               </tr>
               <tr v-if="!applications.length">

@@ -2,6 +2,11 @@ export const APPLICATION_STATUS = Object.freeze({
   DRAFT: 'draft',
   SUBMITTED: 'submitted',
   PENDING_ADVISOR: 'pending_advisor',
+  PENDING_RESULT: 'pending_result',
+  NEED_SUPPLEMENT_RESULT: 'need_supplement_result',
+  PENDING_MATERIAL: 'pending_material',
+  MATERIAL_SUBMITTED: 'material_submitted',
+  SUPPLEMENT_REJECTED: 'supplement_rejected',
   ADVISOR_APPROVED: 'advisor_approved',
   ADVISOR_REJECTED: 'advisor_rejected',
   PENDING_ADMIN_ACCEPT: 'pending_admin_accept',
@@ -36,6 +41,12 @@ const statusStageMap = {
   draft: APPLICATION_STAGE.STUDENT,
   submitted: APPLICATION_STAGE.STUDENT,
   pending_advisor: APPLICATION_STAGE.ADVISOR,
+  pending_result: APPLICATION_STAGE.STUDENT,
+  waiting_result: APPLICATION_STAGE.STUDENT,
+  need_supplement_result: APPLICATION_STAGE.STUDENT,
+  pending_material: APPLICATION_STAGE.STUDENT,
+  material_submitted: APPLICATION_STAGE.ADVISOR,
+  supplement_rejected: APPLICATION_STAGE.STUDENT,
   advisor_approved: APPLICATION_STAGE.ADVISOR,
   advisor_rejected: APPLICATION_STAGE.FINISHED,
   pending_admin_accept: APPLICATION_STAGE.ADMIN_ACCEPT,
@@ -118,6 +129,8 @@ function createApplication(data) {
     finalConfirmTime: '',
 
     attachments: [],
+    resultDescription: '', resultMaterials: [], proofMaterials: [], expectedResultDate: '',
+    supplementTime: '', supplementCount: 0, allowResultSupplement: false, timelineEvents: [],
     ...data,
     reviewerId: resolveReviewerId(data),
     sourceText: data.sourceText ?? sourceTextMap[data.source] ?? '',
@@ -313,6 +326,10 @@ export function advisorApprove(id, comment = '') {
   application.advisorStatus = 'approved'
   application.advisorComment = comment
   application.advisorConfirmTime = nowText()
+  if (application.applyType === 'without_result' && !application.resultMaterials?.length) {
+    application.allowResultSupplement = true
+    return updateStatus(application, APPLICATION_STATUS.PENDING_MATERIAL)
+  }
   return updateStatus(application, APPLICATION_STATUS.PENDING_ADMIN_ACCEPT)
 }
 
@@ -322,6 +339,7 @@ export function advisorReject(id, comment = '') {
   application.advisorStatus = 'rejected'
   application.advisorComment = comment
   application.advisorConfirmTime = nowText()
+  application.allowResultSupplement = true
   return updateStatus(application, APPLICATION_STATUS.ADVISOR_REJECTED)
 }
 
@@ -404,7 +422,60 @@ export function reviewerReject(id, comment = '', reviewerId = '') {
   application.reviewResult = 'rejected'
   application.reviewComment = comment
   application.reviewTime = nowText()
+  application.allowResultSupplement = true
   return updateStatus(application, APPLICATION_STATUS.REVIEWER_REJECTED)
+}
+
+const supplementStatuses = new Set([APPLICATION_STATUS.PENDING_RESULT, APPLICATION_STATUS.NEED_SUPPLEMENT_RESULT, APPLICATION_STATUS.PENDING_MATERIAL, APPLICATION_STATUS.SUPPLEMENT_REJECTED, 'waiting_result'])
+
+export function canSupplementResult(applicationOrId) {
+  const application = typeof applicationOrId === 'string' ? findApplication(applicationOrId) : applicationOrId
+  if (!application) return false
+  if (Number(application.supplementCount || 0) >= 1 && application.status !== APPLICATION_STATUS.SUPPLEMENT_REJECTED) return false
+  return supplementStatuses.has(application.status)
+    || (application.allowResultSupplement === true && [APPLICATION_STATUS.ADVISOR_REJECTED, APPLICATION_STATUS.REVIEWER_REJECTED].includes(application.status))
+}
+
+export function supplementApplicationResult(id, payload) {
+  const application = findApplication(id)
+  if (!canSupplementResult(application) || !payload?.resultDescription?.trim() || !payload?.resultMaterials?.length) return null
+  const supplementTime = nowText()
+  application.resultDescription = payload.resultDescription.trim()
+  application.resultMaterials = payload.resultMaterials.map((file) => ({ ...file }))
+  application.proofMaterials = (payload.proofMaterials || []).map((file) => ({ ...file }))
+  application.attachments = [...application.resultMaterials, ...application.proofMaterials].map((file) => ({ ...file }))
+  application.supplementTime = supplementTime
+  application.supplementCount = Number(application.supplementCount || 0) + 1
+  application.allowResultSupplement = false
+  application.supplementAdvisorStatus = 'pending'
+  application.supplementAdvisorComment = ''
+  application.supplementAdvisorConfirmTime = ''
+  application.timelineEvents = [...(application.timelineEvents || []), { type: 'result_supplemented', title: '学生已补交成果，等待指导老师再次确认。', time: supplementTime }]
+  return updateStatus(application, APPLICATION_STATUS.MATERIAL_SUBMITTED)
+}
+
+export function getAdvisorPendingSupplementApplications(advisorId = '') {
+  return applications.filter((application) => application.status === APPLICATION_STATUS.MATERIAL_SUBMITTED && (!advisorId || application.mainAdvisor?.id === advisorId))
+}
+
+export function advisorApproveSupplement(id, comment = '') {
+  const application = findApplication(id)
+  if (!application || application.status !== APPLICATION_STATUS.MATERIAL_SUBMITTED) return null
+  application.supplementAdvisorStatus = 'approved'
+  application.supplementAdvisorComment = comment.trim()
+  application.supplementAdvisorConfirmTime = nowText()
+  application.allowResultSupplement = false
+  return updateStatus(application, APPLICATION_STATUS.PENDING_ADMIN_ACCEPT)
+}
+
+export function advisorRejectSupplement(id, comment = '') {
+  const application = findApplication(id)
+  if (!application || application.status !== APPLICATION_STATUS.MATERIAL_SUBMITTED || !comment.trim()) return null
+  application.supplementAdvisorStatus = 'rejected'
+  application.supplementAdvisorComment = comment.trim()
+  application.supplementAdvisorConfirmTime = nowText()
+  application.allowResultSupplement = true
+  return updateStatus(application, APPLICATION_STATUS.SUPPLEMENT_REJECTED)
 }
 
 export function finalApprove(id, comment = '') {

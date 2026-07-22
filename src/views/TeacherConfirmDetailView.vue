@@ -19,8 +19,8 @@ const feedback = ref({ type: '', message: '' })
 
 function approveConfirmation() {
   if (!confirmation.value) return
-  advisorApprove(confirmation.value.id, opinion.value.trim())
-  feedback.value = { type: 'success', message: '确认通过成功，申请已进入管理员受理环节。' }
+  const updated = advisorApprove(confirmation.value.id, opinion.value.trim())
+  feedback.value = { type: 'success', message: updated?.status === APPLICATION_STATUS.PENDING_MATERIAL ? '指导老师已确认，无成果申请需等待学生补交成果。' : '确认通过成功，申请已进入管理员受理环节。' }
   window.alert(feedback.value.message)
   goBack()
 }
