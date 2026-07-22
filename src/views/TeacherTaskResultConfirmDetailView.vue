@@ -18,7 +18,7 @@ function reject(){if(!pending.value)return window.alert('该成果已处理，�
 </script>
 
 <template><main class="page"><div class="content"><template v-if="result">
-  <header><div><p class="eyebrow">T107 · RESULT DETAIL</p><h1>学生成果确认详情</h1><p>{{ result.resultId }}</p></div><StatusTag :status="result.status" /></header>
+  <header><div><p class="eyebrow">T107 · RESULT DETAIL</p><h1>任务成果确认详情</h1><p>{{ result.resultId }}</p></div><StatusTag :status="result.status" /></header>
   <section class="card"><h2>任务基本信息</h2><dl class="grid"><div><dt>任务名称</dt><dd>{{ result.taskTitle }}</dd></div><div><dt>任务编号</dt><dd>{{ result.taskId }}</dd></div><div><dt>任务类型</dt><dd>{{ task ? getTaskTypeText(task.taskType) : '--' }}</dd></div><div><dt>指导老师</dt><dd>{{ result.advisorName }}</dd></div><div><dt>成果提交时间</dt><dd>{{ result.submitTime }}</dd></div><div><dt>当前成果状态</dt><dd><StatusTag :status="result.status" /></dd></div></dl></section>
   <section class="card"><h2>队长与团队成员</h2><dl class="grid"><div><dt>队长姓名</dt><dd>{{ result.leaderName }}</dd></div><div><dt>队长学号</dt><dd>{{ result.leaderId }}</dd></div></dl><div class="table-wrap"><table><thead><tr><th>姓名</th><th>学号</th><th>学院</th><th>专业</th><th>角色</th></tr></thead><tbody><tr v-for="member in result.teamMembers" :key="member.studentId"><td>{{ member.name }}</td><td>{{ member.studentId }}</td><td>{{ member.college || '--' }}</td><td>{{ member.major || '--' }}</td><td>{{ member.role === 'captain' ? '队长' : '成员' }}</td></tr></tbody></table></div></section>
   <section class="card"><h2>成果说明</h2><p class="description">{{ result.resultDescription }}</p></section>

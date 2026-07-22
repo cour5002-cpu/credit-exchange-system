@@ -24,7 +24,7 @@ const allRecords = computed(() => {
   getAdvisorTasks(currentAdvisorId).forEach((item) => {
     if (item.selectionTime) records.push(record({ id: `SELECT-${item.taskId}`, type: '报名筛选', title: item.title, person: item.leaderName || '报名学生', result: 'completed', comment: `已选中 ${item.selectedStudents?.length || 0} 名学生`, time: item.selectionTime, status: item.status, sourceId: item.taskId, detail: { 任务编号: item.taskId, 报名人数: item.applicants?.length || 0, 已选中人数: item.selectedStudents?.length || 0 } }))
     if (item.leaderAssignTime) records.push(record({ id: `LEADER-${item.taskId}`, type: '队长指定', title: item.title, person: item.leaderName, result: 'completed', comment: `已指定 ${item.leaderName} 为队长`, time: item.leaderAssignTime, status: item.status, sourceId: item.taskId, detail: { 任务编号: item.taskId, 队长学号: item.leaderId, 队长姓名: item.leaderName } }))
-    if (item.submitTime) records.push(record({ id: `PUBLISH-${item.taskId}`, type: '发布任务申请', title: item.title, person: item.advisorName, result: 'submitted', comment: item.adminComment || '已提交任务发布申请', time: item.submitTime, status: item.status, sourceId: item.taskId, detail: { 任务编号: item.taskId, 任务类型: item.taskType, 报名截止时间: item.registrationDeadline, 管理员意见: item.adminComment || '--' } }))
+    if (item.source === 'advisor' && item.submitTime) records.push(record({ id: `PUBLISH-${item.taskId}`, type: '发布任务申请', title: item.title, person: item.advisorName, result: 'submitted', comment: item.adminComment || '已提交任务发布申请', time: item.submitTime, status: item.status, sourceId: item.taskId, detail: { 任务编号: item.taskId, 任务类型: item.taskType, 报名截止时间: item.registrationDeadline, 管理员意见: item.adminComment || '--' } }))
   })
   return records.sort((a, b) => String(b.time || '').localeCompare(String(a.time || '')))
 })

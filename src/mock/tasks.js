@@ -75,7 +75,8 @@ function normalizeTask(task) {
 export function getTasks() { return tasks }
 export function getTask(taskId) { return tasks.find((task) => task.taskId === taskId) }
 export function getTaskById(taskId) { return getTask(taskId) }
-export function getAdvisorTasks(advisorId) { return tasks.filter((task) => task.advisorId === advisorId && task.source === 'advisor') }
+// 指导老师负责的任务既可能由本人申请发布，也可能由管理员直接发布后指定给该老师。
+export function getAdvisorTasks(advisorId) { return tasks.filter((task) => task.advisorId === advisorId) }
 export function getPendingAdminPublishTasks() { return tasks.filter((task) => task.status === TASK_STATUS.PENDING_ADMIN_PUBLISH && task.source === 'advisor') }
 export function getPublishedTasks() { return tasks.filter((task) => task.status === TASK_STATUS.PUBLISHED) }
 export function getTaskTypeText(type) { return TASK_TYPE_OPTIONS.find((option) => option.value === type)?.label || type || '--' }

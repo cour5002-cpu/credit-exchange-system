@@ -4,7 +4,7 @@ import { getAdvisorPendingApplications, getAdvisorPendingNormalExtensions, getAd
 import { getAdvisorPendingExchanges } from '../mock/exchanges.js'
 import { getAdvisorPendingTaskResults } from '../mock/taskResults.js'
 const currentAdvisorId = 'T001'
-const pendingHours = computed(() => getAdvisorPendingApplications().filter((item) => item.mainAdvisor?.id === currentAdvisorId).length)
+const pendingHours = computed(() => getAdvisorPendingApplications(currentAdvisorId).length)
 const pendingSupplements = computed(() => getAdvisorPendingSupplementApplications(currentAdvisorId).length)
 const pendingExtensions = computed(() => getAdvisorPendingNormalExtensions(currentAdvisorId).length)
 const pendingExchanges = computed(() => getAdvisorPendingExchanges(currentAdvisorId).length)

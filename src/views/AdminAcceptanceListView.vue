@@ -37,22 +37,22 @@ function toggleSelectAll(event) {
 
 function batchAccept() {
   if (!selectedIds.value.length) {
-    window.alert('请先选择要受理并分配的申请')
+    window.alert('请先选择要分配审核老师的申请')
     return
   }
 
   const selectedItems = getAdminAcceptApplications().filter((item) => selectedIds.value.includes(item.id))
   if (!selectedItems.length) return
 
-  if (!window.confirm(`确定要批量受理并分配已选择的 ${selectedItems.length} 条申请吗？`)) return
+  if (!window.confirm(`确定要为已选择的 ${selectedItems.length} 条申请分配审核老师吗？`)) return
 
   const assignments = selectedItems.map((item) => {
-    const acceptedApplication = adminAccept(item.id, '管理员批量受理并分配')
+    const acceptedApplication = adminAccept(item.id, '管理员批量分配审核老师')
     return `${item.title} → ${acceptedApplication.reviewer.name}老师`
   })
   selectedIds.value = []
   refreshKey.value += 1
-  window.alert(`批量受理并分配成功：\n${assignments.join('\n')}`)
+  window.alert(`批量分配成功：\n${assignments.join('\n')}`)
 }
 </script>
 
@@ -60,7 +60,7 @@ function batchAccept() {
   <main class="acceptance-page">
     <div class="page-content">
       <header class="page-header">
-        <div><p class="eyebrow">ADMIN ACCEPTANCE</p><h1>待受理申请</h1><p>受理已经由指导老师确认通过的学生申请。</p></div>
+        <div><p class="eyebrow">REVIEW ASSIGNMENT</p><h1>审核分配</h1><p>为已经由指导老师确认通过的课时申请分配审核老师。</p></div>
         <RouterLink class="back-link" to="/admin/dashboard">返回管理首页</RouterLink>
       </header>
 

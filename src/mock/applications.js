@@ -67,6 +67,7 @@ const statusStageMap = {
 const sourceTextMap = {
   self: '学生自主申请',
   task: '任务成果申请',
+  task_result: '任务成果申请',
 }
 
 const applyTypeTextMap = {
@@ -78,6 +79,12 @@ function nowText() {
   const date = new Date()
   const pad = (value) => String(value).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+let applicationSequence = 0
+function nextApplicationId() {
+  applicationSequence += 1
+  return `APP-${Date.now()}-${applicationSequence}`
 }
 
 function resolveReviewerId(data) {
@@ -312,7 +319,7 @@ export function getApplications() {
 }
 
 export function addApplication(application) {
-  const applicationId = application.applicationId || application.id || `APP-${Date.now()}`
+  const applicationId = application.applicationId || application.id || nextApplicationId()
   const addedApplication = createApplication({
     ...application,
     id: applicationId,
@@ -652,8 +659,9 @@ export function updateApplicationByAppealResult(applicationId, appeal) {
   return application
 }
 
-export function getAdvisorPendingApplications() {
-  return applications.filter((application) => application.status === APPLICATION_STATUS.PENDING_ADVISOR)
+export function getAdvisorPendingApplications(advisorId = '') {
+  return applications.filter((application) => application.status === APPLICATION_STATUS.PENDING_ADVISOR
+    && (!advisorId || application.mainAdvisor?.id === advisorId))
 }
 
 export function getAdminAcceptApplications() {

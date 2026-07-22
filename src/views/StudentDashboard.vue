@@ -16,7 +16,6 @@ const entries = [
   { title: '课时申请', description: '提交新的课时认定申请。', to: '/student/hour-apply' },
   { title: '课时申请进度', description: '查看课时申请的处理状态。', to: '/student/hour-progress' },
   { title: '学分兑换', description: '选择已最终确认的项目申请学分兑换。', to: '/student/credit-exchange' },
-  { title: '我的兑换记录', description: '查看兑换进度、处理意见和学分到账结果。', to: '/student/credit-exchange-records' },
   { title: '问题反馈', description: '提交使用过程中遇到的问题。', to: '/student/feedback' },
   { title: '信息通知', description: '查看学生端通知消息。', to: '/student/notifications' },
 ]

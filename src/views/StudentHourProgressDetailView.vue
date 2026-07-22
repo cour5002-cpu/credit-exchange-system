@@ -163,14 +163,14 @@ function goBack() {
         </section>
 
         <section class="card">
-          <h2>管理员受理与分配</h2>
+          <h2>管理员分配审核老师</h2>
           <dl class="info-grid">
-            <div><dt>受理状态</dt><dd><StatusTag :status="application.adminAcceptStatus" :text="{ pending: '待受理并分配', accepted: '已受理并分配' }[application.adminAcceptStatus]" /></dd></div>
-            <div><dt>受理时间</dt><dd>{{ application.adminAcceptTime || '--' }}</dd></div>
+            <div><dt>分配状态</dt><dd><StatusTag :status="application.adminAcceptStatus" :text="{ pending: '待分配审核老师', accepted: '已分配审核老师' }[application.adminAcceptStatus]" /></dd></div>
+            <div><dt>分配时间</dt><dd>{{ application.adminAcceptTime || '--' }}</dd></div>
             <div><dt>分配审核老师</dt><dd>{{ application.reviewer?.name || '待分配' }}</dd></div>
             <div><dt>审核方向</dt><dd>{{ application.reviewer?.direction || '--' }}</dd></div>
           </dl>
-          <p class="opinion">受理意见：{{ application.adminAcceptComment || '暂无' }}</p>
+          <p class="opinion">分配意见：{{ application.adminAcceptComment || '暂无' }}</p>
         </section>
 
         <section class="card">

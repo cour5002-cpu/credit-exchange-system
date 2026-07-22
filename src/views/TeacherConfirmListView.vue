@@ -5,11 +5,13 @@ import { getAdvisorPendingApplications } from '../mock/applications.js'
 
 const selectedSource = ref('')
 const keyword = ref('')
+const currentAdvisorId = 'T001'
 
 const filteredConfirmations = computed(() => {
   const normalizedKeyword = keyword.value.trim().toLowerCase()
-  return getAdvisorPendingApplications().filter((item) => {
+  return getAdvisorPendingApplications(currentAdvisorId).filter((item) => {
     const matchesSource = !selectedSource.value || item.source === selectedSource.value
+      || (selectedSource.value === 'task_result' && item.source === 'task')
     const matchesKeyword =
       !normalizedKeyword ||
       item.studentName.toLowerCase().includes(normalizedKeyword) ||
@@ -34,7 +36,7 @@ const filteredConfirmations = computed(() => {
       <nav class="type-tabs" aria-label="待确认事项类型">
         <RouterLink class="active" to="/teacher/confirm">课时申请确认</RouterLink>
         <RouterLink to="/teacher/confirm/exchanges">学分兑换确认</RouterLink>
-        <RouterLink to="/teacher/confirm/results">成果确认</RouterLink>
+        <RouterLink to="/teacher/confirm/results">任务成果确认</RouterLink>
         <RouterLink to="/teacher/confirm/supplements">补交成果确认</RouterLink>
         <RouterLink to="/teacher/confirm/extensions">普通延期确认</RouterLink>
       </nav>
@@ -45,7 +47,7 @@ const filteredConfirmations = computed(() => {
           <select v-model="selectedSource">
             <option value="">全部来源</option>
             <option value="self">学生自主申请</option>
-            <option value="task">任务成果申请</option>
+            <option value="task_result">任务成果申请</option>
           </select>
         </label>
         <label>

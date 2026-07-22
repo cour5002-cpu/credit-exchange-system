@@ -231,7 +231,8 @@ function submitApplication() {
     resultDescription: task?.resultDescription ?? '',
     resultMaterials: form.source === 'task' ? task.resultMaterials.map((file) => ({ ...file })) : [],
     proofMaterials: form.source === 'task' ? task.proofMaterials.map((file) => ({ ...file })) : [],
-    captainId: form.source === 'task' ? task.captainId : currentUser.id,
+    // captainId 沿用当前前端登录用户标识；任务中的学号身份单独保存在 leaderId。
+    captainId: currentUser.id,
     currentUserId: currentUser.id,
     members: applicationMembers,
     mainAdvisor: mainAdvisor ? { ...mainAdvisor } : null,
