@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 
 export const reviewTypeOptions = [
-  { value: 'project_result', label: '项目成果审核' },
+  { value: 'project_result', label: '课时申请审核' },
   { value: 'appeal_recheck', label: '申诉复审' },
 ]
 
@@ -37,4 +37,3 @@ export const reviewerReviews = ref([
 export function getReviewTypeText(type) { return reviewTypeOptions.find((option) => option.value === type)?.label ?? type }
 export function getReviewSourceText(source) { return { self: '学生自主申请', task: '任务成果申请' }[source] ?? source }
 export function getReviewerReview(id) { return reviewerReviews.value.find((item) => item.id === id) }
-

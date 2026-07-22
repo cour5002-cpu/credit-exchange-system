@@ -1,0 +1,29 @@
+<script setup>
+import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import StatusTag from '../components/StatusTag.vue'
+import { APPEAL_STATUS, approveAppealReview, getAppealById, rejectAppealReview } from '../mock/appeals.js'
+import { currentReviewerId, getApplications } from '../mock/applications.js'
+
+const route = useRoute(); const router = useRouter(); const hours = ref(''); const comment = ref('')
+const appeal = computed(() => { const item = getAppealById(route.params.id); return item?.reviewTeacherId === currentReviewerId.value ? item : null })
+const application = computed(() => appeal.value ? getApplications().find((item) => item.id === appeal.value.applicationId) : null)
+const pending = computed(() => appeal.value?.status === APPEAL_STATUS.PENDING_RE_REVIEW)
+function back() { router.push(route.query.from === 'records' ? '/reviewer/review-records' : '/reviewer/review-tasks') }
+function preview() { window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。') }
+function download() { window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。') }
+function approve() { if (!pending.value) return window.alert('该申诉已完成复审。'); if (!comment.value.trim()) return window.alert('请填写复审意见。'); if (hours.value === '' || !Number.isFinite(Number(hours.value)) || Number(hours.value) < 0) return window.alert('复审课时必填，且必须大于等于 0。'); if (!approveAppealReview(appeal.value.appealId, hours.value, comment.value)) return window.alert('复审处理失败。'); window.alert('复审已通过，等待管理员最终确认。'); back() }
+function reject() { if (!pending.value) return window.alert('该申诉已完成复审。'); if (!comment.value.trim()) return window.alert('请填写复审意见。'); if (!rejectAppealReview(appeal.value.appealId, comment.value)) return window.alert('复审处理失败。'); window.alert('复审已驳回，等待管理员最终确认。'); back() }
+</script>
+
+<template><main class="page"><div class="content"><template v-if="appeal">
+  <header><div><p class="eyebrow">R202 · APPEAL REVIEW DETAIL</p><h1>申诉复审详情</h1><p>{{ appeal.appealId }}</p></div><StatusTag :status="appeal.status" /></header>
+  <section class="card"><h2>申诉与学生信息</h2><dl class="grid"><div><dt>关联课时申请</dt><dd>{{ appeal.applicationTitle }}</dd></div><div><dt>学生</dt><dd>{{ appeal.studentName }}（{{ appeal.studentId }}）</dd></div><div><dt>原申请状态</dt><dd><StatusTag :status="appeal.originalStatus" /></dd></div><div><dt>原认定 / 最终课时</dt><dd>{{ appeal.originalFinalHours }} 课时</dd></div><div><dt>当前复审老师</dt><dd>{{ appeal.reviewTeacherName }}（{{ appeal.reviewTeacherId }}）</dd></div><div><dt>管理员受理意见</dt><dd>{{ appeal.adminComment || '--' }}</dd></div></dl></section>
+  <section class="card"><h2>原课时认定结果</h2><dl class="grid"><div><dt>原审核老师意见</dt><dd>{{ application?.reviewComment || '--' }}</dd></div><div><dt>原管理员最终确认意见</dt><dd>{{ application?.finalComment || '--' }}</dd></div><div><dt>原申请课时</dt><dd>{{ application?.requestedHours ?? '--' }} 课时</dd></div><div><dt>原最终课时</dt><dd>{{ appeal.originalFinalHours }} 课时</dd></div></dl></section>
+  <section class="card"><h2>学生申诉原因</h2><p>{{ appeal.appealReason }}</p></section>
+  <section class="card"><h2>申诉材料</h2><div class="files"><article v-for="file in appeal.appealMaterials" :key="file.id"><div><strong>{{ file.name || file.fileName }}</strong><small>{{ file.type || file.fileType }} · {{ file.size || file.fileSize || '--' }} · {{ file.uploadedAt || file.uploadTime || '--' }}</small></div><div><button @click="preview">预览</button><button @click="download">下载</button></div></article><p v-if="!appeal.appealMaterials.length">暂无附件材料</p></div></section>
+  <section class="card"><h2>复审结论</h2><label>复审课时<input v-model="hours" type="number" min="0" :disabled="!pending" placeholder="复审通过时必填" /></label><label>复审意见<textarea v-model="comment" rows="5" :disabled="!pending" placeholder="复审通过或驳回均必填"></textarea></label><div v-if="!pending" class="result"><p>复审结果：{{ appeal.reviewResult === 'approved' ? '复审通过' : '复审驳回' }}</p><p>复审课时：{{ appeal.reviewHours ?? '--' }}</p><p>复审意见：{{ appeal.reviewComment || '--' }}</p><p>复审时间：{{ appeal.reviewTime || '--' }}</p></div></section>
+  <div class="actions"><button @click="back">返回</button><button class="reject" :disabled="!pending" @click="reject">复审驳回</button><button class="approve" :disabled="!pending" @click="approve">复审通过</button></div>
+</template><section v-else class="card empty">申诉不存在，或未分配给当前审核老师。<button @click="back">返回</button></section></div></main></template>
+
+<style scoped>.page{min-height:100vh;padding:40px 24px;background:#f3f6fb}.content{width:min(100%,920px);margin:auto}header{display:flex;justify-content:space-between;margin-bottom:20px}header h1{margin:0}.eyebrow{margin:0 0 6px;color:#2563eb;font-size:12px;font-weight:800}.card{margin-bottom:18px;padding:22px;border:1px solid #e2e8f0;border-radius:14px;background:#fff}.card h2{margin-top:0}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}dt{color:#64748b}dd{margin:5px 0 0;font-weight:600}.files{display:grid;gap:10px}.files article{display:flex;justify-content:space-between;gap:12px;padding:13px;background:#f8fafc}.files small{display:block;color:#64748b}.files button,.actions button{padding:8px 12px;border:1px solid #bfdbfe;border-radius:8px;color:#2563eb;background:#fff}.card label{display:grid;gap:7px;margin-bottom:16px;font-weight:700}.card input,.card textarea{padding:11px;border:1px solid #cbd5e1;border-radius:9px;font:inherit}.result{padding:12px 16px;border-radius:10px;background:#f8fafc}.result p{margin:5px 0}.actions{display:flex;justify-content:flex-end;gap:10px}.actions button{padding:10px 18px}.actions .reject{color:#b91c1c;border-color:#fecaca}.actions .approve{color:#fff;background:#2563eb}.actions button:disabled{opacity:.5}.empty{text-align:center}.empty button{display:block;margin:16px auto 0}@media(max-width:650px){.grid{grid-template-columns:1fr}.files article{flex-direction:column}}</style>
