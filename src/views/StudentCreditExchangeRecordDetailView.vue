@@ -14,7 +14,7 @@ const credited = computed(() => [EXCHANGE_STATUS.COMPLETED, EXCHANGE_STATUS.FINA
 const pending = computed(() => PENDING_CREDIT_STATUSES.includes(item.value?.status))
 const rejected = computed(() => [EXCHANGE_STATUS.FINAL_REJECTED, EXCHANGE_STATUS.ADVISOR_REJECTED, EXCHANGE_STATUS.REJECTED].includes(item.value?.status))
 const resultText = computed(() => credited.value ? '学分已到账' : item.value?.status === EXCHANGE_STATUS.PENDING_CONFIRMATION ? '待指导老师确认' : pending.value ? '待管理员最终确认' : rejected.value ? '兑换已驳回' : '')
-function fileAction(action, file) { window.alert(`${action}“${file.name}”仅为 Mock 演示，暂未接入真实文件服务。`) }
+function fileAction(action) { window.alert(action === '预览' ? '当前为 Mock 附件预览，真实预览需后端文件服务支持。' : '当前为 Mock 附件下载，真实下载需后端文件服务支持。') }
 function goBack() { router.push('/student/credit-exchange-records') }
 </script>
 

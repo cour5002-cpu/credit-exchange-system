@@ -127,7 +127,8 @@ function toggleStatus(category) {
                     </button>
                   </div>
                 </td>
-              </tr>
+                </tr>
+              <tr v-if="!categories.length"><td colspan="6" class="empty-state">暂无任务类别</td></tr>
             </tbody>
           </table>
         </div>

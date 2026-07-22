@@ -6,7 +6,7 @@ import { TASK_STATUS, getTask, getTaskTypeText } from '../mock/tasks.js'
 const route=useRoute();const router=useRouter();const currentAdvisorId='T001'
 const task=computed(()=>{const found=getTask(route.params.id);return found?.advisorId===currentAdvisorId&&found.source==='advisor'?found:null})
 function back(){router.push('/teacher/publish-task')}
-function previewFile(file){if(file.mockUrl){const opened=window.open(file.mockUrl,'_blank');if(opened)return}window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。')}
+function previewFile(){window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。')}
 function downloadFile(){window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。')}
 function applicants(){window.alert('报名学生入口已预留，报名与筛选功能将在后续模块开发。')}
 </script>

@@ -29,8 +29,7 @@ function removeFile(index) {
   if (file?.mockUrl) URL.revokeObjectURL(file.mockUrl)
 }
 function preview(file) {
-  if (file.mockUrl) window.open(file.mockUrl, '_blank')
-  else window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。')
+  window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。')
 }
 function download() { window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。') }
 function submit() {

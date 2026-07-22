@@ -29,8 +29,8 @@ function acceptApplication() {
   window.alert(feedback.value.message)
   goBack()
 }
-function previewFile(file) { window.alert(`正在预览：${file.name}`) }
-function downloadFile(file) { window.alert(`正在下载：${file.name}`) }
+function previewFile() { window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。') }
+function downloadFile() { window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。') }
 function goBack() { router.push('/admin/review-assign') }
 </script>
 

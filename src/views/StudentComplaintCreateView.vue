@@ -12,7 +12,7 @@ function nowText() { return new Date().toLocaleString('zh-CN', { hour12: false }
 function sizeText(bytes) { if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(2)} MB`; if (bytes >= 1024) return `${(bytes / 1024).toFixed(2)} KB`; return `${bytes} B` }
 function selectFiles(event) { Array.from(event.target.files || []).forEach((file, index) => form.files.push({ id: `CMP-ATT-${Date.now()}-${index}`, fileName: file.name, fileType: file.type || '未知类型', fileSize: sizeText(file.size), uploadTime: nowText(), mockUrl: URL.createObjectURL(file) })); event.target.value = '' }
 function removeFile(id) { const index = form.files.findIndex((item) => item.id === id); if (index < 0) return; if (form.files[index].mockUrl) URL.revokeObjectURL(form.files[index].mockUrl); form.files.splice(index, 1) }
-function preview(file) { if (file.mockUrl) window.open(file.mockUrl, '_blank'); else window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。') }
+function preview() { window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。') }
 function download() { window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。') }
 function submit() { if (!form.complaintType) return window.alert('请选择投诉类型。'); if (form.relateApplication && !selected.value) return window.alert('请选择关联课时申请。'); if (!form.content.trim()) return window.alert('请填写投诉内容。'); const complaint = addComplaint({ ...student, isAnonymous: true, relatedApplicationId: selected.value?.id || '', relatedApplicationTitle: selected.value?.title || '', complaintType: form.complaintType, complaintContent: form.content, complaintMaterials: form.files }); if (!complaint) return window.alert('投诉提交失败。'); window.alert('匿名投诉已提交，等待管理员处理。'); router.push(`/student/complaints/submitted/${complaint.complaintId}`) }
 </script>

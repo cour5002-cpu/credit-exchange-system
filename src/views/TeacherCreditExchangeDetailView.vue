@@ -14,7 +14,7 @@ function validate() { if (!item.value?.memberDistributions?.length) return '成�
 function approve() { const error=validate(); if(error){feedback.value=error;return window.alert(error)}; if(!advisorApproveExchange(item.value.id,opinion.value)){return window.alert('当前申请无法确认通过。')}; window.alert('确认通过，申请已进入管理员最终确认。'); goBack() }
 function reject() { if(!opinion.value.trim()){feedback.value='驳回时必须填写确认意见。';return window.alert(feedback.value)}; if(!advisorRejectExchange(item.value.id,opinion.value)){return window.alert('当前申请无法驳回。')}; window.alert('申请已驳回并退回学生端。'); goBack() }
 function goBack(){router.push('/teacher/confirm/exchanges')}
-function fileAction(action,file){window.alert(`${action}“${file.name}”仅为 Mock 演示。`)}
+function fileAction(action){window.alert(action==='预览'?'当前为 Mock 附件预览，真实预览需后端文件服务支持。':'当前为 Mock 附件下载，真实下载需后端文件服务支持。')}
 </script>
 
 <template><main class="page"><div class="content"><template v-if="item">

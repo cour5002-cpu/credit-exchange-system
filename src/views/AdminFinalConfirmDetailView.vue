@@ -18,7 +18,7 @@ const timeline = computed(() => item.value ? [
 ].filter((record) => record.time) : [])
 function approve() { if (!item.value || item.value.status !== APPLICATION_STATUS.PENDING_ADMIN_FINAL) return; finalApprove(item.value.id, opinion.value.trim()); feedback.value = '最终确认通过成功'; window.alert(feedback.value); goBack() }
 function reject() { if (!opinion.value.trim()) return window.alert('请填写最终确认意见'); finalReject(item.value.id, opinion.value.trim()); feedback.value = '最终驳回成功'; window.alert(feedback.value); goBack() }
-function preview(file) { window.alert(`正在预览：${file.name}`) } function download(file) { window.alert(`正在下载：${file.name}`) } function goBack() { router.push('/admin/final-confirm') }
+function preview() { window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。') } function download() { window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。') } function goBack() { router.push('/admin/final-confirm') }
 </script>
 <template><main class="detail-page"><div class="content"><template v-if="item"><header class="page-header"><div><p class="eyebrow">FINAL CONFIRMATION DETAIL</p><h1>{{ item.title }}</h1><p>{{ item.sourceText }}</p></div><StatusTag :status="item.status" /></header>
 <section class="card"><h2>学生信息</h2><dl class="grid"><div><dt>姓名</dt><dd>{{ item.studentName }}</dd></div><div><dt>学号</dt><dd>{{ item.studentId }}</dd></div><div><dt>申请人身份</dt><dd>{{ item.captainId === item.currentUserId ? '队长' : '成员' }}</dd></div><div><dt>提交时间</dt><dd>{{ item.submitTime }}</dd></div></dl></section>

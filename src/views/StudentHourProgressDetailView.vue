@@ -82,12 +82,12 @@ function getTimelineStep(key, title, item) {
   return { key, title, state, time: definition.time, comment: definition.comment }
 }
 
-function preview(file) {
-  window.alert(`正在预览：${file.name}`)
+function preview() {
+  window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。')
 }
 
-function download(file) {
-  window.alert(`正在下载：${file.name}`)
+function download() {
+  window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。')
 }
 
 function goBack() {

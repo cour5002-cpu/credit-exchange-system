@@ -26,7 +26,7 @@ function reject() {
   window.alert('已驳回兑换申请。')
   goBack()
 }
-function fileAction(action, file) { window.alert(`${action}“${file.name}”仅为 Mock 演示，暂未接入真实文件服务。`) }
+function fileAction(action) { window.alert(action === '预览' ? '当前为 Mock 附件预览，真实预览需后端文件服务支持。' : '当前为 Mock 附件下载，真实下载需后端文件服务支持。') }
 function goBack() { router.push('/admin/final-confirm/exchanges') }
 </script>
 
