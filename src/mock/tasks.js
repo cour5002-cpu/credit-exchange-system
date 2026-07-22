@@ -67,10 +67,41 @@ function normalizeTask(task) {
 
 export function getTasks() { return tasks }
 export function getTask(taskId) { return tasks.find((task) => task.taskId === taskId) }
+export function getTaskById(taskId) { return getTask(taskId) }
 export function getAdvisorTasks(advisorId) { return tasks.filter((task) => task.advisorId === advisorId && task.source === 'advisor') }
 export function getPendingAdminPublishTasks() { return tasks.filter((task) => task.status === TASK_STATUS.PENDING_ADMIN_PUBLISH && task.source === 'advisor') }
 export function getPublishedTasks() { return tasks.filter((task) => task.status === TASK_STATUS.PUBLISHED) }
 export function getTaskTypeText(type) { return TASK_TYPE_OPTIONS.find((option) => option.value === type)?.label || type || '--' }
+
+export function hasStudentApplied(taskId, studentId) {
+  const task = getTask(taskId)
+  return Boolean(task?.applicants?.some((applicant) => applicant.studentId === studentId))
+}
+
+export function getStudentAppliedTasks(studentId) {
+  return tasks.filter((task) => task.applicants?.some((applicant) => applicant.studentId === studentId))
+}
+
+export function applyTask(taskId, student) {
+  const task = getTask(taskId)
+  if (!task) return { success: false, message: '任务不存在。' }
+  if (task.status !== TASK_STATUS.PUBLISHED) return { success: false, message: '当前任务尚未发布，无法报名。' }
+  const deadline = new Date(String(task.registrationDeadline).replace(' ', 'T')).getTime()
+  if (!Number.isFinite(deadline) || Date.now() >= deadline) return { success: false, message: '报名已截止。' }
+  if (!student?.studentId) return { success: false, message: '学生信息不完整，无法报名。' }
+  if (hasStudentApplied(taskId, student.studentId)) return { success: false, message: '你已报名该任务，请勿重复报名。' }
+  const applicant = {
+    studentId: student.studentId,
+    studentName: student.studentName || student.name || '',
+    college: student.college || '',
+    major: student.major || '',
+    applyTime: nowText(),
+    applyStatus: 'applied',
+    selected: false,
+  }
+  task.applicants.push(applicant)
+  return { success: true, message: '报名成功，请等待指导老师筛选。', applicant, task }
+}
 
 export function saveTaskDraft(data) {
   const existing = data.taskId ? getTask(data.taskId) : null

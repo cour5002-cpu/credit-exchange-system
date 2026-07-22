@@ -2,7 +2,6 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 const placeholderRoutes = [
   ['/student/tasks', 'student-tasks', '我的任务', '查看和管理分配给你的任务。'],
-  ['/student/task-square', 'student-task-square', '任务广场', '浏览当前可以参与的任务。'],
   ['/student/feedback', 'student-feedback', '问题反馈', '提交使用过程中遇到的问题。'],
   ['/student/notifications', 'student-notifications', '信息通知', '查看学生端通知消息。'],
   ['/teacher/tasks', 'teacher-tasks', '我的任务', '查看和管理指导任务。'],
@@ -35,6 +34,16 @@ const router = createRouter({
       path: '/student/dashboard',
       name: 'student-dashboard',
       component: () => import('../views/StudentDashboard.vue'),
+    },
+    {
+      path: '/student/task-square',
+      name: 'student-task-square',
+      component: () => import('../views/StudentTaskSquareView.vue'),
+    },
+    {
+      path: '/student/task-square/:id',
+      name: 'student-task-square-detail',
+      component: () => import('../views/StudentTaskSquareDetailView.vue'),
     },
     {
       path: '/student/hour-apply',
