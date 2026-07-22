@@ -97,6 +97,8 @@ const router = createRouter({
     { path:'/student/appeals/new',name:'student-appeal-create',component:()=>import('../views/StudentAppealCreateView.vue') },
     { path:'/student/appeals',name:'student-appeals',component:()=>import('../views/StudentAppealsView.vue') },
     { path:'/student/appeals/:id',name:'student-appeal-detail',component:()=>import('../views/StudentAppealDetailView.vue') },
+    { path:'/student/complaints/new',name:'student-complaint-create',component:()=>import('../views/StudentComplaintCreateView.vue') },
+    { path:'/student/complaints/submitted/:id',name:'student-complaint-result',component:()=>import('../views/StudentComplaintResultView.vue') },
     {
       path: '/student/credit-exchange',
       name: 'student-credit-exchange',
@@ -252,6 +254,8 @@ const router = createRouter({
     { path:'/admin/appeals-complaints',name:'admin-appeals',component:()=>import('../views/AdminAppealsView.vue') },
     { path:'/admin/appeals-complaints/assign',name:'admin-appeal-assignment',component:()=>import('../views/AdminAppealAssignmentListView.vue') },
     { path:'/admin/appeals-complaints/assign/:id',name:'admin-appeal-assignment-detail',component:()=>import('../views/AdminAppealAssignmentDetailView.vue') },
+    { path:'/admin/appeals-complaints/complaints',name:'admin-complaints',component:()=>import('../views/AdminComplaintListView.vue') },
+    { path:'/admin/appeals-complaints/complaints/:id',name:'admin-complaint-detail',component:()=>import('../views/AdminComplaintDetailView.vue') },
     { path:'/admin/appeals-complaints/final-confirm',redirect:'/admin/final-confirm/appeals' },
     { path:'/admin/appeals-complaints/final-confirm/:id',redirect:(to)=>`/admin/final-confirm/appeals/${to.params.id}` },
     { path:'/admin/appeals-complaints/:id',name:'admin-appeal-detail',component:()=>import('../views/AdminAppealDetailView.vue') },

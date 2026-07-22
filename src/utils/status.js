@@ -12,6 +12,7 @@ const STATUS_META = {
   pending_advisor_extension: { text: '延期申请待指导老师确认', color: 'warning' },
   pending_admin_special_extension: { text: '特殊延期待管理员审核', color: 'warning' },
   pending_admin: { text: '待管理员处理', color: 'warning' },
+  processed: { text: '已处理', color: 'success' },
   admin_rejected: { text: '管理员不受理', color: 'danger' },
   pending_review_assignment: { text: '管理员已受理，待分配复审老师', color: 'warning' },
   pending_re_review: { text: '已分配复审老师，等待复审', color: 'warning' },
