@@ -194,6 +194,16 @@ const router = createRouter({
       component: () => import('../views/TeacherSupplementConfirmDetailView.vue'),
     },
     {
+      path: '/teacher/confirm/extensions',
+      name: 'teacher-normal-extension-confirm',
+      component: () => import('../views/TeacherNormalExtensionListView.vue'),
+    },
+    {
+      path: '/teacher/confirm/extensions/:id',
+      name: 'teacher-normal-extension-confirm-detail',
+      component: () => import('../views/TeacherNormalExtensionDetailView.vue'),
+    },
+    {
       path: '/teacher/confirm/:id',
       name: 'teacher-confirm-detail',
       component: () => import('../views/TeacherConfirmDetailView.vue'),

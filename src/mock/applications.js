@@ -544,6 +544,40 @@ export function approveExtensionApplication(id, comment = '') {
   return updateStatus(application, APPLICATION_STATUS.PENDING_MATERIAL)
 }
 
+export function getAdvisorPendingNormalExtensions(advisorId = '') {
+  return applications.filter((application) => application.status === APPLICATION_STATUS.PENDING_ADVISOR_EXTENSION
+    && application.extensionType === 'normal'
+    && (!advisorId || application.mainAdvisor?.id === advisorId))
+}
+
+export function approveNormalExtension(id, comment = '') {
+  const application = findApplication(id)
+  if (!application || application.status !== APPLICATION_STATUS.PENDING_ADVISOR_EXTENSION || application.extensionType !== 'normal') return null
+  const confirmTime = nowText()
+  application.extensionStatus = 'approved'
+  application.extensionAdvisorComment = comment.trim()
+  application.extensionAdvisorConfirmTime = confirmTime
+  application.extensionComment = comment.trim()
+  application.extensionConfirmTime = confirmTime
+  application.expectedResultDate = application.newExpectedResultTime
+  application.expectedResultTime = application.newExpectedResultTime
+  application.timelineEvents = [...(application.timelineEvents || []), { type: 'normal_extension_approved', title: `指导老师已通过普通延期申请，新的成果提交时间为 ${application.newExpectedResultTime}。`, time: confirmTime }]
+  return updateStatus(application, APPLICATION_STATUS.PENDING_MATERIAL)
+}
+
+export function rejectNormalExtension(id, comment = '') {
+  const application = findApplication(id)
+  if (!application || application.status !== APPLICATION_STATUS.PENDING_ADVISOR_EXTENSION || application.extensionType !== 'normal' || !comment.trim()) return null
+  const confirmTime = nowText()
+  application.extensionStatus = 'rejected'
+  application.extensionAdvisorComment = comment.trim()
+  application.extensionAdvisorConfirmTime = confirmTime
+  application.extensionComment = comment.trim()
+  application.extensionConfirmTime = confirmTime
+  application.timelineEvents = [...(application.timelineEvents || []), { type: 'normal_extension_rejected', title: '指导老师已驳回普通延期申请。', time: confirmTime, comment: comment.trim() }]
+  return updateStatus(application, APPLICATION_STATUS.PENDING_MATERIAL)
+}
+
 export function finalApprove(id, comment = '') {
   const application = findApplication(id)
   if (!application) return null
