@@ -248,6 +248,8 @@ const router = createRouter({
       component: () => import('../views/AdminDashboard.vue'),
     },
     { path:'/admin/appeals-complaints',name:'admin-appeals',component:()=>import('../views/AdminAppealsView.vue') },
+    { path:'/admin/appeals-complaints/assign',name:'admin-appeal-assignment',component:()=>import('../views/AdminAppealAssignmentListView.vue') },
+    { path:'/admin/appeals-complaints/assign/:id',name:'admin-appeal-assignment-detail',component:()=>import('../views/AdminAppealAssignmentDetailView.vue') },
     { path:'/admin/appeals-complaints/:id',name:'admin-appeal-detail',component:()=>import('../views/AdminAppealDetailView.vue') },
     {
       path: '/admin/tasks',

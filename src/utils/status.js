@@ -14,7 +14,7 @@ const STATUS_META = {
   pending_admin: { text: '待管理员处理', color: 'warning' },
   admin_rejected: { text: '管理员不受理', color: 'danger' },
   pending_review_assignment: { text: '管理员已受理，待分配复审老师', color: 'warning' },
-  pending_re_review: { text: '待审核老师复审', color: 'warning' },
+  pending_re_review: { text: '已分配复审老师，等待复审', color: 'warning' },
   re_review_approved: { text: '复审通过', color: 'success' },
   re_review_rejected: { text: '复审驳回', color: 'danger' },
   final_confirmed: { text: '管理员最终确认完成', color: 'success' },
