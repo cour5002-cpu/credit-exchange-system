@@ -12,6 +12,7 @@ const entries = [
   { title: '申诉复审分配', description: '为已受理申诉分配复审老师。', to: '/admin/appeals-complaints/assign' },
   { title: '特殊延期', description: '管理特殊情况的延期申请。', to: '/admin/extensions' },
   { title: '数据统计', description: '查看系统业务统计数据。', to: '/admin/statistics' },
+  { title: '已处理记录', description: '查看管理员已经处理完成的业务记录。', to: '/admin/processed-records' },
   { title: '信息通知', description: '查看管理员端通知消息。', to: '/admin/notifications' },
 ]
 </script>
