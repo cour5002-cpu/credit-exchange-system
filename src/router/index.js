@@ -247,6 +247,8 @@ const router = createRouter({
       name: 'admin-dashboard',
       component: () => import('../views/AdminDashboard.vue'),
     },
+    { path:'/admin/appeals-complaints',name:'admin-appeals',component:()=>import('../views/AdminAppealsView.vue') },
+    { path:'/admin/appeals-complaints/:id',name:'admin-appeal-detail',component:()=>import('../views/AdminAppealDetailView.vue') },
     {
       path: '/admin/tasks',
       name: 'admin-tasks',
