@@ -31,6 +31,11 @@ const filteredConfirmations = computed(() => {
         <RouterLink class="secondary-link" to="/teacher/dashboard">返回教师首页</RouterLink>
       </header>
 
+      <nav class="type-tabs" aria-label="待确认事项类型">
+        <RouterLink class="active" to="/teacher/confirm">课时申请确认</RouterLink>
+        <RouterLink to="/teacher/confirm/exchanges">学分兑换确认</RouterLink>
+      </nav>
+
       <section class="filter-panel" aria-label="确认事项筛选">
         <label>
           <span>申请来源</span>
@@ -85,6 +90,9 @@ const filteredConfirmations = computed(() => {
 .page-header h1 { margin: 0 0 8px; font-size: 30px; }.page-header p { color: #64748b; }
 .secondary-link, .detail-link { color: #2563eb; font-weight: 700; text-decoration: none; }
 .secondary-link { padding: 9px 14px; border: 1px solid #cbd5e1; border-radius: 9px; background: #fff; }
+.type-tabs { display: flex; gap: 8px; margin-bottom: 18px; padding: 6px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
+.type-tabs a { padding: 10px 16px; border-radius: 8px; color: #475569; text-decoration: none; font-weight: 700; }
+.type-tabs .active { color: #1d4ed8; background: #dbeafe; }
 .filter-panel { display: grid; grid-template-columns: 260px 1fr; gap: 16px; margin-bottom: 20px; padding: 18px; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; }
 .filter-panel label span { display: block; margin-bottom: 7px; color: #334155; font-weight: 700; }
 .filter-panel select, .filter-panel input { width: 100%; padding: 10px 11px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; font: inherit; }

@@ -7,6 +7,7 @@ export const EXCHANGE_STATUS = Object.freeze({
   FINAL_APPROVED: 'final_approved',
   FINAL_REJECTED: 'final_rejected',
   COMPLETED: 'completed',
+  ADVISOR_REJECTED: 'advisor_rejected',
   REJECTED: 'rejected',
 })
 
@@ -17,7 +18,7 @@ export const PENDING_CREDIT_STATUSES = Object.freeze([
 ])
 
 const exchanges = []
-const FINAL_PENDING_STATUSES = PENDING_CREDIT_STATUSES
+const FINAL_PENDING_STATUSES = [EXCHANGE_STATUS.PENDING_FINAL_CONFIRM]
 const ACTIVE_EXCHANGE_STATUSES = [
   EXCHANGE_STATUS.PENDING_CONFIRMATION,
   EXCHANGE_STATUS.PENDING_FINAL_CONFIRM,
@@ -114,8 +115,11 @@ export function addExchange(exchange) {
     sourceText: '',
     hoursArrived: false,
     exchanged: false,
-    advisorConfirmStatus: 'approved',
+    advisorId: '',
+    advisorName: '',
+    advisorConfirmStatus: EXCHANGE_STATUS.PENDING_CONFIRMATION,
     advisorComment: '',
+    advisorConfirmTime: '',
     finalHours: 0,
     exchangeHours: 0,
     estimatedCredits: 0,
@@ -153,6 +157,42 @@ export function addExchange(exchange) {
 
 export function getPendingConfirmationExchanges() {
   return exchanges.filter((exchange) => exchange.status === EXCHANGE_STATUS.PENDING_CONFIRMATION)
+}
+
+export function getAdvisorPendingExchanges(advisorId) {
+  return exchanges.filter((exchange) =>
+    exchange.status === EXCHANGE_STATUS.PENDING_CONFIRMATION
+    && (!advisorId || exchange.advisorId === advisorId),
+  )
+}
+
+export function getAdvisorProcessedExchanges(advisorId) {
+  return exchanges.filter((exchange) =>
+    exchange.advisorConfirmTime
+    && (!advisorId || exchange.advisorId === advisorId),
+  )
+}
+
+export function advisorApproveExchange(id, comment = '') {
+  const exchange = findExchange(id)
+  if (!exchange || exchange.status !== EXCHANGE_STATUS.PENDING_CONFIRMATION) return null
+  if (!exchange.memberDistributions?.length) return null
+  if (Math.abs(sumMemberValue(exchange, 'allocatedHours') - Number(exchange.finalHours || 0)) > 0.000001) return null
+  exchange.status = EXCHANGE_STATUS.PENDING_FINAL_CONFIRM
+  exchange.advisorConfirmStatus = 'approved'
+  exchange.advisorComment = comment.trim()
+  exchange.advisorConfirmTime = nowText()
+  return exchange
+}
+
+export function advisorRejectExchange(id, comment) {
+  const exchange = findExchange(id)
+  if (!exchange || exchange.status !== EXCHANGE_STATUS.PENDING_CONFIRMATION || !comment?.trim()) return null
+  exchange.status = EXCHANGE_STATUS.ADVISOR_REJECTED
+  exchange.advisorConfirmStatus = 'rejected'
+  exchange.advisorComment = comment.trim()
+  exchange.advisorConfirmTime = nowText()
+  return exchange
 }
 
 export function getExchangeFinalConfirmList() {

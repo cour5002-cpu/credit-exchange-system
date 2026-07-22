@@ -12,8 +12,8 @@ const isCaptain = computed(() => item.value?.captainId === currentUser.id || ite
 const personalDistribution = computed(() => item.value?.memberDistributions?.find((member) => member.studentId === currentUser.studentId))
 const credited = computed(() => [EXCHANGE_STATUS.COMPLETED, EXCHANGE_STATUS.FINAL_APPROVED].includes(item.value?.status))
 const pending = computed(() => PENDING_CREDIT_STATUSES.includes(item.value?.status))
-const rejected = computed(() => [EXCHANGE_STATUS.FINAL_REJECTED, EXCHANGE_STATUS.REJECTED].includes(item.value?.status))
-const resultText = computed(() => credited.value ? '学分已到账' : pending.value ? '待管理员最终确认' : rejected.value ? '兑换已驳回' : '')
+const rejected = computed(() => [EXCHANGE_STATUS.FINAL_REJECTED, EXCHANGE_STATUS.ADVISOR_REJECTED, EXCHANGE_STATUS.REJECTED].includes(item.value?.status))
+const resultText = computed(() => credited.value ? '学分已到账' : item.value?.status === EXCHANGE_STATUS.PENDING_CONFIRMATION ? '待指导老师确认' : pending.value ? '待管理员最终确认' : rejected.value ? '兑换已驳回' : '')
 function fileAction(action, file) { window.alert(`${action}“${file.name}”仅为 Mock 演示，暂未接入真实文件服务。`) }
 function goBack() { router.push('/student/credit-exchange-records') }
 </script>
@@ -21,8 +21,8 @@ function goBack() { router.push('/student/credit-exchange-records') }
 <template><main class="detail-page"><div class="content"><template v-if="item">
   <header class="page-header"><div><p class="eyebrow">EXCHANGE RESULT</p><h1>{{ item.projectTitle }}</h1><p>{{ item.exchangeId }}</p></div><StatusTag :status="item.status" :text="resultText" /></header>
   <section v-if="credited" class="result-banner success"><strong>学分已到账</strong><p>本次到账 {{ Number(personalDistribution?.allocatedCredits || 0).toFixed(2) }} 学分，到账时间：{{ item.finalConfirmTime || '--' }}</p></section>
-  <section v-else-if="pending" class="result-banner pending"><strong>待管理员最终确认</strong><p>申请已提交，请等待管理员处理。</p></section>
-  <section v-else-if="rejected" class="result-banner rejected"><strong>兑换已驳回</strong><p>驳回原因：{{ item.finalComment || '未填写原因' }}</p></section>
+  <section v-else-if="pending" class="result-banner pending"><strong>{{ resultText }}</strong><p>{{ item.status === EXCHANGE_STATUS.PENDING_CONFIRMATION ? '申请已提交，请等待指导老师确认。' : '指导老师已确认通过，请等待管理员最终确认。' }}</p></section>
+  <section v-else-if="rejected" class="result-banner rejected"><strong>兑换已驳回</strong><p>驳回原因：{{ item.status === EXCHANGE_STATUS.ADVISOR_REJECTED ? (item.advisorComment || '未填写原因') : (item.finalComment || '未填写原因') }}</p></section>
   <section class="card"><h2>项目与兑换信息</h2><dl class="grid"><div><dt>项目名称</dt><dd>{{ item.projectTitle }}</dd></div><div><dt>队长姓名</dt><dd>{{ item.captainName || item.studentName }}</dd></div><div><dt>本人分配课时</dt><dd>{{ Number(personalDistribution?.allocatedHours || 0) }} 课时</dd></div><div><dt>本人分配学分</dt><dd>{{ Number(personalDistribution?.allocatedCredits || 0).toFixed(2) }} 学分</dd></div><div><dt>兑换规则</dt><dd>{{ item.creditRule?.text || '每 8 课时兑换 1 学分' }}</dd></div><div><dt>到账时间</dt><dd>{{ credited ? (item.finalConfirmTime || '--') : '--' }}</dd></div></dl></section>
   <section class="card"><h2>处理信息</h2><dl class="grid"><div><dt>指导老师确认状态</dt><dd><StatusTag :status="item.advisorConfirmStatus" /></dd></div><div><dt>指导老师确认意见</dt><dd>{{ item.advisorComment || '无' }}</dd></div><div><dt>管理员最终确认状态</dt><dd><StatusTag :status="item.status" :text="resultText" /></dd></div><div><dt>管理员最终确认意见</dt><dd>{{ item.finalComment || '无' }}</dd></div></dl></section>
   <section class="card"><h2>证明材料</h2><div class="files"><article v-for="file in item.proofMaterials" :key="file.id || file.name"><div><strong>{{ file.name }}</strong><small>{{ file.type || '未知类型' }} · {{ file.uploadedAt || '--' }}</small></div><div><button @click="fileAction('预览', file)">预览</button><button @click="fileAction('下载', file)">下载</button></div></article><p v-if="!item.proofMaterials?.length" class="empty">暂无证明材料。</p></div></section>

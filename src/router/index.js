@@ -7,7 +7,6 @@ const placeholderRoutes = [
   ['/student/notifications', 'student-notifications', '信息通知', '查看学生端通知消息。'],
   ['/teacher/tasks', 'teacher-tasks', '我的任务', '查看和管理指导任务。'],
   ['/teacher/publish-task', 'teacher-publish-task', '发布任务', '创建并发布新的任务。'],
-  ['/teacher/records', 'teacher-records', '我的处理记录', '查看已经处理的业务记录。'],
   ['/teacher/notifications', 'teacher-notifications', '信息通知', '查看指导老师端通知消息。'],
   ['/reviewer/notifications', 'reviewer-notifications', '信息通知', '查看审核老师端通知消息。'],
   ['/admin/appeals-complaints', 'admin-appeals-complaints', '申诉与投诉', '处理用户提交的申诉与投诉。'],
@@ -79,9 +78,24 @@ const router = createRouter({
       component: () => import('../views/TeacherConfirmListView.vue'),
     },
     {
+      path: '/teacher/confirm/exchanges',
+      name: 'teacher-credit-exchange-confirm',
+      component: () => import('../views/TeacherCreditExchangeListView.vue'),
+    },
+    {
+      path: '/teacher/confirm/exchanges/:id',
+      name: 'teacher-credit-exchange-confirm-detail',
+      component: () => import('../views/TeacherCreditExchangeDetailView.vue'),
+    },
+    {
       path: '/teacher/confirm/:id',
       name: 'teacher-confirm-detail',
       component: () => import('../views/TeacherConfirmDetailView.vue'),
+    },
+    {
+      path: '/teacher/records',
+      name: 'teacher-records',
+      component: () => import('../views/TeacherRecordsView.vue'),
     },
     {
       path: '/reviewer/dashboard',
