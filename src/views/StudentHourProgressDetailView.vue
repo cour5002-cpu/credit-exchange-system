@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
 import { APPLICATION_STATUS, canApplyExtension, canSupplementResult, getApplications } from '../mock/applications.js'
+import { isApplicationAppealable } from '../mock/appeals.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -206,7 +207,7 @@ function goBack() {
         </section>
 
         <section v-if="canSupplementResult(application) || canApplyExtension(application)" class="card"><h2>待补交成果</h2><p class="opinion">请在预计成果提交时间前补交成果；如无法按时提交，可申请延期。</p></section>
-        <div class="actions"><RouterLink v-if="canSupplementResult(application)" :to="`/student/hour-progress/${application.id}/supplement-result`">补交成果</RouterLink><RouterLink v-if="canApplyExtension(application)" :to="`/student/hour-progress/${application.id}/extension`">申请延期</RouterLink><button type="button" @click="goBack">返回申请列表</button></div>
+        <div class="actions"><RouterLink v-if="canSupplementResult(application)" :to="`/student/hour-progress/${application.id}/supplement-result`">补交成果</RouterLink><RouterLink v-if="canApplyExtension(application)" :to="`/student/hour-progress/${application.id}/extension`">申请延期</RouterLink><RouterLink v-if="isApplicationAppealable(application,currentUser.studentId)" :to="`/student/appeals/new?applicationId=${application.id}`">发起申诉</RouterLink><button type="button" @click="goBack">返回申请列表</button></div>
       </template>
       <section v-else class="card empty"><h1>未找到申请</h1><p>该申请不存在，或不属于当前学生。</p><button type="button" @click="goBack">返回申请列表</button></section>
     </div>

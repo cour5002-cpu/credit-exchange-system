@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
 import { APPLICATION_STATUS, canApplyExtension, canSupplementResult, getApplications } from '../mock/applications.js'
 import { getStatusText } from '../utils/status.js'
+import { isApplicationAppealable } from '../mock/appeals.js'
 
 const currentUser = { id: 'stu001', name: '张三', studentId: '2024001' }
 const selectedStatus = ref('')
@@ -96,6 +97,7 @@ const applications = computed(() => {
                   </RouterLink>
                   <RouterLink v-if="canSupplementResult(application)" class="detail-link" :to="`/student/hour-progress/${application.id}/supplement-result`">补交成果</RouterLink>
                   <RouterLink v-if="canApplyExtension(application)" class="detail-link" :to="`/student/hour-progress/${application.id}/extension`">申请延期</RouterLink>
+                  <RouterLink v-if="isApplicationAppealable(application,currentUser.studentId)" class="detail-link" :to="`/student/appeals/new?applicationId=${application.id}`">发起申诉</RouterLink>
                 </td>
               </tr>
               <tr v-if="!applications.length">

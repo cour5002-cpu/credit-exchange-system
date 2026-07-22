@@ -93,6 +93,10 @@ const router = createRouter({
       name: 'student-hour-extension',
       component: () => import('../views/StudentHourExtensionView.vue'),
     },
+    { path:'/student/feedback',name:'student-feedback-home',component:()=>import('../views/StudentFeedbackHomeView.vue') },
+    { path:'/student/appeals/new',name:'student-appeal-create',component:()=>import('../views/StudentAppealCreateView.vue') },
+    { path:'/student/appeals',name:'student-appeals',component:()=>import('../views/StudentAppealsView.vue') },
+    { path:'/student/appeals/:id',name:'student-appeal-detail',component:()=>import('../views/StudentAppealDetailView.vue') },
     {
       path: '/student/credit-exchange',
       name: 'student-credit-exchange',
