@@ -1,4 +1,5 @@
 <script setup>
+// 后端暂未实现通知接口，当前页面继续使用 Mock。
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'

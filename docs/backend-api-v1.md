@@ -1,0 +1,4343 @@
+﻿# V1 接口契约文档（按功能模块分类）
+
+## 0. 文档说明
+
+本文档是 V1 阶段前后端分离 API 接口契约，按功能模块分类，不按页面或主线重复列接口。
+
+参考文件：
+
+- `V1需求与设计冻结文档.md`
+- `学生端页面设计 (2).md`
+- `指导老师端页面设计（2）.md`
+- `审核老师端页面设计(2).md`
+- `管理端页面设计（2）.md`
+
+接口设计原则：
+
+- 一个业务动作只设计一个接口，即使多个页面都能触发。
+- 审核老师审核操作按新版页面设计要求必须进入详情页完成。
+- 指导老师和管理员允许列表页或详情页触发同一个业务动作，但接口不重复设计。
+- 页面显示字段不要求与数据库字段一一对应，但必须能从业务对象和数据库表中查出。
+- 管理员端可以查看系统内业务记录用于留痕和风险追溯，但只读查看不等于拥有业务操作权限；管理员不能绕过状态流转替学生、指导老师或审核老师完成操作。
+
+## 1. 通用约定
+
+### 1.1 基础路径
+
+```text
+/api/v1
+```
+
+本文档中的接口相对路径均省略 `/api/v1` 前缀。
+
+### 1.1.1 接口文档使用说明
+
+本文档是 V1 前后端分离 API 的稳定接口契约，覆盖 V1 范围内计划提供的 `/api/v1` 接口。
+
+使用原则：
+
+- 前端页面对接、后端接口开发、接口验收均以本文档为接口契约依据。
+- 本文档必须细化每个接口的路径、方法、权限、请求参数、响应字段、主要数据来源或写入对象。
+- 本文档不维护每日实现进度，不用 `已实现` / `未实现` 作为接口条目状态；每日实现范围、测试结果和联调结论记录在 `docs/development/weekX/dayY-backend.md`。
+- 只有接口契约发生变化时才修改本文档，例如路径、方法、请求字段、响应字段、权限、错误码或业务规则变化。
+- 旧的服务端渲染页面路由，例如 `/auth/login`、`/student/dashboard`、`/teacher/hour-applications`，只作为历史页面兼容路由，不作为前后端分离 API 对接合同。
+- 如果发现本文档与后端代码不一致，先判断是“实现偏离契约”还是“契约需要变更”；不确定时必须先确认再改。
+
+联调说明：
+
+- 前端可以把本文档作为完整接口设计依据。
+- 当前哪些接口已经开发、已经测试、可以开始联调，以对应周/天的开发记录为准。
+
+### 1.2 通用响应格式
+
+- 成功响应：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {}
+}
+```
+
+- 失败响应：
+
+```json
+{
+  "code": 40001,
+  "message": "错误原因",
+  "data": null
+}
+```
+
+- 分页响应：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "items": [],
+    "page": 1,
+    "page_size": 20,
+    "total": 0,
+    "pages": 0
+  }
+}
+```
+
+### 1.3 常用参数说明
+
+| 参数 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 当前业务对象 ID |
+| `page` | integer | 页码，默认 1 |
+| `page_size` | integer | 每页数量，默认 20 |
+| `status` | string | 状态筛选 |
+| `keyword` | string | 关键词搜索 |
+| `attachment_ids` | array | 附件 ID 列表 |
+
+分页约定：凡接口参数中声明 `page` 或 `page_size`，后端必须执行数据库层分页；`page` 默认 `1`，`page_size` 默认 `20` 且最大 `100`，响应统一返回 `items`、`page`、`page_size`、`total`、`pages`。
+
+### 1.4 通用字段约定
+
+后续接口中如果响应字段写为 `object` 或 `array`，必须按本节定义展开。除非具体接口另有说明，列表页可以返回对象摘要字段，详情页应返回对象详情字段。
+
+时间字段统一使用 ISO 8601 字符串，例如 `2026-07-10T09:30:00+08:00`。金额、课时、学分等数值字段统一使用 number，前端展示时再做小数位格式化。
+
+### 1.5 通用枚举
+
+| 枚举 | 可选值 | 说明 |
+|---|---|---|
+| `role` | `student` / `advisor` / `reviewer` / `admin` | 当前登录用户角色 |
+| `application_type` | `with_material` / `without_material` / `task_result` | 课时申请类型：有成果、无成果、任务成果认定 |
+| `source_type` | `student_self` / `admin_task` / `teacher_task` | 课时申请来源 |
+| `attachment.biz_type` | `hour_application` / `task_result` / `credit_exchange` / `appeal` / `complaint` / `rule_file` | 附件业务归属 |
+| `task.status` | `draft` / `pending_publish_review` / `publish_rejected` / `published` / `registration_open` / `registration_closed` / `selection_pending` / `leader_pending` / `task_in_progress` / `closed` / `discarded` | 学院任务主表状态；`leader_pending` 表示成员筛选完成、等待指导老师指定队长 |
+| `registration.status` | `submitted` / `selected` / `not_selected` / `canceled` | 任务报名状态 |
+| `exchange.status` | `draft` / `submitted` / `advisor_approved` / `advisor_rejected` / `pending_admin_final` / `final_approved` / `final_rejected` / `appealed` / `closed` / `discarded` | 学分兑换状态 |
+| `appeal.status` | `submitted` / `pending_admin_review` / `appeal_accepted` / `appeal_rejected` / `original_reopened` / `closed` | 申诉主表状态 |
+| `complaint.status` | `submitted` / `viewed` | 投诉状态 |
+
+课时申请状态以 `状态流转.md` 为准，接口只能返回该文件中定义的状态值。
+
+### 1.6 通用数据对象
+
+#### 1.6.1 用户与人员对象
+
+`StudentSummary`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 学生 ID |
+| `student_no` | string | 学号 |
+| `name` | string | 姓名 |
+| `college` | string/null | 学院 |
+| `major` | string/null | 专业 |
+| `class_name` | string/null | 班级 |
+| `grade` | string/null | 年级 |
+
+`TeacherSummary`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 教师 ID |
+| `teacher_no` | string | 工号 |
+| `name` | string | 姓名 |
+| `college` | string/null | 学院 |
+| `major` | string/null | 专业或负责专业 |
+| `role_flags` | array[string] | 可承担角色，例如 `advisor`、`reviewer` |
+
+`CurrentUser`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 用户 ID |
+| `username` | string | 登录账号 |
+| `role` | string | 当前主角色 |
+| `roles` | array[string] | 用户拥有的角色列表 |
+| `student` | StudentSummary/null | 学生身份信息 |
+| `teacher` | TeacherSummary/null | 教师身份信息 |
+
+#### 1.6.2 附件、规则、导入对象
+
+`AttachmentSummary`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 附件 ID |
+| `biz_type` | string | 附件业务类型 |
+| `file_name` | string | 原始文件名 |
+| `file_size` | integer | 文件大小，单位字节 |
+| `mime_type` | string | MIME 类型，例如 `application/pdf`、`image/png` |
+| `url` | string | 预览或下载地址 |
+| `uploaded_by` | integer | 上传用户 ID |
+| `created_at` | datetime | 上传时间 |
+
+`RuleFileSummary`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 规则文件 ID |
+| `title` | string | 标题 |
+| `description` | string/null | 规则说明 |
+| `attachment` | AttachmentSummary | 附件信息 |
+| `effective_at` | datetime/null | 生效时间 |
+| `created_at` | datetime | 创建时间 |
+
+`ImportErrorItem`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `row_no` | integer | 出错行号 |
+| `field` | string/null | 出错字段 |
+| `message` | string | 错误原因 |
+
+#### 1.6.3 课时申请对象
+
+`HourApplicationSummary`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 课时申请 ID |
+| `application_no` | string | 申请编号 |
+| `title` | string | 申请标题 |
+| `application_type` | string | `with_material` / `without_material` / `task_result` |
+| `source_type` | string | `student_self` / `admin_task` / `teacher_task` |
+| `task_type_id` | integer | 任务类别 ID |
+| `task_type_name` | string | 任务类别名称 |
+| `applicant` | StudentSummary | 申请发起人；V1 中必须等于 `leader`，即课时申请只能由队长/负责人发起 |
+| `applicant_name` | string | 发起人姓名，列表冗余展示字段 |
+| `leader` | StudentSummary/null | 队长/负责人；用于强调团队身份，V1 中与 `applicant` 指向同一学生 |
+| `requested_hours` | number | 申请课时 |
+| `reviewer_suggested_hours` | number/null | 审核老师建议课时 |
+| `final_hours` | number/null | 最终认定课时 |
+| `status` | string | 当前状态 |
+| `submitted_at` | datetime/null | 提交时间 |
+| `created_at` | datetime | 创建时间 |
+| `updated_at` | datetime | 更新时间 |
+
+`HourApplicationDetail` 在 `HourApplicationSummary` 基础上增加：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `description` | string/null | 申请补充说明 |
+| `achievement_summary` | string/null | 成果说明 |
+| `major_name` | string | 申请任务所属专业 |
+| `course_name` | string | 申请任务所属课程 |
+| `material_due_at` | datetime/null | 无成果申请成果提交截止时间 |
+| `extension_count` | integer | 已延期次数 |
+| `source_task_id` | integer/null | 来源任务 ID |
+| `task_result_submission_id` | integer/null | 任务成果提交 ID |
+| `assigned_reviewer` | TeacherSummary/null | 当前审核老师 |
+| `appeal_advice` | string/null | 申诉通过后的认定意见 |
+| `members` | array[ApplicationMember] | 参与成员 |
+| `advisors` | array[ApplicationAdvisor] | 指导老师关系 |
+| `attachments` | array[AttachmentSummary] | 附件 |
+| `reviews` | array[ReviewRecord] | 审核记录 |
+| `assignments` | array[ReviewAssignment] | 分配记录 |
+| `actions` | ActionFlags | 当前用户可执行动作 |
+
+`ApplicationMember`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `student` | StudentSummary | 成员学生 |
+| `is_leader` | boolean | 是否队长 |
+| `can_view` | boolean | 是否可查看申请 |
+| `joined_at` | datetime/null | 加入时间 |
+
+`ApplicationAdvisor`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `teacher` | TeacherSummary | 指导老师 |
+| `advisor_role` | string | `primary` 主指导老师 / `viewer` 查看导师 |
+| `can_operate` | boolean | 是否可确认或驳回 |
+| `reviewed_at` | datetime/null | 最近处理时间 |
+
+`ReviewRecord`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 审核记录 ID |
+| `stage` | string | 审核阶段，例如 `advisor`、`reviewer`、`admin_final` |
+| `operator_role` | string | 操作角色 |
+| `operator_name` | string | 操作人姓名 |
+| `decision` | string | `approved` / `rejected` / `modified_approved` |
+| `before_status` | string/null | 操作前状态 |
+| `after_status` | string/null | 操作后状态 |
+| `requested_hours_snapshot` | number/null | 操作时申请课时快照 |
+| `approved_hours` | number/null | 本次认定课时 |
+| `comment` | string/null | 审核意见 |
+| `created_at` | datetime | 操作时间 |
+
+`ReviewAssignment`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 分配记录 ID |
+| `reviewer` | TeacherSummary | 被分配审核老师 |
+| `assigned_by_name` | string | 分配管理员姓名 |
+| `assign_type` | string | `assign` / `reassign` |
+| `reason` | string/null | 分配或改派原因 |
+| `created_at` | datetime | 分配时间 |
+
+`ExtensionRequest`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 延期申请 ID |
+| `application_id` | integer | 课时申请 ID |
+| `applicant` | StudentSummary | 申请学生 |
+| `old_due_at` | datetime | 原成果提交截止时间 |
+| `requested_due_at` | datetime | 申请延期后的截止时间 |
+| `reason` | string | 延期原因 |
+| `review_level` | string | `advisor` / `admin` |
+| `status` | string | `submitted` / `approved` / `rejected` / `closed` |
+| `review_comment` | string/null | 审核意见 |
+| `created_at` | datetime | 申请时间 |
+| `reviewed_at` | datetime/null | 审核时间 |
+
+#### 1.6.4 任务对象
+
+`CollegeTaskSummary`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 任务 ID |
+| `task_no` | string | 任务编号 |
+| `title` | string | 任务名称 |
+| `publisher_role` | string | `admin` / `advisor` |
+| `publisher_name` | string | 发布人 |
+| `task_type_id` | integer | 任务类别 ID |
+| `task_type_name` | string | 任务类别名称 |
+| `description` | string | 任务说明 |
+| `requirement` | string | 成果要求 |
+| `registration_deadline` | datetime | 报名截止时间 |
+| `material_due_at` | datetime/null | 成果提交截止时间 |
+| `status` | string | 任务状态 |
+| `created_at` | datetime | 创建时间 |
+
+`CollegeTaskDetail` 在 `CollegeTaskSummary` 基础上增加：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `advisor` | TeacherSummary/null | 指导老师 |
+| `registrations` | array[TaskRegistration] | 报名记录 |
+| `members` | array[TaskMember] | 已选中成员 |
+| `leader` | StudentSummary/null | 队长 |
+| `result_submission` | TaskResultSubmission/null | 成果提交 |
+| `actions` | ActionFlags | 当前用户可执行动作 |
+
+`TaskRegistration`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 报名记录 ID |
+| `task_id` | integer | 任务 ID |
+| `student` | StudentSummary | 报名学生 |
+| `status` | string | 报名状态 |
+| `reason` | string/null | 报名说明 |
+| `submitted_at` | datetime | 报名时间 |
+
+`TaskMember`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `student` | StudentSummary | 成员学生 |
+| `is_leader` | boolean | 是否队长 |
+| `selected_at` | datetime/null | 被选中时间 |
+
+`TaskResultSubmission`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 成果提交 ID |
+| `task_id` | integer | 任务 ID |
+| `leader` | StudentSummary | 提交队长 |
+| `achievement_summary` | string | 成果说明 |
+| `requested_hours` | number | 申请课时 |
+| `attachments` | array[AttachmentSummary] | 成果附件 |
+| `status` | string | 成果状态 |
+| `submitted_at` | datetime | 提交时间 |
+
+#### 1.6.5 学分兑换对象
+
+`HourAwardSummary`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 课时到账记录 ID |
+| `hour_application_id` | integer | 来源课时申请 ID |
+| `application_no` | string | 来源申请编号 |
+| `title` | string | 来源申请标题 |
+| `leader` | StudentSummary | 队长 |
+| `total_hours` | number | 团队最终认定总课时 |
+| `available_hours` | number | 当前可兑换课时 |
+| `awarded_at` | datetime | 到账时间 |
+
+`CreditExchangeSummary`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 兑换申请 ID |
+| `exchange_no` | string | 兑换申请编号 |
+| `hour_award_record_id` | integer | 课时到账记录 ID |
+| `hour_application_id` | integer | 来源课时申请 ID |
+| `applicant` | StudentSummary | 发起队长 |
+| `advisor` | TeacherSummary | 指导老师 |
+| `total_hours` | number | 本次用于兑换的总课时 |
+| `estimated_total_credits` | number | 系统计算的预计总学分 |
+| `status` | string | 兑换状态 |
+| `submitted_at` | datetime/null | 提交时间 |
+
+`CreditExchangeDetail` 在 `CreditExchangeSummary` 基础上增加：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `hour_award` | HourAwardSummary | 课时到账信息 |
+| `allocations` | array[CreditAllocation] | 成员课时/学分明细 |
+| `attachments` | array[AttachmentSummary] | 对内认定附件 |
+| `reviews` | array[ReviewRecord] | 确认记录 |
+| `actions` | ActionFlags | 当前用户可执行动作 |
+
+`CreditAllocation`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `student` | StudentSummary | 成员学生 |
+| `allocated_hours` | number | 队长填写的成员课时 |
+| `allocated_credits` | number | 系统按比例计算、队长确认后的成员学分 |
+| `credit_type` | string | 学分类型 |
+| `remark` | string/null | 备注 |
+
+`ConversionRuleSummary`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `rule_id` | integer/null | 规则 ID |
+| `rule_name` | string | 规则名称 |
+| `hours_per_credit` | number | 每学分对应课时数 |
+| `max_single_exchange_hours` | number | 最大单次兑换课时 |
+| `rounding_mode` | string | 取整或保留规则：`floor` 向下取整，`keep_2` 保留两位，`round_half_up` 四舍五入 |
+| `effective_at` | datetime | 生效时间 |
+| `expires_at` | datetime | 失效时间 |
+| `status` | string | active / inactive / expired |
+| `rule_file_id` | integer | 关联规则文件 ID |
+| `rule_file` | RuleFileSummary/null | 关联规则文件摘要 |
+| `description` | string/null | 规则说明 |
+
+#### 1.6.6 申诉、投诉、通知、记录对象
+
+`AppealSummary`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 申诉 ID |
+| `appeal_no` | string | 申诉编号 |
+| `target_type` | string | 被申诉对象类型 |
+| `target_id` | integer | 被申诉对象 ID |
+| `student` | StudentSummary | 发起学生 |
+| `reason` | string | 申诉原因 |
+| `status` | string | 申诉状态 |
+| `submitted_at` | datetime | 提交时间 |
+
+`ComplaintSummary`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 投诉 ID |
+| `complaint_no` | string | 投诉编号 |
+| `target_type` | string/null | 投诉对象类型 |
+| `target_id` | integer/null | 投诉对象 ID |
+| `content` | string | 投诉内容 |
+| `is_anonymous` | boolean | 是否匿名 |
+| `status` | string | 投诉状态 |
+| `created_at` | datetime | 创建时间 |
+
+`NotificationSummary`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 通知 ID |
+| `title` | string | 通知标题 |
+| `content` | string | 通知内容 |
+| `target_type` | string/null | 关联业务类型 |
+| `target_id` | integer/null | 关联业务 ID |
+| `is_read` | boolean | 是否已读 |
+| `created_at` | datetime | 创建时间 |
+
+`OperationRecord`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 记录 ID |
+| `target_type` | string | 业务对象类型 |
+| `target_id` | integer | 业务对象 ID |
+| `operator_role` | string | 操作角色 |
+| `operator_name` | string | 操作人姓名 |
+| `action` | string | 操作动作 |
+| `before_status` | string/null | 操作前状态 |
+| `after_status` | string/null | 操作后状态 |
+| `comment` | string/null | 操作说明 |
+| `created_at` | datetime | 操作时间 |
+
+`ActionFlags`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `can_edit` | boolean | 是否可编辑 |
+| `can_submit` | boolean | 是否可提交 |
+| `can_approve` | boolean | 是否可通过 |
+| `can_reject` | boolean | 是否可驳回 |
+| `can_assign` | boolean | 是否可分配审核老师 |
+| `can_appeal` | boolean | 是否可申诉 |
+| `can_download` | boolean | 是否可下载附件 |
+
+### 1.7 通用校验与权限规则
+
+| 场景 | 规则 |
+|---|---|
+| 登录校验 | 除登录接口和公开下载规则文件外，所有接口都必须校验登录态 |
+| 登录方式 | V1 当前采用 Flask-Login session/cookie 登录；`POST /auth/login` 成功后后端写入 session cookie，前端后续请求需携带 cookie；暂不使用 `Authorization` token |
+| 角色校验 | 接口路径中的角色前缀必须与当前用户角色匹配，管理员只读查看不等于拥有业务操作权限 |
+| 状态校验 | 审核、驳回、分配、提交等动作必须校验当前业务对象状态，状态不匹配返回 `40901` |
+| 成员校验 | 团队申请的成员必须是系统内学生，队长必须在成员列表中 |
+| 导师校验 | 课时申请最多选择 3 名导师，只有主指导老师可以确认或驳回 |
+| 附件校验 | `attachment_ids` 必须属于当前用户可使用的附件，且 `biz_type` 与业务场景匹配 |
+| 幂等校验 | 最终确认、到账、学分生成等动作不可重复执行 |
+| 分页校验 | `page` 最小为 1，`page_size` 默认 20，最大建议 100 |
+
+### 1.8 通用错误码
+
+| 错误码 | 含义 | 常见场景 |
+|---|---|---|
+| `40001` | 参数错误 | 缺少必填字段、字段格式错误 |
+| `40101` | 未登录或登录过期 | session 无效、登录过期、账号密码错误或账号停用 |
+| `40301` | 无权限 | 当前角色不能访问该接口或业务对象 |
+| `40401` | 资源不存在 | 业务对象 ID 不存在或不可见 |
+| `40901` | 状态冲突 | 当前状态不允许执行该动作 |
+| `40902` | 重复操作 | 重复提交、重复确认、重复到账 |
+| `42201` | 业务规则不满足 | 成员不合法、附件不匹配、超过延期次数 |
+| `50001` | 系统错误 | 未预期异常 |
+
+## 2. 功能模块一：用户、角色与基础查询
+
+### 2.1 登录
+
+- 接口名：登录
+
+- 描述：前后端分离登录接口。校验账号密码，登录成功后由后端写入 session cookie，前端后续请求携带 cookie 访问受保护接口。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/auth/login`
+
+- 触发页面：L001 登录页
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Body | `username` | string | 是 | 登录账号 |
+| Body | `password` | string | 是 | 登录密码 |
+| Body | `remember` | boolean | 否 | 是否保持登录 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 用户 ID |
+| `username` | string | 登录账号 |
+| `role` | string | `student` / `advisor` / `reviewer` / `admin` |
+| `roles` | array[string] | 当前用户拥有的角色列表 |
+| `student` | StudentSummary/null | 学生信息 |
+| `teacher` | TeacherSummary/null | 教师信息 |
+
+- 主要数据来源：`users`, `students`, `teachers`
+- 错误规则：
+  - 账号或密码错误返回 `40101`。
+  - 账号停用返回 `40101`。
+
+### 2.2 退出登录
+
+- 接口名：退出登录
+
+- 描述：清除当前 session 登录态。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/auth/logout`
+
+- 触发页面：S001 学生首页；T001 指导老师首页 / 工作台；R001 审核老师首页 / 审核工作台；A001 管理员首页 / 管理工作台
+- 接口请求参数：无
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| 空对象 | object | 成功时返回空对象 |
+
+### 2.3 获取当前登录用户
+
+- 接口名：获取当前登录用户
+
+- 描述：获取当前用户身份、角色、学生/教师基础信息，用于前端判断可访问页面和按钮权限
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/me`
+
+- 触发页面：S001 学生首页；T001 指导老师首页 / 工作台；R001 审核老师首页 / 审核工作台；A001 管理员首页 / 管理工作台
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Cookie | session | string | 是 | 登录成功后后端写入的 session cookie |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 用户 ID |
+| `username` | string | 登录账号 |
+| `role` | string | `student` / `advisor` / `reviewer` / `admin` |
+| `roles` | array[string] | 当前用户拥有的角色列表 |
+| `student` | StudentSummary/null | 学生信息 |
+| `teacher` | TeacherSummary/null | 教师信息 |
+
+- 主要数据来源：`users`, `students`, `teachers`
+
+### 2.4 获取任务类别列表
+
+- 接口名：获取任务类别列表
+
+- 描述：获取课时申请表单和任务发布表单中可选择的任务类别。`task_types` 表示证书类、竞赛类等业务类别；学生进入课时申请时选择“有成果/无成果”使用 `application_type` 字段，不使用本接口。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/task-types`
+
+- 触发页面：T202 发布任务；A202 发布任务
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `enabled` | boolean | 否 | 是否只查询启用类别；`true` 表示只返回可用于新申请/新任务的类别 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[TaskType] | 任务类别列表 |
+| `items[].id` | integer | 类别 ID |
+| `items[].type_code` | string | 类别编码 |
+| `items[].type_name` | string | 类别名称 |
+| `items[].status` | string | `enabled` / `disabled` |
+| `items[].sort_order` | integer | 排序值 |
+| `items[].allow_student_self` | boolean | 是否允许学生自主申请使用 |
+| `items[].allow_admin_task` | boolean | 是否允许管理员发布任务使用 |
+| `items[].allow_teacher_task` | boolean | 是否允许指导老师发布任务使用 |
+
+- 主要数据来源：`task_types`
+
+### 2.4.1 管理员查询任务类别
+
+- 接口名：管理员查询任务类别
+
+- 描述：管理员查询所有任务类别，用于基础数据维护。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/task-types`
+
+- 触发页面：A1202 任务类别管理
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `enabled` | boolean | 否 | `true` 只查启用；`false` 查非启用；为空查全部 |
+
+- 接口响应：同 2.4。
+
+- 主要数据来源：`task_types`
+
+### 2.4.2 管理员新增任务类别
+
+- 接口名：管理员新增任务类别
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/task-types`
+
+- 触发页面：A1202 任务类别管理
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Body | `type_code` | string | 是 | 类别编码，唯一 |
+| Body | `type_name` | string | 是 | 类别名称 |
+| Body | `status` | string | 否 | enabled / disabled，默认 enabled |
+| Body | `sort_order` | integer | 否 | 排序值，默认 0 |
+| Body | `allow_student_self` | boolean | 否 | 是否允许学生自主申请使用，默认 true |
+| Body | `allow_admin_task` | boolean | 否 | 是否允许管理员发布任务使用，默认 true |
+| Body | `allow_teacher_task` | boolean | 否 | 是否允许指导老师发布任务使用，默认 true |
+
+- 接口响应：TaskType 对象。
+
+- 主要写入表：`task_types`
+
+### 2.4.3 管理员修改任务类别
+
+- 接口名：管理员修改任务类别
+
+- 接口方法：`PUT` / `PATCH`
+
+- 接口相对路径：`/admin/task-types/{id}`
+
+- 触发页面：A1202 任务类别管理
+- 接口请求参数：同 2.4.2，均可选。
+
+- 接口响应：TaskType 对象。
+
+- 主要写入表：`task_types`
+
+### 2.4.4 管理员启用任务类别
+
+- 接口名：管理员启用任务类别
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/task-types/{id}/enable`
+
+- 触发页面：A1202 任务类别管理
+
+- 接口响应：TaskType 对象。
+
+### 2.4.5 管理员停用任务类别
+
+- 接口名：管理员停用任务类别
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/task-types/{id}/disable`
+
+- 触发页面：A1202 任务类别管理
+
+- 接口响应：TaskType 对象。
+
+### 2.5 获取可选指导老师列表
+
+- 接口名：获取可选指导老师列表
+
+- 描述：学生提交课时申请、管理员发布任务时查询可选择的指导老师。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/teachers/advisors`
+
+- 触发页面：S405 选择指导老师（不再单独作为一个页面 作为一个选择插件在有/无成果申请里，页面设计已做了标注）；S403 有成果申请；S404 无成果申请；A202 发布任务（接口描述涉及管理员发布任务时选择指导老师）
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `keyword` | string | 否 | 按姓名/工号搜索 |
+| Query | `major` | string | 否 | 专业方向筛选；对应 `teachers.major_name` |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[TeacherSummary] | 教师列表 |
+| `items[].id` | integer | 教师 ID |
+| `items[].name` | string | 教师姓名 |
+| `items[].teacher_no` | string | 教师工号 |
+| `items[].college` | string/null | 当前教师表无学院字段，返回 null |
+| `items[].major` | string/null | 专业方向，对应 `teachers.major_name` |
+| `items[].role_flags` | array[string] | 教师能力，例如 advisor / reviewer |
+
+- 主要数据来源：`teachers`, `users`
+
+### 2.6 获取可分配审核老师列表
+
+- 接口名：获取可分配审核老师列表
+
+- 描述：管理员分配审核老师时查询可分配教师
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/reviewers`
+
+- 触发页面：A303 分配审核老师；A604 申诉后分配审核老师
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `keyword` | string | 否 | 按姓名/工号搜索 |
+| Query | `major` | string | 否 | 专业方向筛选；对应 `teachers.major_name` |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[TeacherSummary] | 审核老师列表 |
+| `items[].id` | integer | 教师 ID |
+| `items[].name` | string | 教师姓名 |
+| `items[].teacher_no` | string | 教师工号 |
+| `items[].college` | string/null | 当前教师表无学院字段，返回 null |
+| `items[].major` | string/null | 专业方向，对应 `teachers.major_name` |
+| `items[].role_flags` | array[string] | 教师能力，例如 advisor / reviewer |
+
+- 主要数据来源：`teachers`, `users`。
+
+## 3. 功能模块二：附件、规则文件、导入导出
+
+### 3.1 上传附件
+
+- 接口名：上传附件
+
+- 描述：上传成果材料、兑换证明、申诉证明、规则文件等通用附件
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/attachments`
+
+- 触发页面：S403 有成果申请；S105 上传成果；S503 补交成果；S603 发起兑换申请；S701 发起申诉；S801 发起匿名投诉；T202 发布任务；A202 发布任务
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| FormData | `file` | file | 是 | 上传文件 |
+| FormData | `biz_type` | string | 是 | 附件所属业务类型，用于区分文件用途：`hour_application` 课时申请材料，`task_result` 任务成果，`credit_exchange` 兑换证明，`appeal` 申诉证明，`rule_file` 规则文件 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 附件 ID |
+| `file_name` | string | 原始文件名 |
+| `file_size` | integer | 文件大小 |
+| `mime_type` | string | 文件 MIME 类型 |
+| `url` | string | 预览或下载地址 |
+
+- 主要写入表：`attachments`。
+
+### 3.2 获取附件详情或下载
+
+- 接口名：获取附件详情或下载
+
+- 描述：查看、预览或下载附件。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/attachments/{id}`
+
+- 触发页面：S102 任务详情；S202 广场任务详情；S502 申请详情；S605 兑换详情；S703 申诉详情；S802 投诉提交结果；T106 学生成果详情；T302 申请确认详情；T402 补交成果确认详情；T602 兑换确认详情；R102 成果审核详情；R202 申诉复审详情；R302 审核记录详情；A102 发布确认详情；A302 成果分配详情（如学生的提交成果附件）；A502 兑换最终确认详情；A602 申诉处理详情；A702 特殊延期审核详情；A802 投诉详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 附件 ID |
+| Query | `download` | boolean | 否 | 是否作为下载返回 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| file stream / `AttachmentSummary` | file/AttachmentSummary | `download=true` 时返回文件流；否则返回附件元信息 |
+
+- 主要数据来源：`attachments`
+
+### 3.2.1 删除或作废附件
+
+- 接口名：删除草稿附件或由管理员作废已提交附件
+- 接口方法：`DELETE`
+- 接口相对路径：`/attachments/{id}`
+- 权限与规则：
+  - 上传者可以软删除未绑定业务或只绑定草稿的附件。
+  - 正式提交、进入审核或已经完成的附件，上传者不能删除，返回 HTTP `409`。
+  - 管理员可以作废已提交附件，但 Body 中必须提供非空 `reason`。
+  - 删除或作废均不物理删除文件和记录；附件状态改为 `deleted` 或 `voided`，业务详情不再把它作为有效附件返回。
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 附件 ID |
+| Body | `reason` | string | 条件必填 | 管理员作废已提交附件时必填 |
+
+- 接口响应：`AttachmentSummary`，包含 `status`、`voided_by`、`voided_at`、`void_reason`。
+- 主要更新表：`attachments`, `operation_logs`。
+
+### 3.2.2 管理员查询附件操作记录
+
+- 接口名：管理员查询单个附件的删除和作废记录
+- 接口方法：`GET`
+- 接口相对路径：`/admin/attachments/{id}/operation-records`
+- 权限：仅管理员。
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 附件 ID |
+| Query | `page` | integer | 否 | 页码，默认 1 |
+| Query | `page_size` | integer | 否 | 每页数量，默认 20，最大 100 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `attachment` | AttachmentSummary | 包括已删除或已作废状态的附件元信息 |
+| `items` | array[OperationRecord] | 附件删除、作废操作记录 |
+| `page` | integer | 当前页码 |
+| `page_size` | integer | 每页数量 |
+| `total` | integer | 记录总数 |
+| `pages` | integer | 总页数 |
+
+- 主要数据来源：`attachments`, `operation_logs`。
+
+### 3.3 上传规则文件
+
+- 接口名：上传规则文件
+
+- 描述：管理员上传课时规则、学分兑换规则等规则文件。规则文件可以只是供师生查阅的制度文件，也可以作为结构化兑换规则的制度依据；系统不从规则文件内容中自动解析兑换公式。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/rule-files`
+
+- 触发页面：页面设计文档未配置明确触发页面（后期会在相应页面里加按钮）
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Body | `title` | string | 是 | 规则文件标题 |
+| Body | `description` | string | 否 | 规则说明 |
+| Body | `rule_type` | string | 是 | `hour_rule` / `credit_rule` / `other` |
+| Body | `usage_type` | string | 是 | `reference_only` 仅供查阅；`calculation_basis` 可作为结构化兑换规则依据 |
+| Body | `attachment_id` | integer | 是 | 已上传附件 ID |
+| Body | `effective_at` | datetime | 否 | 生效时间 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 规则文件 ID |
+| `title` | string | 标题 |
+| `attachment_id` | integer | 附件 ID |
+| `usage_type` | string | reference_only / calculation_basis |
+
+- 主要写入表：`rule_files`, `attachments`, `operation_logs`
+- 业务规则：
+  - `usage_type=reference_only` 的文件只用于查看、下载和留痕，不参与学分兑换计算。
+  - `usage_type=calculation_basis` 的文件仍不直接参与计算，必须另行创建 `credit_conversion_rules` 结构化规则后才能作为计算依据。
+
+### 3.4 获取规则文件列表
+
+- 接口名：获取规则文件列表
+
+- 描述：查询当前可查看的规则文件。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/rule-files`
+
+- 触发页面：页面设计文档未配置明确触发页面（后续会在管理端加按钮）
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `keyword` | string | 否 | 标题关键词，用于按规则文件标题搜索；该接口是查询接口 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[RuleFileSummary] | 规则文件列表 |
+| `items[].id` | integer | 规则文件 ID |
+| `items[].title` | string | 标题 |
+| `items[].description` | string/null | 规则说明 |
+| `items[].rule_type` | string | hour_rule / credit_rule / other |
+| `items[].usage_type` | string | reference_only / calculation_basis |
+| `items[].attachment_id` | integer | 附件 ID |
+| `items[].attachment` | AttachmentSummary | 附件信息 |
+| `items[].effective_at` | datetime/null | 生效时间 |
+
+- 主要数据来源：`rule_files`, `attachments`。
+
+### 3.5 下载规则文件
+
+- 接口名：下载规则文件
+
+- 描述：下载指定规则文件
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/rule-files/{id}/download`
+
+- 触发页面：页面设计文档未配置明确触发页面
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 规则文件 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| file stream | file | 规则文件 |
+
+- 主要数据来源：`rule_files`, `attachments`。
+
+### 3.5.1 创建结构化兑换规则
+
+- 接口名：创建结构化兑换规则
+
+- 描述：管理员基于已上传的规则文件，填写可执行的课时兑换学分规则。该接口只保存结构化字段，不解析规则文件内容。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/credit-conversion-rules`
+
+- 触发页面：A1201 规则文件与兑换规则管理
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Body | `rule_name` | string | 是 | 规则名称，例如“默认课时兑换规则” |
+| Body | `hours_per_credit` | number | 是 | 每多少课时兑换 1 学分，例如 10 |
+| Body | `max_single_exchange_hours` | number | 是 | 最大单次兑换课时，例如 100 |
+| Body | `rounding_mode` | string | 是 | `floor` / `keep_2` / `round_half_up` |
+| Body | `effective_at` | datetime | 是 | 生效时间 |
+| Body | `expires_at` | datetime | 是 | 失效时间 |
+| Body | `rule_file_id` | integer | 是 | 关联规则文件 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `rule` | ConversionRuleSummary | 创建后的结构化兑换规则 |
+
+- 主要写入表：`credit_conversion_rules`, `operation_logs`
+- 校验规则：
+  - `hours_per_credit` 必须大于 0。
+  - `max_single_exchange_hours` 必须大于 0。
+  - `expires_at` 必须晚于 `effective_at`。
+  - 不设置最小单次兑换课时限制。
+  - 关联的 `rule_files.usage_type` 必须为 `calculation_basis`。
+  - 同一时间不允许存在多条时间区间重叠的 active 兑换规则。
+
+### 3.5.2 查询结构化兑换规则列表
+
+- 接口名：查询结构化兑换规则列表
+
+- 描述：管理员查询结构化兑换规则，用于管理启停和有效期。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/credit-conversion-rules`
+
+- 触发页面：A1201 规则文件与兑换规则管理
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `status` | string | 否 | active / inactive / expired |
+| Query | `keyword` | string | 否 | 规则名称关键词 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[ConversionRuleSummary] | 结构化兑换规则列表 |
+
+- 主要数据来源：`credit_conversion_rules`, `rule_files`
+
+### 3.5.3 获取当前生效兑换规则
+
+- 接口名：获取当前生效兑换规则
+
+- 描述：学生发起兑换申请、教师确认兑换、管理员最终确认兑换时，用于展示当前系统正在使用的结构化兑换规则。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/credit-conversion-rules/current`
+
+- 触发页面：S603 发起兑换申请；T602 兑换确认详情；A502 兑换最终确认详情；A1201 规则文件与兑换规则管理
+
+- 接口请求参数：无
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `rule` | ConversionRuleSummary/null | 当前生效结构化兑换规则；没有生效规则时为 null |
+
+- 主要数据来源：`credit_conversion_rules`, `rule_files`
+- 当前生效规则判定：`status=active` 且 `effective_at <= now < expires_at`。
+
+### 3.5.4 修改结构化兑换规则
+
+- 接口名：修改结构化兑换规则
+
+- 描述：管理员修改尚未被兑换申请使用或业务允许修改的结构化兑换规则。已被申请使用的历史规则应通过新增版本处理，避免影响历史计算结果。
+
+- 接口方法：`PATCH`
+
+- 接口相对路径：`/admin/credit-conversion-rules/{id}`
+
+- 触发页面：A1201 规则文件与兑换规则管理
+- 接口请求参数：同 3.5.1，均可选。
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `rule` | ConversionRuleSummary | 修改后的结构化兑换规则 |
+
+- 主要写入表：`credit_conversion_rules`, `operation_logs`
+
+### 3.5.5 启用结构化兑换规则
+
+- 接口名：启用结构化兑换规则
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/credit-conversion-rules/{id}/enable`
+
+- 触发页面：A1201 规则文件与兑换规则管理
+
+- 接口请求参数：无
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `rule` | ConversionRuleSummary | 启用后的结构化兑换规则 |
+
+- 校验规则：启用后不能与其他 active 规则存在有效期重叠。
+
+### 3.5.6 停用结构化兑换规则
+
+- 接口名：停用结构化兑换规则
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/credit-conversion-rules/{id}/disable`
+
+- 触发页面：A1201 规则文件与兑换规则管理
+
+- 接口请求参数：无
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `rule` | ConversionRuleSummary | 停用后的结构化兑换规则 |
+
+### 3.5.7 下载导入模板
+
+- 接口名：下载导入模板
+
+- 描述：管理员下载学生、教师、管理员名单导入 Excel 模板。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/import-templates/{target}`
+
+- 触发页面：A1203 数据导入
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `target` | string | 是 | students / teachers / admins |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| file stream | file | `.xlsx` 模板文件 |
+
+- 主要数据来源：后端模板配置。
+
+### 3.6 导入学生名单
+
+- 接口名：导入学生名单
+
+- 描述：管理员导入学生基础数据，用于登录身份匹配和学生信息维护
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/imports/students`
+
+- 触发页面：页面设计文档未配置明确触发页面
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| FormData | `file` | file | 是 | `.xlsx` / `.xlsm` / `.xls` / `.csv` 文件 |
+| FormData | `mode` | string | 否 | `append` / `upsert`，默认 `upsert` |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `success_count` | integer | 成功数量 |
+| `failed_count` | integer | 失败数量 |
+| `errors` | array[ImportErrorItem] | 错误行说明 |
+| `batch_no` | string/null | 导入批次号；如果导入发生行级错误且事务回滚，可能为空 |
+
+- 主要写入表：`users`, `students`, `operation_logs`
+
+### 3.7 导入教师名单
+
+- 接口名：导入教师名单
+
+- 描述：管理员导入教师基础数据，用于指导老师、审核老师身份匹配
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/imports/teachers`
+
+- 触发页面：页面设计文档未配置明确触发页面
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| FormData | `file` | file | 是 | `.xlsx` / `.xlsm` / `.xls` / `.csv` 文件 |
+| FormData | `mode` | string | 否 | `append` / `upsert`，默认 `upsert` |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `success_count` | integer | 成功数量 |
+| `failed_count` | integer | 失败数量 |
+| `errors` | array[ImportErrorItem] | 错误行说明 |
+| `batch_no` | string/null | 导入批次号；如果导入发生行级错误且事务回滚，可能为空 |
+
+- 主要写入表：`users`, `teachers`, `operation_logs`。
+
+### 3.7.1 导入管理员名单
+
+- 接口名：导入管理员名单
+
+- 描述：管理员导入管理员基础账号，用于补充管理端登录账号。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/imports/admins`
+
+- 触发页面：A1203 数据导入
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| FormData | `file` | file | 是 | `.xlsx` / `.xlsm` / `.xls` / `.csv` 文件 |
+| FormData | `mode` | string | 否 | `append` / `upsert`，默认 `upsert` |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `success_count` | integer | 成功数量 |
+| `failed_count` | integer | 失败数量 |
+| `errors` | array[ImportErrorItem] | 错误行说明 |
+| `batch_no` | string/null | 导入批次号；如果导入发生行级错误且事务回滚，可能为空 |
+
+- 主要写入表：`users`, `operation_logs`。
+
+### 3.8 导出课时申请列表
+
+- 接口名：导出课时申请列表
+
+- 描述：管理员按筛选条件导出课时申请数据。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/exports/hour-applications`
+
+- 触发页面：页面设计文档未配置明确触发页面
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `status` | string | 否 | 状态筛选 |
+| Query | `date_from` | date | 否 | 开始日期 |
+| Query | `date_to` | date | 否 | 结束日期 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| file stream | file | Excel/CSV 文件 |
+
+- 主要数据来源：`hour_applications`, `hour_application_members`, `hour_application_reviews`
+
+## 4. 功能模块三：课时申请与课时认定
+
+### 4.1 保存课时申请草稿
+
+- 接口名：保存课时申请草稿
+
+- 描述：学生保存有成果或无成果课时申请草稿。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/student/hour-applications/drafts`
+
+- 触发页面：S403 有成果申请；S404 无成果申请
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Body | `application_type` | string | 是 | `with_material` / `without_material` |
+| Body | `task_type_id` | integer | 是 | 任务类别 ID |
+| Body | `title` | string | 是 | 申请标题 |
+| Body | `description` | string | 否 | 申请说明 |
+| Body | `requested_hours` | number | 是 | 申请课时 |
+| Body | `material_due_at` | datetime | 条件必填 | 无成果申请预计成果提交时间 |
+| Body | `advisor_teacher_id` | integer | 是 | 主指导老师 ID |
+| Body | `view_teacher_ids` | array | 否 | 查看导师 ID，导师总人数最多 3 人 |
+| Body | `view_teacher_ids[]` | integer | 否 | 查看导师 ID |
+| Body | `leader_student_id` | integer | 否 | 队长/负责人学生 ID；个人申请默认发起人为队长，多人申请必填 |
+| Body | `member_count` | integer | 否 | 参与人数；大于等于 2 时必须填写参与学生 |
+| Body | `member_student_ids` | array | 否 | 参与学生 ID |
+| Body | `member_student_ids[]` | integer | 否 | 参与学生 ID；必须包含队长 |
+| Body | `attachment_ids` | array | 否 | 成果附件 ID |
+| Body | `attachment_ids[]` | integer | 否 | 附件 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 课时申请 ID |
+| `status` | string | `draft` |
+
+- 主要写入表：`hour_applications`, `hour_application_members`, `application_advisors`, `attachments`
+
+- 校验规则：
+  - `application_type=without_material` 时 `material_due_at` 必填。
+  - 导师总人数最多 3 人，主指导老师不允许同时作为查看导师重复提交。
+  - 多人申请时 `leader_student_id` 必须在 `member_student_ids` 中。
+
+### 4.2 提交课时申请
+
+- 接口名：提交课时申请
+
+- 描述：学生提交有成果或无成果课时申请
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/student/hour-applications`
+
+- 触发页面：S403 有成果申请；S404 无成果申请
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Body | `application_type` | string | 是 | `with_material` / `without_material` |
+| Body | `task_type_id` | integer | 是 | 任务类别 ID |
+| Body | `title` | string | 是 | 申请标题 |
+| Body | `description` | string | 否 | 申请说明 |
+| Body | `requested_hours` | number | 是 | 申请课时 |
+| Body | `material_due_at` | datetime | 条件必填 | 无成果申请必填 |
+| Body | `advisor_teacher_id` | integer | 是 | 主指导老师 ID |
+| Body | `view_teacher_ids` | array | 否 | 查看导师 ID |
+| Body | `view_teacher_ids[]` | integer | 否 | 查看导师 ID |
+| Body | `leader_student_id` | integer | 否 | 队长/负责人学生 ID；个人申请默认发起人为队长，多人申请必填 |
+| Body | `member_count` | integer | 否 | 参与人数；大于等于 2 时必须填写参与学生 |
+| Body | `member_student_ids` | array | 否 | 参与学生 ID |
+| Body | `member_student_ids[]` | integer | 否 | 参与学生 ID；必须包含队长 |
+| Body | `attachment_ids` | array | 条件必填 | 有成果申请必填 |
+| Body | `attachment_ids[]` | integer | 条件必填 | 附件 ID |
+
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 课时申请 ID |
+| `application_no` | string | 申请编号 |
+| `status` | string | `submitted` |
+
+- 主要写入表：`hour_applications`, `hour_application_members`, `application_advisors`, `attachments`
+
+- 状态变化：新建申请 -> `submitted`。
+
+- 校验规则：
+  - `application_type=with_material` 时 `attachment_ids` 必填。
+  - `application_type=without_material` 时 `material_due_at` 必填，且不能早于当前时间。
+  - `task_type_id` 必须是启用状态的任务类别。
+  - 成员、队长、导师、附件权限按 1.7 校验。
+
+### 4.3 查询学生课时申请列表
+
+- 接口名：查询学生课时申请列表
+
+- 描述：学生查看自己发起或参与的课时申请
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/student/hour-applications`
+
+- 触发页面：S501 课时申请进度
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `status` | string | 否 | 状态筛选 |
+| Query | `role` | string | 否 | `applicant` / `member` |
+| Query | `page` | integer | 否 | 页码 |
+| Query | `page_size` | integer | 否 | 每页数量 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[HourApplicationSummary] | 申请列表 |
+| `items[].id` | integer | 申请 ID |
+| `items[].application_no` | string | 申请编号 |
+| `items[].title` | string | 申请标题 |
+| `items[].applicant` | StudentSummary | 发起人信息 |
+| `items[].applicant_name` | string | 发起人姓名 |
+| `items[].application_type` | string | 申请类型 |
+| `items[].task_type_name` | string | 任务类别名称 |
+| `items[].requested_hours` | number | 申请课时 |
+| `items[].status` | string | 当前状态 |
+| `items[].final_hours` | number/null | 最终课时 |
+
+- 主要数据来源：`hour_applications`, `hour_application_members`。
+
+### 4.4 获取学生课时申请详情
+
+- 接口名：获取学生课时申请详情
+
+- 描述：学生查看课时申请详情、状态、附件、审核意见和可操作项
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/student/hour-applications/{id}`
+
+- 触发页面：S502 申请详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 课时申请 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 申请 ID |
+| `application_no` | string | 申请编号 |
+| `status` | string | 当前状态 |
+| `application` | HourApplicationDetail | 申请详情 |
+| `applicant` | StudentSummary | 发起学生 |
+| `members` | array[ApplicationMember] | 参与成员 |
+| `advisors` | array[ApplicationAdvisor] | 主指导老师和查看导师 |
+| `attachments` | array[AttachmentSummary] | 附件 |
+| `reviews` | array[ReviewRecord] | 审核记录 |
+| `actions` | ActionFlags | 当前用户可执行动作 |
+
+- 主要数据来源：`hour_applications`, `hour_application_members`, `application_advisors`, `attachments`, `hour_application_reviews`, `appeals`。
+
+### 4.5 管理员查询课时申请记录
+
+- 接口名：管理员查询课时申请记录
+
+- 描述：管理员查看系统内所有课时申请记录，用于留痕、追溯和风险控制。该接口是只读查询接口，包含无成果申请尚未进入分配审核老师流程时的记录；是否可操作由申请状态和管理员权限共同决定。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/hour-applications`
+
+- 触发页面：A901 已处理记录
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `status` | string | 否 | 状态筛选，包含 `submitted`、`pending_material`、`pending_assignment` 等 |
+| Query | `application_type` | string | 否 | `with_material` / `without_material` |
+| Query | `keyword` | string | 否 | 按标题、申请编号、发起人搜索 |
+| Query | `page` | integer | 否 | 页码 |
+| Query | `page_size` | integer | 否 | 每页数量 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[HourApplicationSummary] | 课时申请记录列表 |
+| `items[].id` | integer | 申请 ID |
+| `items[].application_no` | string | 申请编号 |
+| `items[].title` | string | 申请标题 |
+| `items[].applicant` | StudentSummary | 发起人信息 |
+| `items[].applicant_name` | string | 发起人姓名 |
+| `items[].application_type` | string | 有成果/无成果 |
+| `items[].status` | string | 当前状态 |
+| `items[].can_operate` | boolean | 当前管理员是否可操作；留痕阶段通常为 false |
+
+- 主要数据来源：`hour_applications`, `hour_application_members`, `application_advisors`, `students`。
+
+### 4.6 查询指导老师待确认课时申请
+
+- 接口名：查询指导老师待确认课时申请
+
+- 描述：主指导老师查看待确认课时申请
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/advisor/hour-applications/pending`
+
+- 触发页面：T301 课时申请确认
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `status` | string | 否 | 默认 `submitted` |
+| Query | `page` | integer | 否 | 页码 |
+| Query | `page_size` | integer | 否 | 每页数量 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[HourApplicationSummary] | 待确认申请列表 |
+| `items[].id` | integer | 申请 ID |
+| `items[].title` | string | 申请标题 |
+| `items[].applicant_name` | string | 申请人 |
+| `items[].status` | string | 当前状态 |
+
+- 主要数据来源：`hour_applications`, `application_advisors`, `students`。
+
+### 4.7 获取指导老师课时申请详情
+
+- 接口名：获取指导老师课时申请详情
+
+- 描述：指导老师查看申请完整信息并确认或驳回。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/advisor/hour-applications/{id}`
+
+- 触发页面：T302 申请确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 课时申请 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `application` | HourApplicationDetail | 申请基本信息 |
+| `applicant` | StudentSummary | 发起人信息 |
+| `members` | array[ApplicationMember] | 成员 |
+| `advisors` | array[ApplicationAdvisor] | 导师 |
+| `attachments` | array[AttachmentSummary] | 附件 |
+| `reviews` | array[ReviewRecord] | 历史审核记录 |
+| `can_operate` | boolean | 当前教师是否主指导老师 |
+
+- 主要数据来源：`hour_applications`, `application_advisors`, `hour_application_members`, `attachments`, `hour_application_reviews`
+
+### 4.8 指导老师确认课时申请
+
+- 接口名：指导老师确认课时申请
+
+- 描述：主指导老师确认学生课时申请。指导老师可在列表页或详情页触发同一接口。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/advisor/hour-applications/{id}/approve`
+
+- 触发页面：T301 课时申请确认；T302 申请确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 课时申请 ID |
+| Body | `comment` | string | 否 | 确认意见 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 申请 ID |
+| `status` | string | 有成果：`pending_assignment`；无成果首次确认：`pending_material` |
+
+- 主要更新表：`hour_applications`, `hour_application_reviews`。
+
+- 状态变化：`pending_review` -> `reviewer_rejected`。
+
+- 校验规则：当前教师必须是被分配的审核老师；驳回原因必填；该驳回可进入申诉流程。
+
+- 状态变化：
+  - `submitted` + `application_type=with_material` -> `pending_assignment`
+  - `submitted` + `application_type=without_material` -> `pending_material`
+
+- 校验规则：当前教师必须是主指导老师，申请状态必须为 `submitted`。
+
+### 4.9 指导老师驳回课时申请
+
+- 接口名：指导老师驳回课时申请
+
+- 描述：主指导老师驳回学生课时申请。指导老师驳回不进入申诉流程。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/advisor/hour-applications/{id}/reject`
+
+- 触发页面：T301 课时申请确认；T302 申请确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 课时申请 ID |
+| Body | `comment` | string | 是 | 驳回原因 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 申请 ID |
+| `status` | string | `advisor_rejected` |
+
+- 主要更新表：`hour_applications`, `hour_application_reviews`。
+
+- 状态变化：`submitted` -> `advisor_rejected`。
+
+- 校验规则：当前教师必须是主指导老师；指导老师驳回后学生只能修改重新提交或关闭，不能直接申诉。
+
+### 4.10 查询待分配审核老师申请
+
+- 接口名：查询待分配审核老师申请
+
+- 描述：管理员查看主指导老师确认后的待分配申请。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/hour-applications/pending-assignment`
+
+- 触发页面：A301 审核分配管理
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `page` | integer | 否 | 页码 |
+| Query | `page_size` | integer | 否 | 每页数量 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[HourApplicationSummary] | 待分配申请列表 |
+| `items[].id` | integer | 申请 ID |
+| `items[].title` | string | 申请标题 |
+| `items[].applicant` | StudentSummary | 发起人信息 |
+| `items[].applicant_name` | string | 发起人姓名 |
+| `items[].status` | string | `pending_assignment` |
+
+- 主要数据来源：`hour_applications`, `application_advisors`。
+
+### 4.11 管理员获取课时申请详情
+
+- 接口名：管理员获取课时申请详情
+
+- 描述：管理员在审核分配或最终确认前查看课时申请详情。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/hour-applications/{id}`
+
+- 触发页面：A302 成果分配详情；A402 最终确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 课时申请 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `application` | HourApplicationDetail | 申请信息 |
+| `applicant` | StudentSummary | 发起人信息 |
+| `members` | array[ApplicationMember] | 参与成员 |
+| `advisors` | array[ApplicationAdvisor] | 导师 |
+| `attachments` | array[AttachmentSummary] | 附件 |
+| `reviews` | array[ReviewRecord] | 审核记录 |
+| `assignments` | array[ReviewAssignment] | 分配记录 |
+
+- 主要数据来源：`hour_applications`, `hour_application_members`, `application_advisors`, `attachments`, `hour_application_reviews`, `review_assignments`。
+
+### 4.12 管理员分配审核老师
+
+- 接口名：管理员分配审核老师
+
+- 描述：管理员为课时申请分配审核老师。管理员前段受理仅表示分配审核老师，不做业务审核结论。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/hour-applications/{id}/assign-reviewer`
+
+- 触发页面：A301 审核分配管理；A302 成果分配详情；A303 分配审核老师
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 课时申请 ID |
+| Body | `reviewer_teacher_id` | integer | 是 | 审核老师 ID |
+| Body | `comment` | string | 否 | 分配说明 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 申请 ID |
+| `status` | string | `pending_review` |
+| `reviewer_teacher_id` | integer | 当前审核老师 ID |
+
+- 主要更新表：`hour_applications`, `review_assignments`, `operation_logs`
+
+- 状态变化：`pending_assignment` -> `pending_review`。
+
+- 校验规则：只有管理员可操作；审核老师必须具备审核老师角色；分配后写入 `review_assignments`。
+
+### 4.13 查询审核老师待审核申请
+
+- 接口名：查询审核老师待审核申请
+
+- 描述：审核老师查看分配给自己的待审核课时申请
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/reviewer/hour-applications/pending`
+
+- 触发页面：R101 项目成果审核
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `page` | integer | 否 | 页码 |
+| Query | `page_size` | integer | 否 | 每页数量 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[HourApplicationSummary] | 待审核申请列表 |
+| `items[].id` | integer | 申请 ID |
+| `items[].title` | string | 申请标题 |
+| `items[].applicant` | StudentSummary | 发起人信息 |
+| `items[].applicant_name` | string | 发起人姓名 |
+| `items[].status` | string | `pending_review` |
+
+- 主要数据来源：`hour_applications`, `review_assignments`。
+
+### 4.14 审核老师获取审核详情
+
+- 接口名：审核老师获取审核详情
+
+- 描述：审核老师进入详情页查看申请材料并执行审核。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/reviewer/hour-applications/{id}`
+
+- 触发页面：R102 成果审核详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 课时申请 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `application` | HourApplicationDetail | 申请信息 |
+| `applicant` | StudentSummary | 发起人信息 |
+| `attachments` | array[AttachmentSummary] | 附件 |
+| `requested_hours` | number | 申请课时 |
+| `reviews` | array[ReviewRecord] | 历史审核记录 |
+| `can_review` | boolean | 是否可审核 |
+
+- 主要数据来源：`hour_applications`, `attachments`, `hour_application_reviews`, `review_assignments`。
+
+### 4.15 审核老师审核通过
+
+- 接口名：审核老师审核通过
+
+- 描述：审核老师审核通过且不修改课时。审核老师必须在详情页操作。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/reviewer/hour-applications/{id}/approve`
+
+- 触发页面：R102 成果审核详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 课时申请 ID |
+| Body | `comment` | string | 否 | 审核意见 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 申请 ID |
+| `status` | string | `pending_admin_final` |
+| `review_result` | string | `reviewer_approved` |
+
+- 主要更新表：`hour_applications`, `hour_application_reviews`。
+
+- 状态变化：`pending_review` -> `pending_admin_final`，并记录审核结果 `reviewer_approved`。
+
+- 校验规则：当前教师必须是被分配的审核老师。
+
+### 4.16 审核老师修改课时并通过
+
+- 接口名：审核老师修改课时并通过
+
+- 描述：审核老师审核通过，但修改认定课时。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/reviewer/hour-applications/{id}/modified-approve`
+
+- 触发页面：R102 成果审核详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 课时申请 ID |
+| Body | `reviewer_suggested_hours` | number | 是 | 审核老师建议课时 |
+| Body | `comment` | string | 是 | 修改说明 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 申请 ID |
+| `status` | string | `pending_admin_final` |
+| `review_result` | string | `reviewer_modified_approved` |
+
+- 主要更新表：`hour_applications`, `hour_application_reviews`。
+
+- 状态变化：`pending_review` -> `pending_admin_final`，并记录审核结果 `reviewer_modified_approved`。
+
+- 校验规则：当前教师必须是被分配的审核老师；`reviewer_suggested_hours` 必须大于 0。
+
+### 4.17 审核老师驳回
+
+- 接口名：审核老师驳回
+
+- 描述：审核老师驳回课时申请，退回学生端，指导老师只在历史记录中可见。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/reviewer/hour-applications/{id}/reject`
+
+- 触发页面：R102 成果审核详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 课时申请 ID |
+| Body | `comment` | string | 是 | 驳回原因 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 申请 ID |
+| `status` | string | `reviewer_rejected` |
+
+- 主要更新表：`hour_applications`, `hour_application_reviews`。
+
+### 4.18 查询待最终确认课时申请
+
+- 接口名：查询待最终确认课时申请
+
+- 描述：管理员查看审核老师审核后等待最终确认的课时申请。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/hour-applications/pending-final`
+
+- 触发页面：A401 最终确认管理
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `page` | integer | 否 | 页码 |
+| Query | `page_size` | integer | 否 | 每页数量 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[HourApplicationSummary] | 待最终确认列表 |
+| `items[].id` | integer | 申请 ID |
+| `items[].applicant` | StudentSummary | 发起人信息 |
+| `items[].applicant_name` | string | 发起人姓名 |
+| `items[].status` | string | `pending_admin_final` |
+| `items[].review_result` | string | 审核老师结论 |
+
+- 主要数据来源：`hour_applications`, `hour_application_reviews`。
+
+### 4.19 获取最终确认详情
+
+- 接口名：获取最终确认详情
+
+- 描述：管理员查看审核老师审核结果并最终确认。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/hour-applications/{id}/final-review`
+
+- 触发页面：A402 最终确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 课时申请 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `application` | HourApplicationDetail | 申请信息 |
+| `applicant` | StudentSummary | 发起人信息 |
+| `reviewer_result` | ReviewRecord | 审核老师结论 |
+| `final_hours` | number/null | 当前最终课时 |
+| `reviews` | array[ReviewRecord] | 审核记录 |
+
+- 主要数据来源：`hour_applications`, `hour_application_reviews`。
+
+### 4.20 管理员最终确认课时
+
+- 接口名：管理员最终确认课时
+
+- 描述：管理员最终确认通过，生成课时到账记录。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/hour-applications/{id}/final-approve`
+
+- 触发页面：A401 最终确认管理；A402 最终确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 课时申请 ID |
+| Body | `final_hours` | number | 否 | 管理员最终确认课时；为空则使用审核老师建议 |
+| Body | `comment` | string | 否 | 最终确认意见 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 申请 ID |
+| `status` | string | `final_approved` |
+| `hour_award_record_id` | integer | 课时到账记录 ID |
+
+- 主要写入/更新表：`hour_applications`, `hour_application_reviews`, `hour_award_records`, `student_hour_transactions`。
+
+- 状态变化：`pending_admin_final` -> `final_approved`。
+
+- 校验规则：只能管理员操作；`final_hours` 为空时使用审核老师建议课时；确认后必须生成且只生成一条课时到账记录。
+
+### 4.21 管理员最终驳回课时
+
+- 接口名：管理员最终驳回课时
+
+- 描述：管理员最终驳回课时申请，学生可按规则发起申诉。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/hour-applications/{id}/final-reject`
+
+- 触发页面：A401 最终确认管理；A402 最终确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 课时申请 ID |
+| Body | `comment` | string | 是 | 最终驳回原因 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 申请 ID |
+| `status` | string | `final_rejected` |
+
+- 主要更新表：`hour_applications`, `hour_application_reviews`。
+
+- 状态变化：`pending_admin_final` -> `final_rejected`。
+
+- 校验规则：只能管理员操作；最终驳回后学生可按申诉模块发起申诉。
+
+## 5. 功能模块四：无成果补交与延期
+
+### 5.1 学生补交成果
+
+- 接口名：学生补交成果
+
+- 描述：无成果申请存在两次主指导老师确认：第一次是学生提交无成果申请后，主指导老师确认申请进入待补交成果阶段；第二次是学生补交成果后，主指导老师再次确认成果材料。本接口只表示学生补交成果材料，不表示指导老师确认。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/student/hour-applications/{id}/materials`
+
+- 触发页面：S503 补交成果
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 课时申请 ID |
+| Body | `attachment_ids` | array | 是 | 成果附件 ID |
+| Body | `attachment_ids[]` | integer | 是 | 成果附件 ID |
+| Body | `achievement_summary` | string | 否 | 成果说明 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 申请 ID |
+| `status` | string | `material_submitted` |
+
+- 主要更新表：`hour_applications`, `attachments`。
+
+### 5.2 查询待确认补交成果
+
+- 接口名：查询待确认补交成果
+
+- 描述：主指导老师查看学生补交后的成果列表。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/advisor/hour-applications/materials/pending`
+
+- 触发页面：T401 补交成果确认
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `page` | integer | 否 | 页码 |
+| Query | `page_size` | integer | 否 | 每页数量 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[HourApplicationSummary] | 待确认补交成果列表 |
+
+- 主要数据来源：`hour_applications`, `attachments`。
+
+### 5.3 获取补交成果详情
+
+- 接口名：获取补交成果详情
+
+- 描述：主指导老师查看补交成果详情。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/advisor/hour-applications/{id}/materials`
+
+- 触发页面：T402 补交成果确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 课时申请 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `application` | HourApplicationDetail | 申请信息 |
+| `attachments` | array[AttachmentSummary] | 补交成果附件 |
+
+- 主要数据来源：`hour_applications`, `attachments`。
+
+### 5.4 指导老师确认补交成果
+
+- 接口名：指导老师确认补交成果
+
+- 描述：主指导老师确认补交成果，通过后进入管理员分配审核老师环节。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/advisor/hour-applications/{id}/materials/approve`
+
+- 触发页面：T401 补交成果确认；T402 补交成果确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 课时申请 ID |
+| Body | `comment` | string | 否 | 确认意见 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 申请 ID |
+| `status` | string | `pending_assignment` |
+
+- 主要更新表：`hour_applications`, `hour_application_reviews`。
+
+### 5.5 指导老师驳回补交成果
+
+- 接口名：指导老师驳回补交成果
+
+- 描述：主指导老师驳回学生补交成果，学生可修改后重新提交。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/advisor/hour-applications/{id}/materials/reject`
+
+- 触发页面：T401 补交成果确认；T402 补交成果确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 课时申请 ID |
+| Body | `comment` | string | 是 | 驳回原因 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 申请 ID |
+| `status` | string | `advisor_rejected` |
+
+- 主要更新表：`hour_applications`, `hour_application_reviews`。
+
+### 5.6 学生提交延期申请
+
+- 接口名：学生提交延期申请
+
+- 简短描述：无成果申请待补交成果阶段，学生申请一次延期。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/student/hour-applications/{id}/extension-requests`
+
+- 触发页面：S504 延期申请
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 课时申请 ID |
+| Body | `requested_due_at` | datetime | 是 | 申请延期后的成果提交时间 |
+| Body | `reason` | string | 是 | 延期原因 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `extension_request_id` | integer | 延期申请 ID |
+| `applicant` | StudentSummary | 发起人信息 |
+| `applicant_name` | string | 发起人姓名 |
+| `status` | string | `extension_requested` 或 `extension_admin_review` |
+
+- 主要写入/更新表：`extension_requests`, `hour_applications`。
+
+- 分流规则：延期后的截止时间相对原截止时间超过系统配置 `extension_special_threshold_days` 时进入管理员审核，默认阈值为 183 天；其余进入主指导老师审核。毕业状态和学校其他特殊限制后续可继续接入同一分流点。
+
+### 5.7 查询指导老师待确认延期
+
+- 接口名：查询指导老师待确认延期
+
+- 描述：主指导老师查看普通延期申请。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/advisor/extension-requests/pending`
+
+- 触发页面：T501 延期申请确认
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `page` | integer | 否 | 页码 |
+| Query | `page_size` | integer | 否 | 每页数量 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[ExtensionRequest] | 延期申请列表 |
+
+- 主要数据来源：`extension_requests`, `hour_applications`。
+
+### 5.8 获取延期申请详情
+
+- 接口名：获取延期申请详情
+
+- 描述：指导老师或管理员查看延期申请详情。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/extension-requests/{id}`
+
+- 触发页面：T502 延期确认详情；A702 特殊延期审核详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 延期申请 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `extension_request` | ExtensionRequest | 延期申请信息 |
+| `application` | HourApplicationSummary | 原课时申请信息 |
+
+- 主要数据来源：`extension_requests`, `hour_applications`。
+
+### 5.9 指导老师确认延期
+
+- 接口名：指导老师确认延期
+
+- 描述：主指导老师确认普通延期申请。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/advisor/extension-requests/{id}/approve`
+
+- 触发页面：T501 延期申请确认；T502 延期确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 延期申请 ID |
+| Body | `comment` | string | 否 | 确认意见 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 延期申请 ID |
+| `status` | string | `extension_approved` |
+
+- 主要更新表：`extension_requests`, `hour_applications`, `hour_application_reviews`。
+
+### 5.10 指导老师驳回延期
+
+- 接口名：指导老师驳回延期
+
+- 描述：主指导老师驳回普通延期申请。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/advisor/extension-requests/{id}/reject`
+
+- 触发页面：T501 延期申请确认；T502 延期确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 延期申请 ID |
+| Body | `comment` | string | 是 | 驳回原因 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 延期申请 ID |
+| `status` | string | `extension_rejected` |
+
+- 主要更新表：`extension_requests`, `hour_application_reviews`。
+
+### 5.11 查询管理员待处理特殊延期
+
+- 接口名：查询管理员待处理特殊延期
+
+- 描述：管理员查看触发特殊条件的延期申请。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/extension-requests/pending-special`
+
+- 触发页面：A701 延期申请管理
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `page` | integer | 否 | 页码 |
+| Query | `page_size` | integer | 否 | 每页数量 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[ExtensionRequest] | 特殊延期列表 |
+
+- 主要数据来源：`extension_requests`, `hour_applications`。
+
+### 5.12 管理员确认特殊延期
+
+- 接口名：管理员确认特殊延期
+
+- 描述：管理员确认特殊延期申请。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/extension-requests/{id}/approve`
+
+- 触发页面：A701 延期申请管理；A702 特殊延期审核详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 延期申请 ID |
+| Body | `comment` | string | 否 | 确认意见 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 延期申请 ID |
+| `status` | string | `extension_approved` |
+
+- 主要更新表：`extension_requests`, `hour_applications`, `operation_logs`。
+
+### 5.13 管理员驳回特殊延期
+
+- 接口名：管理员驳回特殊延期
+
+- 简短描述：管理员驳回特殊延期申请。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/extension-requests/{id}/reject`
+
+- 触发页面：A701 延期申请管理；A702 特殊延期审核详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 延期申请 ID |
+| Body | `comment` | string | 是 | 驳回原因 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 延期申请 ID |
+| `status` | string | `extension_rejected` |
+
+- 主要更新表：`extension_requests`, `operation_logs`。
+
+### 5.14 管理员查询全部延期申请
+
+- 接口名：管理员查询全部延期申请
+- 描述：管理员查看普通延期和特殊延期的完整记录。
+- 接口方法：`GET`
+- 接口相对路径：`/admin/extension-requests`
+- 触发页面：A701 延期申请管理
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[ExtensionRequest] | 全部延期申请，包含待处理和已处理记录 |
+
+- 主要数据来源：`extension_requests`, `hour_applications`。
+
+### 5.15 管理员终止并关闭无法继续的申请
+
+- 接口名：管理员终止并关闭无法继续的无成果申请
+- 描述：学生临近或已经毕业且流程不再具备继续处理条件时，管理员终止并关闭申请。
+- 接口方法：`POST`
+- 接口相对路径：`/admin/hour-applications/{id}/close`
+- 触发页面：A701 延期申请管理；A901 已处理记录
+
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 课时申请 ID |
+| Body | `reason` | string | 是 | 终止并关闭原因 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 课时申请 ID |
+| `status` | string | `closed` |
+
+- 校验规则：
+  - 仅管理员可操作。
+  - 仅允许关闭无成果申请的待补交、延期中、延期驳回或成果逾期状态。
+  - 已最终到账、已关闭及其他不适用状态返回 `409`。
+  - 若存在尚未处理的延期申请，同时将延期记录关闭并保留原因。
+
+- 主要更新表：`hour_applications`, `extension_requests`, `hour_application_reviews`, `operation_logs`。
+
+## 6. 功能模块五：任务发布、报名、筛选与成果提交
+
+### 6.1 管理员保存任务草稿
+
+- 接口名：管理员保存任务草稿
+
+- 描述：管理员保存学院任务草稿。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/tasks/drafts`
+
+- 触发页面：A202 发布任务
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Body | `title` | string | 是 | 任务名称 |
+| Body | `description` | string | 是 | 任务说明 |
+| Body | `task_type_id` | integer | 是 | 任务类别 |
+| Body | `advisor_teacher_id` | integer | 是 | 指导老师 ID |
+| Body | `result_requirement` | string | 是 | 成果要求 |
+| Body | `registration_deadline` | datetime | 是 | 报名截止时间 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 任务 ID |
+| `status` | string | `draft` |
+
+- 主要写入表：`college_tasks`。
+
+### 6.2 管理员发布任务
+
+- 接口名：管理员发布任务
+
+- 描述：管理员直接发布任务，发布后学生可在任务广场报名。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/tasks`
+
+- 触发页面：A202 发布任务
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Body | `title` | string | 是 | 任务名称 |
+| Body | `description` | string | 是 | 任务说明 |
+| Body | `task_type_id` | integer | 是 | 任务类别 |
+| Body | `advisor_teacher_id` | integer | 是 | 指导老师 ID |
+| Body | `result_requirement` | string | 是 | 成果要求 |
+| Body | `registration_deadline` | datetime | 是 | 报名截止时间 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 任务 ID |
+| `status` | string | `published` |
+
+- 主要写入表：`college_tasks`。
+
+### 6.3 指导老师保存任务草稿
+
+- 接口名：指导老师保存任务草稿
+
+- 描述：指导老师保存任务发布草稿。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/advisor/tasks/drafts`
+
+- 触发页面：T202 发布任务
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Body | `title` | string | 是 | 任务名称 |
+| Body | `description` | string | 是 | 任务说明 |
+| Body | `task_type_id` | integer | 是 | 任务类别 |
+| Body | `result_requirement` | string | 是 | 成果要求 |
+| Body | `registration_deadline` | datetime | 是 | 报名截止时间 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 任务 ID |
+| `status` | string | `draft` |
+
+- 主要写入表：`college_tasks`。
+
+### 6.4 指导老师提交任务发布申请
+
+- 接口名：指导老师提交任务发布申请
+
+- 描述：指导老师提交任务发布申请，等待管理员确认后正式发布。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/advisor/tasks`
+
+- 触发页面：T202 发布任务
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Body | `title` | string | 是 | 任务名称 |
+| Body | `description` | string | 是 | 任务说明 |
+| Body | `task_type_id` | integer | 是 | 任务类别 |
+| Body | `result_requirement` | string | 是 | 成果要求 |
+| Body | `registration_deadline` | datetime | 是 | 报名截止时间 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 任务 ID |
+| `status` | string | `pending_publish_review` |
+
+- 主要写入表：`college_tasks`。
+
+### 6.5 查询学生任务广场
+
+- 接口名：查询学生任务广场
+
+- 描述：学生查看已发布且可报名的任务。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/student/tasks`
+
+- 触发页面：S201 任务广场
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `keyword` | string | 否 | 关键词 |
+| Query | `task_type_id` | integer | 否 | 类别筛选 |
+| Query | `page` | integer | 否 | 页码 |
+| Query | `page_size` | integer | 否 | 每页数量 |
+
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[CollegeTaskSummary] | 可报名任务列表 |
+
+- 主要数据来源：`college_tasks`, `task_types`。
+
+### 6.6 获取学生任务详情
+
+- 接口名：获取学生任务详情
+
+- 描述：学生查看任务详情和自己的报名状态。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/student/tasks/{id}`
+
+- 触发页面：S202 广场任务详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 任务 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `task` | CollegeTaskDetail | 任务信息 |
+| `registration` | TaskRegistration/null | 当前学生报名记录 |
+| `can_register` | boolean | 是否可报名 |
+
+- 主要数据来源：`college_tasks`, `task_registrations`。
+
+### 6.7 学生报名任务
+
+- 接口名：学生报名任务
+
+- 描述：学生个人报名任务。V1 不支持团队报名。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/student/tasks/{id}/registrations`
+
+- 触发页面：S202 广场任务详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 任务 ID |
+| Body | `remark` | string | 否 | 报名说明 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `registration_id` | integer | 报名记录 ID |
+| `status` | string | `registered` |
+
+- 主要写入表：`task_registrations`。
+
+### 6.8 查询我的任务
+
+- 接口名：查询我的任务
+
+- 描述：学生查看自己报名或参与的任务。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/student/my-tasks`
+
+- 触发页面：S101 我的任务
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `status` | string | 否 | 报名或任务状态 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[CollegeTaskSummary] | 我的任务列表 |
+
+- 主要数据来源：`task_registrations`, `task_members`, `college_tasks`。
+
+### 6.9 获取报名结果
+
+- 接口名：获取报名结果
+
+- 描述：学生查看自己的报名是否被选中。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/student/task-registrations/{id}`
+
+- 触发页面：S103 报名结果
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 报名记录 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `registration` | TaskRegistration | 报名记录 |
+| `status` | string | `registered` / `selected` / `not_selected` |
+
+- 主要数据来源：`task_registrations`。
+
+### 6.10 查询任务报名学生
+
+- 接口名：查询任务报名学生
+
+- 描述：指导老师查看任务报名学生。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/advisor/tasks/{id}/registrations`
+
+- 触发页面：T103 报名学生列表
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 任务 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[TaskRegistration] | 报名学生列表 |
+
+- 主要数据来源：`task_registrations`, `students`。
+
+### 6.11 指导老师筛选报名学生
+
+- 接口名：指导老师筛选报名学生
+
+- 描述：指导老师从个人报名学生中筛选最终参与成员。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/advisor/tasks/{id}/registrations/select`
+
+- 触发页面：T104 报名学生筛选
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 任务 ID |
+| Body | `selected_registration_ids` | array | 是 | 被选中的报名记录 ID |
+| Body | `selected_registration_ids[]` | integer | 是 | 被选中的报名记录 ID |
+| Body | `not_selected_registration_ids` | array | 否 | 未选中的报名记录 ID |
+| Body | `not_selected_registration_ids[]` | integer | 否 | 未选中的报名记录 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `selected_count` | integer | 选中数量 |
+| `task_status` | string | `leader_pending`，表示成员筛选完成、等待指定队长 |
+
+- 主要写入/更新表：`task_registrations`, `task_members`。
+- 状态变化：任务进入 `leader_pending`；本接口不指定队长，所有新建 `task_members.is_leader` 均为 `false`。
+
+### 6.12 查询已选中任务成员
+
+- 接口名：查询已选中任务成员
+
+- 描述：指导老师指定队长前查看已选中学生。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/advisor/tasks/{id}/selected-members`
+
+- 触发页面：T105 指定队长
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 任务 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[TaskMember] | 已选中学生 |
+
+- 主要数据来源：`task_members`, `students`。
+
+### 6.13 指导老师指定队长
+
+- 接口名：指导老师指定队长
+
+- 描述：指导老师在选中学生中指定一名队长。即使仅有一名最终成员，也必须由指导老师确认指定。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/advisor/tasks/{id}/leader`
+
+- 触发页面：T105 指定队长
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 任务 ID |
+| Body | `leader_student_id` | integer | 是 | 队长学生 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `task_id` | integer | 任务 ID |
+| `leader_student_id` | integer | 队长学生 ID |
+| `leader_assigned` | boolean | 是否已指定队长 |
+| `task_status` | string | `task_in_progress` |
+
+- 主要更新表：`task_members`, `college_tasks`。
+- 校验规则：任务必须处于 `leader_pending`，队长必须来自最终参与成员；成功后任务进入 `task_in_progress`。
+
+### 6.14 学生查看团队信息
+
+- 接口名：学生查看团队信息
+
+- 描述：被选中学生查看团队成员和队长。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/student/tasks/{id}/team`
+
+- 触发页面：S104 团队信息
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 任务 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `task` | CollegeTaskDetail | 任务信息 |
+| `members` | array[TaskMember] | 团队成员 |
+| `leader_student_id` | integer | 队长 ID |
+| `can_submit_result` | boolean | 当前学生是否可提交成果 |
+
+- 主要数据来源：`college_tasks`, `task_members`。
+
+### 6.15 队长提交任务成果
+
+- 接口名：队长提交任务成果
+
+- 描述：队长代表任务成员提交成果，后续进入课时认定流程。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/student/tasks/{id}/result-submissions`
+
+- 触发页面：S105 上传成果
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 任务 ID |
+| Body | `summary` | string | 是 | 成果说明 |
+| Body | `attachment_ids` | array | 是 | 成果附件 ID |
+| Body | `attachment_ids[]` | integer | 是 | 成果附件 ID |
+| Body | `attachment_ids[]` | integer | 是 | 成果附件 ID |
+| Body | `requested_hours` | number | 是 | 申请课时 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `submission_id` | integer | 成果提交 ID |
+| `hour_application_id` | integer | 生成的课时申请 ID |
+| `status` | string | `material_submitted` |
+
+- 主要写入表：`task_result_submissions`, `attachments`, `hour_applications`, `hour_application_members`。
+
+### 6.16 指导老师查询成果详情
+
+- 接口名：指导老师查询成果详情
+
+- 描述：指导老师查看队长提交的任务成果。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/advisor/task-result-submissions/{id}`
+
+- 触发页面：T106 学生成果详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 成果提交 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `submission` | TaskResultSubmission | 成果提交信息 |
+| `task` | CollegeTaskDetail | 任务信息 |
+| `attachments` | array[AttachmentSummary] | 成果附件 |
+
+- 主要数据来源：`task_result_submissions`, `college_tasks`, `attachments`。
+
+### 6.17 指导老师确认任务成果
+
+- 接口名：指导老师确认任务成果
+
+- 描述：指导老师确认任务成果，通过后进入管理员分配审核老师环节。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/advisor/task-result-submissions/{id}/approve`
+
+- 触发页面：T107 成果确认
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 成果提交 ID |
+| Body | `comment` | string | 否 | 确认意见 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `hour_application_id` | integer | 课时申请 ID |
+| `status` | string | `pending_assignment` |
+
+- 主要更新表：`task_result_submissions`, `hour_applications`, `hour_application_reviews`。
+
+### 6.18 指导老师驳回任务成果
+
+- 接口名：指导老师驳回任务成果
+
+- 描述：指导老师驳回队长提交的任务成果，队长可修改后重新提交。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/advisor/task-result-submissions/{id}/reject`
+
+- 触发页面：T107 成果确认
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 成果提交 ID |
+| Body | `comment` | string | 是 | 驳回原因 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `submission_id` | integer | 成果提交 ID |
+| `status` | string | `advisor_rejected` |
+
+- 主要更新表：`task_result_submissions`, `hour_application_reviews`。
+
+### 6.19 查询管理员任务列表
+
+- 接口名：查询管理员任务列表
+
+- 描述：管理员查看自己发布或系统中的任务。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/tasks`
+
+- 触发页面：A201 任务发布管理
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `status` | string | 否 | 状态筛选 |
+| Query | `page` | integer | 否 | 页码 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[CollegeTaskSummary] | 任务列表 |
+
+主要数据来源：`college_tasks`。
+
+### 6.20 管理员获取任务详情
+
+- 接口名：管理员获取任务详情
+
+- 简短描述：管理员查看任务详情和报名信息。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/tasks/{id}`
+
+- 触发页面：A203 任务详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 任务 ID |
+
+接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `task` | CollegeTaskDetail | 任务信息 |
+| `registrations` | array[TaskRegistration] | 报名记录 |
+| `members` | array[TaskMember] | 最终成员 |
+| `members[].student_id` | integer | 成员学生 ID |
+| `members[].student_name` | string | 成员姓名 |
+| `members[].is_leader` | boolean | 是否队长 |
+
+- 主要数据来源：`college_tasks`, `task_registrations`, `task_members`。
+
+### 6.21 查询指导老师发布任务列表
+
+- 接口名：查询指导老师发布任务列表
+
+- 描述：指导老师查看自己发布或指导的任务。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/advisor/tasks`
+
+- 触发页面：T201 发布任务管理
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `status` | string | 否 | 状态筛选 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[CollegeTaskSummary] | 任务列表 |
+
+- 主要数据来源：`college_tasks`。
+
+### 6.22 指导老师获取任务详情
+
+- 接口名：指导老师获取任务详情
+
+- 描述：指导老师以教师身份查看自己发布或指导的任务详情，以及管理员对任务发布申请的确认结果。管理员查看任务详情使用 `/admin/tasks/{id}`，两者是不同角色接口。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/advisor/tasks/{id}`
+
+- 触发页面：T102 任务详情；T203 发布任务详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 任务 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `task` | CollegeTaskDetail | 任务详情 |
+| `admin_review_comment` | string/null | 管理员确认意见 |
+
+- 主要数据来源：`college_tasks`。
+
+### 6.23 查询待确认任务发布申请
+
+- 接口名：查询待确认任务发布申请
+
+- 简短描述：管理员查看指导老师提交的任务发布申请。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/task-publish-requests`
+
+- 触发页面：A101 任务发布确认
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `page` | integer | 否 | 页码 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[CollegeTaskSummary] | 待确认发布任务列表 |
+
+- 主要数据来源：`college_tasks`。
+
+### 6.24 获取任务发布申请详情
+
+- 接口名：获取任务发布申请详情
+
+- 描述：管理员查看指导老师任务发布申请详情。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/task-publish-requests/{id}`
+
+- 触发页面：A102 发布确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 任务 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `task` | CollegeTaskDetail | 任务详情 |
+| `publisher` | TeacherSummary | 发布教师 |
+
+- 主要数据来源：`college_tasks`, `teachers`。
+
+### 6.25 管理员确认发布任务
+
+- 接口名：管理员确认发布任务
+
+- 描述：管理员确认指导老师发布的任务，然后正式进入学生任务广场。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/task-publish-requests/{id}/approve`
+
+- 触发页面：A101 任务发布确认；A102 发布确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 任务 ID |
+| Body | `comment` | string | 否 | 确认意见 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 任务 ID |
+| `status` | string | `published` |
+
+- 主要更新表：`college_tasks`, `operation_logs`。
+
+### 6.26 管理员驳回发布任务
+
+- 接口名：管理员驳回发布任务
+
+- 描述：管理员驳回指导老师提交的任务发布申请。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/task-publish-requests/{id}/reject`
+
+- 触发页面：A101 任务发布确认；A102 发布确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 任务 ID |
+| Body | `comment` | string | 是 | 驳回原因 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 任务 ID |
+| `status` | string | `publish_rejected` |
+
+- 主要更新表：`college_tasks`, `operation_logs`。
+
+## 7. 功能模块六：学分兑换
+
+### 7.1 查询可兑换课时
+
+- 接口名：查询可兑换课时
+
+- 描述：队长查看已最终确认到账且未兑换的课时。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/student/credit-exchanges/available-hour-awards`
+
+- 触发页面：S602 可兑换任务列表
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `page` | integer | 否 | 页码 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[HourAwardSummary] | 可兑换课时列表 |
+
+- 主要数据来源：`hour_award_records`, `hour_application_members`, `credit_conversion_rules`。
+
+### 7.2 获取兑换申请表单数据
+
+- 接口名：获取兑换申请表单数据
+
+- 描述：队长发起兑换前获取团队成员和可分配课时信息。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/student/credit-exchanges/form-data`
+
+- 触发页面：S603 发起兑换申请
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `hour_award_record_id` | integer | 是 | 课时到账记录 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `hour_award` | HourAwardSummary | 课时到账信息 |
+| `members` | array[ApplicationMember] | 可分配成员 |
+| `conversion_rule` | ConversionRuleSummary | 课时兑换学分规则摘要 |
+| `suggested_total_credits` | number | 系统按总课时计算出的建议总学分 |
+| `can_submit` | boolean | 是否可提交 |
+
+- 主要数据来源：`hour_award_records`, `hour_application_members`。
+
+### 7.3 保存兑换申请草稿
+
+- 接口名：保存兑换申请草稿
+
+- 描述：队长保存学分兑换申请草稿。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/student/credit-exchanges/drafts`
+
+- 触发页面：S603 发起兑换申请
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Body | `hour_award_record_id` | integer | 是 | 课时到账记录 ID |
+| Body | `attachment_ids` | array | 否 | 对内认定附件 ID |
+| Body | `attachment_ids[]` | integer | 否 | 对内认定附件 ID |
+| Body | `allocations` | array | 否 | 分配明细 |
+| Body | `allocations[].student_id` | integer | 条件必填 | 提供分配行时必填，且必须是原申请有效成员 |
+| Body | `allocations[].hours` | number/null | 否 | 草稿可为空；填写时必须大于等于 0 |
+| Body | `confirm_calculated_credits` | boolean | 否 | 是否确认系统按课时比例折算出的学分；草稿阶段可为空 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 兑换申请 ID |
+| `status` | string | `draft` |
+| `calculated_allocations` | array[CreditAllocation] | 存在当前生效规则时返回；无生效规则时不返回该字段 |
+
+- 主要写入表：`credit_exchange_applications`, `credit_exchange_allocations`, `attachments`。
+- 草稿规则：
+  - `hour_award_record_id` 必填，必须先选择课时到账记录。
+  - 始终允许保存草稿，不因当前没有生效兑换规则而失败。
+  - 附件、分配表、确认字段均可为空。
+  - 已填写课时按当前规则试算；未填写课时不计算学分，学分保持空值；填写 `0` 返回 `0` 学分。
+  - 部分成员尚未填写时允许保存；已填写课时合计不得超过本次兑换总课时。
+  - 当全部有效成员均已填写时，课时合计必须等于本次兑换总课时。
+
+### 7.4 提交兑换申请
+
+- 接口名：提交兑换申请
+
+- 简短描述：队长提交学分兑换申请，进入指导老师确认。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/student/credit-exchanges`
+
+- 触发页面：S603 发起兑换申请
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Body | `hour_award_record_id` | integer | 是 | 课时到账记录 ID |
+| Body | `attachment_ids` | array | 是 | 对内认定附件 ID |
+| Body | `attachment_ids[]` | integer | 是 | 对内认定附件 ID |
+| Body | `allocations` | array | 是 | 成员分配明细 |
+| Body | `allocations[].student_id` | integer | 是 | 成员学生 ID |
+| Body | `allocations[].hours` | number | 是 | 分配课时，允许为 0，不允许负数或空值 |
+| Body | `confirm_calculated_credits` | boolean | 是 | 队长确认系统按课时比例折算出的学分 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 兑换申请 ID |
+| `status` | string | `submitted` |
+| `calculated_allocations` | array[CreditAllocation] | 系统最终计算并记录的成员学分明细 |
+
+- 主要写入表：`credit_exchange_applications`, `credit_exchange_allocations`, `attachments`。
+
+- 状态变化：新建兑换申请 -> `submitted`。
+
+- 校验规则：
+  - `hour_award_record_id` 必须是已到账且未完全兑换的课时记录。
+  - `allocations[].student_id` 必须来自原课时申请成员。
+  - 分配表必须显式包含原课时申请的全部有效成员，每名成员只能出现一次；分配为 0 的成员也必须提交该行。
+  - 每名成员课时必须大于等于 0，不能为负数或空值，且至少一名成员课时大于 0。
+  - `allocations[].hours` 合计必须等于本次兑换总课时，且不能超过可兑换课时。
+  - 本次兑换总课时不得超过当前生效结构化规则的 `max_single_exchange_hours`。
+  - 系统不校验最小单次兑换课时。
+  - 必须存在当前生效结构化兑换规则，否则不能提交兑换申请。
+  - 前端不提交成员学分，后端按 `ConversionRuleSummary` 计算 `allocated_credits`，队长通过 `confirm_calculated_credits=true` 确认。
+
+### 7.5 查询我的兑换记录
+
+- 接口名：查询我的兑换记录
+
+- 描述：学生查看自己发起或参与的兑换记录。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/student/credit-exchanges`
+
+- 触发页面：S604 我的兑换记录
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `status` | string | 否 | 状态筛选 |
+| Query | `page` | integer | 否 | 页码 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[CreditExchangeSummary] | 兑换记录列表 |
+
+- 主要数据来源：`credit_exchange_applications`, `credit_exchange_allocations`。
+
+### 7.6 获取兑换详情
+
+- 接口名：获取兑换详情
+
+- 描述：学生查看兑换申请详情、分配明细和审核结果。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/student/credit-exchanges/{id}`
+
+- 触发页面：S605 兑换详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 兑换申请 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `exchange` | CreditExchangeDetail | 兑换申请 |
+| `allocations` | array[CreditAllocation] | 分配明细 |
+| `attachments` | array[AttachmentSummary] | 附件 |
+| `actions` | ActionFlags | 可操作项 |
+
+- 主要数据来源：`credit_exchange_applications`, `credit_exchange_allocations`, `attachments`, `student_credit_records`。
+
+### 7.7 查询指导老师待确认兑换
+
+- 接口名：查询指导老师待确认兑换
+
+- 描述：指导老师查看待确认的学分兑换申请。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/advisor/credit-exchanges/pending`
+
+- 触发页面：T601 学分兑换确认
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `page` | integer | 否 | 页码 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[CreditExchangeSummary] | 待确认兑换列表 |
+
+- 主要数据来源：`credit_exchange_applications`。
+
+### 7.8 指导老师获取兑换详情
+
+- 接口名：指导老师获取兑换详情
+
+- 描述：指导老师查看兑换申请和成员分配明细。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/advisor/credit-exchanges/{id}`
+
+- 触发页面：T602 兑换确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 兑换申请 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `exchange` | CreditExchangeDetail | 兑换申请 |
+| `allocations` | array[CreditAllocation] | 分配明细 |
+| `attachments` | array[AttachmentSummary] | 附件 |
+
+- 主要数据来源：`credit_exchange_applications`, `credit_exchange_allocations`, `attachments`。
+
+### 7.9 指导老师确认兑换
+
+- 接口名：指导老师确认兑换
+
+- 描述：指导老师确认兑换申请，进入管理员最终确认。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/advisor/credit-exchanges/{id}/approve`
+
+- 触发页面：T601 学分兑换确认；T602 兑换确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 兑换申请 ID |
+| Body | `comment` | string | 否 | 确认意见 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 兑换申请 ID |
+| `status` | string | `advisor_approved` |
+
+- 主要更新表：`credit_exchange_applications`。
+
+### 7.10 指导老师驳回兑换
+
+- 接口名：指导老师驳回兑换
+
+- 描述：指导老师驳回兑换申请，学生可修改后重新提交。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/advisor/credit-exchanges/{id}/reject`
+
+- 触发页面：T601 学分兑换确认；T602 兑换确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 兑换申请 ID |
+| Body | `comment` | string | 是 | 驳回原因 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 兑换申请 ID |
+| `status` | string | `advisor_rejected` |
+
+- 主要更新表：`credit_exchange_applications`。
+
+### 7.11 查询管理员待最终确认兑换
+
+- 接口名：查询管理员待最终确认兑换
+
+- 描述：管理员查看指导老师确认后的兑换申请。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/credit-exchanges/pending-final`
+
+- 触发页面：A501 学分兑换管理
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `page` | integer | 否 | 页码 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[CreditExchangeSummary] | 待最终确认兑换列表 |
+
+- 主要数据来源：`credit_exchange_applications`。
+
+### 7.12 管理员获取兑换最终确认详情
+
+- 接口名：管理员获取兑换最终确认详情
+
+- 描述：管理员查看兑换申请并最终确认。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/credit-exchanges/{id}`
+
+- 触发页面：A502 兑换最终确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 兑换申请 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `exchange` | CreditExchangeDetail | 兑换申请 |
+| `allocations` | array[CreditAllocation] | 分配明细 |
+| `attachments` | array[AttachmentSummary] | 附件 |
+
+- 主要数据来源：`credit_exchange_applications`, `credit_exchange_allocations`, `attachments`。
+
+### 7.13 管理员最终确认兑换
+
+- 接口名：管理员最终确认兑换
+
+- 描述：管理员最终确认兑换，通过后生成学分到账记录。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/credit-exchanges/{id}/final-approve`
+
+- 触发页面：A501 学分兑换管理；A502 兑换最终确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 兑换申请 ID |
+| Body | `comment` | string | 否 | 最终确认意见 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 兑换申请 ID |
+| `status` | string | `final_approved` |
+
+- 主要写入/更新表：`credit_exchange_applications`, `credit_exchange_records`, `student_credit_records`, `hour_award_records`。
+
+### 7.14 管理员最终驳回兑换
+
+- 接口名：管理员最终驳回兑换
+
+- 描述：管理员最终驳回兑换申请，学生可按规则发起申诉。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/credit-exchanges/{id}/final-reject`
+
+- 触发页面：A501 学分兑换管理；A502 兑换最终确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 兑换申请 ID |
+| Body | `comment` | string | 是 | 驳回原因 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 兑换申请 ID |
+| `status` | string | `final_rejected` |
+
+- 主要更新表：`credit_exchange_applications`。
+
+### 7.15 管理员批量最终确认兑换
+
+- 接口名：管理员批量最终确认兑换
+- 描述：逐条处理多笔待最终确认兑换；不同兑换申请相互独立，某一笔失败不回滚已经成功的其他申请。
+- 接口方法：`POST`
+- 接口相对路径：`/admin/credit-exchanges/batch-approve`
+- 权限：仅管理员。
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Body | `exchange_ids` | array[integer] | 是 | 待最终确认的兑换申请 ID 列表；兼容字段名 `ids` |
+| Body | `comment` | string | 否 | 批量确认意见 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array | 每笔处理结果 |
+| `items[].id` | integer | 兑换申请 ID |
+| `items[].success` | boolean | 本笔是否成功 |
+| `items[].status` | string/null | 成功时为 `final_approved` |
+| `items[].credit_exchange_record_id` | integer/null | 成功时生成的兑换记录 ID |
+| `items[].error_code` | integer/null | 失败时的业务错误码 |
+| `items[].error_message` | string/null | 失败原因 |
+| `success_count` | integer | 成功数量 |
+| `failed_count` | integer | 失败数量 |
+
+- 一致性规则：每一笔申请内部必须同时完成申请状态、课时兑换标记、兑换记录和成员学分记录；单笔失败只回滚该笔。
+- 主要写入/更新表：`credit_exchange_applications`, `hour_award_records`, `credit_exchange_records`, `student_credit_records`, `operation_logs`。
+
+## 8. 功能模块七：申诉
+
+### 8.1 获取可申诉对象详情
+
+- 接口名：获取可申诉对象详情
+
+- 描述：学生发起申诉前获取原业务对象信息，并判断是否可申诉。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/student/appealable-targets/{target_type}/{target_id}`
+
+- 触发页面：S701 发起申诉（可由 S502 申请详情、S605 兑换详情跳转进入）
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `target_type` | string | 是 | `hour_application` / `credit_exchange` |
+| Path | `target_id` | integer | 是 | 被申诉对象 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `target` | HourApplicationSummary / CreditExchangeSummary | 被申诉对象信息 |
+| `can_appeal` | boolean | 是否可申诉 |
+| `reason` | string/null | 不可申诉原因 |
+
+- 主要数据来源：`hour_applications`, `credit_exchange_applications`, `appeals`。
+- 返回规则：业务对象存在且属于当前学生时，即使状态不可申诉或已经申诉过，也返回 HTTP `200`，通过 `can_appeal=false` 和 `reason` 告知前端禁用申诉按钮；绕过前端重复调用提交申诉接口仍返回 HTTP `409`。
+
+### 8.2 学生提交申诉
+
+- 接口名：学生提交申诉
+
+- 简短描述：学生对可申诉对象提交申诉，同一业务对象只能申诉一次。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/student/appeals`
+
+- 触发页面：S701 发起申诉
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Body | `target_type` | string | 是 | `hour_application` / `credit_exchange` |
+| Body | `target_id` | integer | 是 | 被申诉对象 ID |
+| Body | `reason` | string | 是 | 申诉理由 |
+| Body | `attachment_ids` | array | 是 | 证明附件 ID |
+| Body | `attachment_ids[]` | integer | 是 | 证明附件 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 申诉 ID |
+| `status` | string | `pending_admin_review` |
+
+- 主要写入/更新表：`appeals`, `attachments`, 原业务表。
+
+### 8.3 查询我的申诉
+
+- 接口名：查询我的申诉
+
+- 描述：学生查看自己提交的申诉列表。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/student/appeals`
+
+- 触发页面：S702 我的申诉
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `status` | string | 否 | 状态筛选 |
+| Query | `page` | integer | 否 | 页码 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[AppealSummary] | 申诉列表 |
+
+- 主要数据来源：`appeals`。
+
+### 8.4 获取学生申诉详情
+
+- 接口名：获取学生申诉详情
+
+- 描述：学生查看申诉详情、管理员处理意见和原业务状态。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/student/appeals/{id}`
+
+- 触发页面：S703 申诉详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 申诉 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `appeal` | AppealSummary | 申诉信息 |
+| `target` | HourApplicationSummary / CreditExchangeSummary | 原业务对象 |
+| `attachments` | array[AttachmentSummary] | 证明附件 |
+
+- 主要数据来源：`appeals`, 原业务表, `attachments`。
+
+### 8.5 查询管理员待处理申诉
+
+- 接口名：查询管理员待处理申诉
+
+- 描述：管理员查看学生提交的申诉。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/appeals`
+
+- 触发页面：A601 申诉处理
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `status` | string | 否 | 状态筛选 |
+| Query | `page` | integer | 否 | 页码 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[AppealSummary] | 申诉列表 |
+
+- 主要数据来源：`appeals`。
+
+### 8.6 管理员获取申诉详情
+
+- 接口名：管理员获取申诉详情
+
+- 描述：管理员查看申诉材料和原业务信息。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/appeals/{id}`
+
+- 触发页面：A602 申诉处理详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 申诉 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `appeal` | AppealSummary | 申诉信息 |
+| `target` | HourApplicationSummary / CreditExchangeSummary | 原业务对象 |
+| `attachments` | array[AttachmentSummary] | 证明附件 |
+
+- 主要数据来源：`appeals`, 原业务表, `attachments`。
+
+### 8.7 管理员申诉通过
+
+- 接口名：管理员申诉通过
+
+- 描述：管理员认可学生申诉，原业务重新打开，并按原业务流程回到指导老师再次确认环节；申诉通过不直接进入管理员分配审核老师。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/appeals/{id}/approve`
+
+- 触发页面：A601 申诉处理；A602 申诉处理详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 申诉 ID |
+| Body | `admin_advice` | string | 是 | 管理员认定意见/建议 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 申诉 ID |
+| `status` | string | `appeal_accepted` |
+| `next_step` | string | `pending_advisor_reconfirm` |
+| `target_status` | string | 原业务回到待指导老师确认状态；课时申请通常为 `submitted`，任务成果通常为 `material_submitted`，学分兑换通常为 `submitted` |
+
+- 主要更新表：`appeals`, 原业务表, `operation_logs`。
+
+- 状态变化：
+  - `appeals.status`: `pending_admin_review` -> `appeal_accepted`
+  - 原业务：从 `appealed` 或申诉关联状态回到待指导老师再次确认状态
+
+- 校验规则：同一业务对象只能申诉一次；管理员必须填写 `admin_advice`；申诉通过后不得直接分配审核老师，必须先由指导老师再次确认。
+
+### 8.8 管理员申诉驳回
+
+- 接口名：管理员申诉驳回
+
+- 描述：管理员驳回申诉，原结果维持，申诉入口关闭。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/appeals/{id}/reject`
+
+- 触发页面：A601 申诉处理；A602 申诉处理详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 申诉 ID |
+| Body | `admin_advice` | string | 是 | 驳回依据 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 申诉 ID |
+| `status` | string | `appeal_rejected` |
+
+- 主要更新表：`appeals`, `operation_logs`。
+
+### 8.9 查询申诉后待指导老师再次确认列表
+
+- 接口名：查询申诉后待指导老师再次确认列表
+
+- 描述：指导老师查看申诉通过后，需要自己再次确认的原业务。该接口承接“管理员申诉通过 -> 指导老师再次确认”环节。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/advisor/appeals/reopened/pending-confirmation`
+
+- 触发页面：T301 课时申请确认；T401 补交成果确认；T601 学分兑换确认（归入待确认事项）
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `page` | integer | 否 | 页码 |
+| Query | `page_size` | integer | 否 | 每页数量 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[AppealSummary] | 待再次确认申诉业务列表 |
+
+- 主要数据来源：`appeals`, 原业务表, `application_advisors`。
+
+### 8.10 指导老师申诉后再次确认
+
+- 接口名：指导老师申诉后再次确认
+
+- 描述：指导老师对申诉通过后的原业务再次确认。确认通过后，原业务进入管理员再次分配审核老师环节；驳回则原结果维持或流程关闭，具体按原业务状态流转处理。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/advisor/appeals/{id}/reconfirm`
+
+- 触发页面：T302 申请确认详情；T402 补交成果确认详情；T602 兑换确认详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 申诉 ID |
+| Body | `decision` | string | 是 | `approve` / `reject` |
+| Body | `comment` | string | 条件必填 | 再次确认意见；驳回时必填 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `appeal_id` | integer | 申诉 ID |
+| `target_id` | integer | 原业务 ID |
+| `target_status` | string | `pending_assignment` 或关闭/维持原结果后的状态 |
+
+- 主要写入/更新表：`appeals`, 原业务表, `hour_application_reviews`, `operation_logs`。
+
+- 状态变化：指导老师再次确认通过后，原业务进入 `pending_assignment`，等待管理员再次分配审核老师。
+
+### 8.11 查询申诉后待分配列表
+
+- 接口名：查询申诉后待分配列表
+
+- 描述：管理员查看申诉通过且已经由指导老师再次确认后的原业务，并重新分配审核老师。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/appeals/reopened/pending-assignment`
+
+- 触发页面：A603 申诉后待分配列表
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `page` | integer | 否 | 页码 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[AppealSummary] | 待分配列表 |
+
+- 主要数据来源：`appeals`, 原业务表。
+
+### 8.12 申诉后分配审核老师
+
+- 接口名：申诉后分配审核老师
+
+- 描述：管理员对“申诉通过且指导老师再次确认通过”的原业务重新分配审核老师。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/admin/appeals/{id}/assign-reviewer`
+
+- 触发页面：A604 申诉后分配审核老师
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 申诉 ID |
+| Body | `reviewer_teacher_id` | integer | 是 | 审核老师 ID |
+| Body | `comment` | string | 否 | 分配说明 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `appeal_id` | integer | 申诉 ID |
+| `target_status` | string | `pending_review` |
+
+- 主要写入/更新表：`review_assignments`, 原业务表, `operation_logs`。
+
+- 校验规则：原业务必须已完成指导老师再次确认，状态为 `pending_assignment`，否则不能分配审核老师。
+
+### 8.13 查询审核老师申诉复审列表
+
+- 接口名：查询审核老师申诉复审列表
+
+- 描述：审核老师查看分配给自己的申诉复审任务。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/reviewer/appeal-reviews`
+
+- 触发页面：R201 申诉复审
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `page` | integer | 否 | 页码 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[AppealSummary] | 申诉复审列表 |
+
+- 主要数据来源：`appeals`, `review_assignments`, 原业务表。
+
+### 8.14 获取申诉复审详情
+
+- 接口名：获取申诉复审详情
+
+- 简短描述：审核老师查看申诉复审材料和原业务信息。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/reviewer/appeal-reviews/{id}`
+
+- 触发页面：R202 申诉复审详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 申诉 ID 或复审任务 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `appeal` | AppealSummary | 申诉信息 |
+| `target` | HourApplicationSummary / CreditExchangeSummary | 原业务对象 |
+| `attachments` | array[AttachmentSummary] | 证明附件 |
+
+- 主要数据来源：`appeals`, 原业务表, `attachments`。
+
+### 8.15 申诉复审通过
+
+- 接口名：申诉复审通过
+
+- 描述：审核老师对申诉复审通过，进入管理员最终确认。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/reviewer/appeal-reviews/{id}/approve`
+
+- 触发页面：R202 申诉复审详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 申诉 ID 或复审任务 ID |
+| Body | `comment` | string | 否 | 复审意见 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 原业务 ID |
+| `status` | string | `pending_admin_final` |
+
+- 主要更新表：`hour_application_reviews`, 原业务表。
+
+### 8.16 申诉复审修改课时并通过
+
+- 接口名：申诉复审修改课时并通过
+
+- 描述：审核老师复审通过但修改认定课时。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/reviewer/appeal-reviews/{id}/modified-approve`
+
+- 触发页面：R202 申诉复审详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 申诉 ID 或复审任务 ID |
+| Body | `reviewer_suggested_hours` | number | 是 | 复审建议课时 |
+| Body | `comment` | string | 是 | 修改说明 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 原业务 ID |
+| `status` | string | `pending_admin_final` |
+
+- 主要更新表：`hour_application_reviews`, 原业务表。
+
+### 8.17 申诉复审驳回
+
+- 接口名：申诉复审驳回
+
+- 简短描述：审核老师复审驳回，学生端查看结果。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/reviewer/appeal-reviews/{id}/reject`
+
+- 触发页面：R202 申诉复审详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 申诉 ID 或复审任务 ID |
+| Body | `comment` | string | 是 | 复审驳回原因 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 原业务 ID |
+| `status` | string | `reviewer_rejected` 或 `final_rejected` |
+
+- 主要更新表：`hour_application_reviews`, 原业务表。
+
+## 9. 功能模块八：投诉、记录、通知与首页概览
+
+> 说明：V1 阶段所有统计、首页数量概览、数据统计看板均统一延后实现。第 9.4-9.7 的首页概览接口仅保留接口占位，不纳入 V1 核心开发与第一轮验收。
+
+### 9.1 学生提交匿名投诉
+
+- 接口名：学生提交匿名投诉
+
+- 描述：学生匿名提交投诉。V1 极简实现，不做完整处理流转。
+
+- 接口方法：`POST`
+
+- 接口相对路径：`/student/complaints`
+
+- 触发页面：S801 发起匿名投诉
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Body | `content` | string | 是 | 投诉内容 |
+| Body | `attachment_ids` | array | 否 | 附件 ID |
+| Body | `attachment_ids[]` | integer | 否 | 附件 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | integer | 投诉 ID |
+| `status` | string | `submitted` |
+
+- 主要写入表：`complaints`。
+
+### 9.2 管理员查询投诉列表
+
+- 接口名：管理员查询投诉列表
+
+- 描述：管理员查看匿名投诉列表。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/complaints`
+
+- 触发页面：A801 投诉管理
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `status` | string | 否 | 状态筛选 |
+| Query | `page` | integer | 否 | 页码 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[ComplaintSummary] | 投诉列表 |
+
+- 主要数据来源：`complaints`。
+
+### 9.3 管理员获取投诉详情
+
+- 接口名：管理员获取投诉详情
+
+- 描述：管理员查看投诉详情。V1 只查看，不做完整处理。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/complaints/{id}`
+
+- 触发页面：A802 投诉详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 投诉 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `complaint` | ComplaintSummary | 投诉详情 |
+
+- 主要数据来源：`complaints`。
+
+### 9.4 获取学生首页概览
+
+- 接口名：获取学生首页概览
+
+- 描述：获取学生首页待办和数量概览。后置接口。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/student/dashboard`
+
+- 触发页面：S001 学生首页
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Cookie | session | string | 是 | 登录成功后后端写入的 session cookie |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `hour_application_count` | integer | 课时申请数量 |
+| `task_count` | integer | 我的任务数量 |
+| `credit_exchange_count` | integer | 兑换申请数量 |
+| `appeal_count` | integer | 申诉数量 |
+
+- 主要数据来源：多个业务表聚合。
+
+### 9.5 获取指导老师首页概览
+
+- 接口名：获取指导老师首页概览
+
+- 描述：获取指导老师待确认事项和我的任务概览。后置接口。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/advisor/dashboard`
+
+- 触发页面：T001 指导老师首页 / 工作台
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Cookie | session | string | 是 | 登录成功后后端写入的 session cookie |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `pending_confirm_count` | integer | 待确认事项数量 |
+| `my_task_count` | integer | 我的任务数量 |
+
+- 主要数据来源：`hour_applications`, `extension_requests`, `credit_exchange_applications`, `college_tasks`。
+
+### 9.6 获取审核老师首页概览
+
+- 接口名：获取审核老师首页概览
+
+- 描述：获取审核老师待审核任务和审核记录概览。非核心接口，可后置。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/reviewer/dashboard`
+
+- 触发页面：R001 审核老师首页 / 审核工作台
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Cookie | session | string | 是 | 登录成功后后端写入的 session cookie |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `pending_review_count` | integer | 待审核数量 |
+| `reviewed_count` | integer | 已审核数量 |
+
+- 主要数据来源：`hour_applications`, `review_assignments`, `hour_application_reviews`。
+
+### 9.7 获取管理员首页概览
+
+- 接口名：获取管理员首页概览
+
+- 描述：获取管理员任务管理、审核分配、最终确认、申诉投诉、特殊延期概览。后置接口。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/admin/dashboard`
+
+- 触发页面：A001 管理员首页 / 管理工作台
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Cookie | session | string | 是 | 登录成功后后端写入的 session cookie |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `pending_task_publish_count` | integer | 待确认任务发布数量 |
+| `pending_assignment_count` | integer | 待分配数量 |
+| `pending_final_count` | integer | 待最终确认数量 |
+| `pending_appeal_count` | integer | 待处理申诉数量 |
+| `pending_extension_count` | integer | 特殊延期数量 |
+| `complaint_count` | integer | 投诉数量 |
+
+- 主要数据来源：多个业务表聚合。
+
+### 9.8 查询通知列表
+
+- 接口名：查询通知列表
+
+- 描述：查询系统通知。V1 复杂通知中心延后，可只做简单提醒。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/notifications`
+
+- 触发页面：S301 信息通知；T901 信息通知；R501 信息通知；A1101 信息通知
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `page` | integer | 否 | 页码 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[NotificationSummary] | 通知列表 |
+
+- 主要数据来源：通知实现表；V1 可暂不建复杂通知表。
+
+### 9.9 获取通知详情
+
+- 接口名：获取通知详情
+
+- 描述：获取通知详情和关联业务入口。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/notifications/{id}`
+
+- 触发页面：S302 通知详情；T902 通知详情；R502 通知详情；A1102 通知详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 通知 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `notification` | NotificationSummary | 通知详情 |
+| `target_type` | string | 关联业务类型 |
+| `target_id` | integer | 关联业务 ID |
+
+- 主要数据来源：通知实现表；V1 可暂不建复杂通知表。
+
+### 9.10 查询处理记录
+
+- 接口名：查询处理记录
+
+- 描述：指导老师、审核老师、管理员查看自己的处理记录。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/operation-records`
+
+- 触发页面：T801 我的处理记录；R301 已审核记录；A901 已处理记录
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Query | `role_scope` | string | 是 | `advisor` / `reviewer` / `admin` |
+| Query | `biz_type` | string | 否 | 业务类型 |
+| Query | `page` | integer | 否 | 页码 |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `items` | array[OperationRecord] | 处理记录列表 |
+
+- 主要数据来源：`hour_application_reviews`, `review_assignments`, `operation_logs`, 相关业务表。
+
+### 9.11 获取处理记录详情
+
+- 接口名：获取处理记录详情
+
+- 描述：查看单条处理记录详情。
+
+- 接口方法：`GET`
+
+- 接口相对路径：`/operation-records/{id}`
+
+- 触发页面：T802 处理记录详情；R302 审核记录详情；A902 已处理记录详情
+- 接口请求参数：
+
+| 位置 | 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|---|
+| Path | `id` | integer | 是 | 处理记录 ID |
+
+- 接口响应：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `record` | OperationRecord | 处理记录详情 |
+| `target` | HourApplicationSummary / CollegeTaskSummary / CreditExchangeSummary / AppealSummary / ComplaintSummary | 关联业务对象 |
+
+- 主要数据来源：`hour_application_reviews`, `operation_logs`, 相关业务表。
+
+## 10. 已确认设计口径
+
+| 编号 | 问题 | 最终口径 |
+|---|---|---|
+| Q1 | `task_types` 和 `application_type` 的关系 | `task_types` 表示证书类、竞赛类等业务类别；有成果/无成果使用 `application_type` 表示 |
+| Q2 | 学生任务广场是否允许指导老师、审核老师复用 | 不复用学生端任务广场接口；指导老师和管理员使用各自任务查看接口，审核老师 V1 不参与任务报名前流程 |
+| Q3 | 学分兑换分配规则 | 队长填写每个成员分配课时，系统按总课时兑换总学分后按课时比例计算建议学分，队长确认后提交 |
+
+## 11. V1 暂不纳入核心开发的接口
+
+| 功能 | 处理方式 |
+|---|---|
+| 消息通知接口 | V1延后 |
+| 其他批量操作接口 | V1 延后；管理员批量最终确认兑换已纳入 V1，见 7.15 |
+| 统计、首页概览、数据看板接口 | V1 全部延后；包括简单概览、统计卡片、统计图、A1001 数据统计和各角色首页数量概览 |
+| 完整通知中心接口 | V1 延后；可只保留简单通知列表 |
+| 完整投诉处理接口 | V1 只做匿名提交和管理员查看 |
+| 成绩统计模块接口 | 未来独立模块，不混入课时兑换主流程 |
+
+
+
+
+
+

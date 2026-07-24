@@ -6,8 +6,8 @@ import { ADMIN_TASK_ADVISORS, TASK_TYPE_OPTIONS, adminDirectPublishTask } from '
 const router = useRouter()
 const submitting = ref(false)
 const form = reactive({
-  title: '', taskType: '', description: '', requirement: '', resultRequirement: '', category: '', advisorId: '',
-  registrationStartTime: '', registrationDeadline: '', resultDeadline: '', hours: '', maxParticipants: '', attachments: [],
+  title: '', taskType: '', description: '', resultRequirement: '', advisorId: '',
+  registrationDeadline: '', attachments: [],
 })
 const advisor = computed(() => ADMIN_TASK_ADVISORS.find((item) => item.advisorId === form.advisorId))
 const formatSize = (size) => size < 1024 * 1024 ? `${Math.max(1, Math.round(size / 1024))} KB` : `${(size / 1024 / 1024).toFixed(2)} MB`
@@ -33,12 +33,9 @@ function preview(file) {
 }
 function download() { window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。') }
 function submit() {
-  if (!form.title.trim() || !form.taskType || !form.description.trim() || !form.requirement.trim() || !form.resultRequirement.trim() || !form.category.trim() || !advisor.value || !form.registrationStartTime || !form.registrationDeadline || !form.resultDeadline) return window.alert('请完整填写任务名称、类型、说明、要求、类别、指导老师和各项时间。')
-  const start = new Date(form.registrationStartTime).getTime(); const deadline = new Date(form.registrationDeadline).getTime(); const resultDeadline = new Date(form.resultDeadline).getTime()
-  if (deadline <= start) return window.alert('报名截止时间必须晚于报名开始时间。')
+  if (!form.title.trim() || !form.taskType || !form.description.trim() || !form.resultRequirement.trim() || !advisor.value || !form.registrationDeadline) return window.alert('请完整填写任务名称、类型、说明、成果要求、指导老师和报名截止时间。')
+  const deadline = new Date(form.registrationDeadline).getTime()
   if (deadline <= Date.now()) return window.alert('报名截止时间必须晚于当前时间。')
-  if (resultDeadline <= deadline) return window.alert('成果提交截止时间必须晚于报名截止时间。')
-  if (Number(form.hours) <= 0 || Number(form.maxParticipants) <= 0) return window.alert('任务课时数和人数限制必须大于 0。')
   submitting.value = true
   try {
     const task = adminDirectPublishTask({ ...form, advisorName: advisor.value.advisorName, attachments: form.attachments.map((item) => ({ ...item })) })
@@ -56,16 +53,10 @@ function submit() {
       <h2>任务信息</h2><div class="grid">
         <label><span>任务名称 *</span><input v-model="form.title" /></label>
         <label><span>任务类型 *</span><select v-model="form.taskType"><option value="">请选择</option><option v-for="item in TASK_TYPE_OPTIONS" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
-        <label><span>所属课程或项目类别 *</span><input v-model="form.category" placeholder="例如：创新实践" /></label>
         <label><span>指导老师 *</span><select v-model="form.advisorId"><option value="">请选择</option><option v-for="item in ADMIN_TASK_ADVISORS" :key="item.advisorId" :value="item.advisorId">{{ item.advisorName }}（{{ item.college }}）</option></select></label>
         <label class="wide"><span>任务说明 *</span><textarea v-model="form.description" rows="4" /></label>
-        <label class="wide"><span>任务要求 *</span><textarea v-model="form.requirement" rows="3" /></label>
         <label class="wide"><span>成果提交要求 *</span><textarea v-model="form.resultRequirement" rows="3" /></label>
-        <label><span>报名开始时间 *</span><input v-model="form.registrationStartTime" type="datetime-local" /></label>
         <label><span>报名截止时间 *</span><input v-model="form.registrationDeadline" type="datetime-local" /></label>
-        <label><span>成果提交截止时间 *</span><input v-model="form.resultDeadline" type="datetime-local" /></label>
-        <label><span>任务课时数 *</span><input v-model="form.hours" type="number" min="0.5" step="0.5" /></label>
-        <label><span>人数限制 *</span><input v-model="form.maxParticipants" type="number" min="1" step="1" /></label>
       </div>
       <section class="upload"><h2>附件上传</h2><p>请从本地选择任务说明、成果要求、模板文件或其他辅助材料。当前阶段为 Mock 上传，仅保存文件信息，不会真正上传到服务器。</p><label class="file-button">选择本地文件<input type="file" multiple @change="chooseFiles" /></label>
         <div v-if="form.attachments.length" class="table-wrap"><table><thead><tr><th>文件名</th><th>类型</th><th>大小</th><th>上传时间</th><th>操作</th></tr></thead><tbody><tr v-for="(file,index) in form.attachments" :key="file.id"><td>{{ file.fileName }}</td><td>{{ file.fileType }}</td><td>{{ file.fileSize }}</td><td>{{ file.uploadTime }}</td><td><button type="button" class="link" @click="preview(file)">预览</button><button type="button" class="link" @click="download">下载</button><button type="button" class="danger" @click="removeFile(index)">删除</button></td></tr></tbody></table></div><p v-else class="empty">暂未选择附件</p>

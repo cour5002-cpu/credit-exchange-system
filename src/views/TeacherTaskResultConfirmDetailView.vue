@@ -13,7 +13,7 @@ const pending = computed(() => result.value?.status === TASK_RESULT_STATUS.PENDI
 function back(){router.push('/teacher/confirm/results')}
 function preview(){window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。')}
 function download(){window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。')}
-function approve(){if(!pending.value)return window.alert('该成果已处理，不能重复确认。');if(!approveTaskResult(result.value.resultId,comment.value))return window.alert('成果确认失败。');window.alert('成果确认通过，学生可基于该成果发起课时申请。');back()}
+function approve(){if(!pending.value)return window.alert('该成果已处理，不能重复确认。');if(!approveTaskResult(result.value.resultId,comment.value))return window.alert('成果确认失败。');window.alert('成果确认通过，关联课时申请已进入待分配。');back()}
 function reject(){if(!pending.value)return window.alert('该成果已处理，不能重复确认。');if(!comment.value.trim())return window.alert('驳回成果时必须填写确认意见。');if(!rejectTaskResult(result.value.resultId,comment.value))return window.alert('成果驳回失败。');window.alert('成果已驳回，队长可修改后重新提交。');back()}
 </script>
 

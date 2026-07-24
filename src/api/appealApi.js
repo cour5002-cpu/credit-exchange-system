@@ -1,0 +1,20 @@
+import { get, post } from './request.js'
+
+export const getAppealableTarget = (targetType, targetId) => get(`/student/appealable-targets/${targetType}/${targetId}`)
+export const submitAppeal = (data) => post('/student/appeals', data)
+export const getStudentAppeals = (params) => get('/student/appeals', params)
+export const getStudentAppeal = (id) => get(`/student/appeals/${id}`)
+export const getAdminAppeals = (params) => get('/admin/appeals', params)
+export const getAdminAppeal = (id) => get(`/admin/appeals/${id}`)
+export const approveAppealByAdmin = (id, data) => post(`/admin/appeals/${id}/approve`, data)
+export const rejectAppealByAdmin = (id, data) => post(`/admin/appeals/${id}/reject`, data)
+export const getReopenedAppealsForAdvisor = (params) => get('/advisor/appeals/reopened/pending-confirmation', params)
+export const reconfirmAppealByAdvisor = (id, data) => post(`/advisor/appeals/${id}/reconfirm`, data)
+export const getReopenedAppealsForAssignment = (params) => get('/admin/appeals/reopened/pending-assignment', params)
+export const assignAppealReviewer = (id, data) => post(`/admin/appeals/${id}/assign-reviewer`, data)
+export const getReviewerAppeals = (params) => get('/reviewer/appeal-reviews', params)
+export const getReviewerAppeal = (id) => get(`/reviewer/appeal-reviews/${id}`)
+export const approveAppealReview = (id, data = {}) => post(`/reviewer/appeal-reviews/${id}/approve`, data)
+export const modifiedApproveAppealReview = (id, data) => post(`/reviewer/appeal-reviews/${id}/modified-approve`, data)
+export const rejectAppealReview = (id, data) => post(`/reviewer/appeal-reviews/${id}/reject`, data)
+

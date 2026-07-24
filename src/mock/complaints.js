@@ -1,4 +1,4 @@
-export const COMPLAINT_STATUS = Object.freeze({ PENDING_ADMIN: 'pending_admin', PROCESSED: 'processed' })
+export const COMPLAINT_STATUS = Object.freeze({ SUBMITTED: 'submitted', VIEWED: 'viewed', PENDING_ADMIN: 'submitted' })
 
 const complaints = []
 
@@ -8,12 +8,12 @@ function nowText() {
 }
 
 export function addComplaint(data) {
-  if (!data?.complaintType || !data?.complaintContent?.trim()) return null
+  if (!data?.complaintContent?.trim()) return null
   const complaint = {
     complaintId: data.complaintId || `CMP-${Date.now()}`,
     studentId: data.studentId || '', studentName: data.studentName || '', isAnonymous: data.isAnonymous !== false,
     relatedApplicationId: data.relatedApplicationId || '', relatedApplicationTitle: data.relatedApplicationTitle || '',
-    complaintType: data.complaintType, complaintContent: data.complaintContent.trim(),
+    complaintContent: data.complaintContent.trim(),
     complaintMaterials: (data.complaintMaterials || []).map((file) => ({ ...file })),
     submitTime: data.submitTime || nowText(), status: COMPLAINT_STATUS.PENDING_ADMIN,
     adminComment: '', adminHandleTime: '',
@@ -25,9 +25,9 @@ export function getComplaints() { return complaints }
 export function getComplaintById(complaintId) { return complaints.find((item) => item.complaintId === complaintId) }
 export function getStudentComplaints(studentId) { return complaints.filter((item) => item.studentId === studentId) }
 export function getAdminPendingComplaints() { return complaints.filter((item) => item.status === COMPLAINT_STATUS.PENDING_ADMIN) }
-export function processComplaint(complaintId, comment = '') {
+export function markComplaintViewed(complaintId) {
   const complaint = getComplaintById(complaintId)
-  if (!complaint || complaint.status !== COMPLAINT_STATUS.PENDING_ADMIN || !comment.trim()) return null
-  complaint.status = COMPLAINT_STATUS.PROCESSED; complaint.adminComment = comment.trim(); complaint.adminHandleTime = nowText()
+  if (!complaint) return null
+  complaint.status = COMPLAINT_STATUS.VIEWED
   return complaint
 }

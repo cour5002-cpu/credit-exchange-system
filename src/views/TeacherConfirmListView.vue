@@ -2,10 +2,13 @@
 import { computed, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
 import { getAdvisorPendingApplications } from '../mock/applications.js'
+import { getAdvisorPendingAppealConfirmations, reconfirmAppeal } from '../mock/appeals.js'
 
 const selectedSource = ref('')
 const keyword = ref('')
 const currentAdvisorId = 'T001'
+const pendingAppeals = computed(() => getAdvisorPendingAppealConfirmations())
+function handleAppeal(item, decision) { const comment = window.prompt(decision === 'approve' ? '请输入再次确认意见（可选）' : '请输入驳回意见') || ''; if (decision === 'reject' && !comment.trim()) return; if (!reconfirmAppeal(item.appealId, decision, comment)) return window.alert('申诉再次确认失败。'); window.alert(decision === 'approve' ? '已确认，等待管理员分配复审老师。' : '已驳回，申诉处理完成。') }
 
 const filteredConfirmations = computed(() => {
   const normalizedKeyword = keyword.value.trim().toLowerCase()
@@ -56,6 +59,11 @@ const filteredConfirmations = computed(() => {
         </label>
       </section>
 
+      <section class="list-panel appeal-panel" aria-labelledby="appeal-confirmation-title">
+        <div class="panel-header"><h2 id="appeal-confirmation-title">申诉后再次确认</h2><span>共 {{ pendingAppeals.length }} 项</span></div>
+        <div class="table-wrapper"><table><thead><tr><th>申诉编号</th><th>关联申请</th><th>学生</th><th>管理员意见</th><th>操作</th></tr></thead><tbody><tr v-for="item in pendingAppeals" :key="item.appealId"><td>{{ item.appealId }}</td><td>{{ item.applicationTitle }}</td><td>{{ item.studentName }}</td><td>{{ item.adminComment || '--' }}</td><td><button @click="handleAppeal(item,'reject')">驳回</button><button @click="handleAppeal(item,'approve')">确认通过</button></td></tr><tr v-if="!pendingAppeals.length"><td class="empty-state" colspan="5">暂无申诉后待再次确认事项。</td></tr></tbody></table></div>
+      </section>
+
       <section class="list-panel" aria-labelledby="confirmation-list-title">
         <div class="panel-header">
           <h2 id="confirmation-list-title">确认事项列表</h2>
@@ -102,6 +110,7 @@ const filteredConfirmations = computed(() => {
 .filter-panel label span { display: block; margin-bottom: 7px; color: #334155; font-weight: 700; }
 .filter-panel select, .filter-panel input { width: 100%; padding: 10px 11px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; font: inherit; }
 .list-panel { overflow: hidden; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; }
+.appeal-panel{margin-top:20px}.appeal-panel button{margin-right:8px;padding:7px 10px;border:1px solid #bfdbfe;border-radius:7px;color:#2563eb;background:#fff;font-weight:700}
 .panel-header { display: flex; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid #e2e8f0; }.panel-header h2 { margin: 0; font-size: 19px; }.panel-header span { color: #64748b; }
 .table-wrapper { overflow-x: auto; }table { width: 100%; border-collapse: collapse; }th, td { padding: 13px 14px; border-bottom: 1px solid #e2e8f0; text-align: left; white-space: nowrap; }th { color: #475569; background: #f8fafc; font-size: 13px; }tbody tr:last-child td { border-bottom: 0; }td small { display: block; margin-top: 4px; color: #94a3b8; }.empty-state { padding: 32px; color: #64748b; text-align: center; }
 @media (max-width: 680px) { .confirm-page { padding: 24px 14px; }.page-header { flex-direction: column; }.filter-panel { grid-template-columns: 1fr; } }

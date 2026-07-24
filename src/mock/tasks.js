@@ -60,7 +60,7 @@ function nowText() {
 
 function normalizeTask(task) {
   const taskId = task.taskId || `TASK-${Date.now()}`
-  const normalized = { taskId, title: '', taskType: '', hours: 0, description: '', requirement: '', resultRequirement: '', category: '', advisorId: '', advisorName: '', source: 'advisor', publishSource: '', publisherRole: '', publisherName: '', registrationStartTime: '', registrationDeadline: '', resultDeadline: '', maxParticipants: 0, attachments: [], status: TASK_STATUS.DRAFT, submitTime: '', publishTime: '', adminComment: '', adminConfirmTime: '', applicants: [], selectedStudents: [], leaderId: '', leaderName: '', selectionTime: '', leaderAssignTime: '', ...task, taskId }
+  const normalized = { taskId, title: '', taskType: '', description: '', resultRequirement: '', advisorId: '', advisorName: '', source: 'advisor', publishSource: '', publisherRole: '', publisherName: '', registrationDeadline: '', attachments: [], status: TASK_STATUS.DRAFT, submitTime: '', publishTime: '', adminComment: '', adminConfirmTime: '', applicants: [], selectedStudents: [], leaderId: '', leaderName: '', selectionTime: '', leaderAssignTime: '', ...task, taskId }
   normalized.attachments = (task.attachments || []).map((file, index) => ({
     id: file.id || `TASK-ATT-${Date.now()}-${index}`,
     name: file.name || file.fileName || '',
@@ -82,7 +82,7 @@ export function getPublishedTasks() { return tasks.filter((task) => task.status 
 export function getTaskTypeText(type) { return TASK_TYPE_OPTIONS.find((option) => option.value === type)?.label || type || '--' }
 
 export function adminDirectPublishTask(data, admin = { id: 'ADMIN001', name: '系统管理员' }) {
-  if (!data?.title?.trim() || !data?.taskType || !data?.description?.trim() || !data?.requirement?.trim() || !data?.resultRequirement?.trim() || !data?.registrationDeadline || !data?.resultDeadline || Number(data?.hours) <= 0) return null
+  if (!data?.title?.trim() || !data?.taskType || !data?.description?.trim() || !data?.resultRequirement?.trim() || !data?.registrationDeadline) return null
   const publishedAt = nowText()
   const task = normalizeTask({
     ...data,

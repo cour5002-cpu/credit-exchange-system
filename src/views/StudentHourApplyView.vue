@@ -319,10 +319,7 @@ function goBack() {
                 <input v-model="form.source" type="radio" value="student" @change="handleSourceChange" />
                 <span><strong>学生自主申请</strong><small>由学生发起新的课时认定申请</small></span>
               </label>
-              <label class="option-card">
-                <input v-model="form.source" type="radio" value="task" @change="handleSourceChange" />
-                <span><strong>任务成果申请</strong><small>基于已参与任务的成果发起申请</small></span>
-              </label>
+              <p class="task-member-empty">任务成果请在“我的任务 → 队长上传成果”中提交，后端会自动创建课时申请。</p>
             </fieldset>
 
             <fieldset class="form-field form-field-wide option-fieldset">

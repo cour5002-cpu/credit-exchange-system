@@ -3,16 +3,18 @@ import { computed } from 'vue'
 import { getAdvisorPendingApplications, getAdvisorPendingNormalExtensions, getAdvisorPendingSupplementApplications } from '../mock/applications.js'
 import { getAdvisorPendingExchanges } from '../mock/exchanges.js'
 import { getAdvisorPendingTaskResults } from '../mock/taskResults.js'
+import { getAdvisorPendingAppealConfirmations } from '../mock/appeals.js'
 const currentAdvisorId = 'T001'
 const pendingHours = computed(() => getAdvisorPendingApplications(currentAdvisorId).length)
 const pendingSupplements = computed(() => getAdvisorPendingSupplementApplications(currentAdvisorId).length)
 const pendingExtensions = computed(() => getAdvisorPendingNormalExtensions(currentAdvisorId).length)
 const pendingExchanges = computed(() => getAdvisorPendingExchanges(currentAdvisorId).length)
 const pendingResults = computed(() => getAdvisorPendingTaskResults(currentAdvisorId).length)
+const pendingAppeals = computed(() => getAdvisorPendingAppealConfirmations().length)
 const entries = computed(() => [
   { title: '我的任务', description: '查看和管理指导任务。', to: '/teacher/tasks' },
   { title: '发布任务', description: '创建并发布新的任务。', to: '/teacher/publish-task' },
-  { title: '待确认事项', description: `课时申请 ${pendingHours.value} 项，补交成果 ${pendingSupplements.value} 项，普通延期 ${pendingExtensions.value} 项，学分兑换 ${pendingExchanges.value} 项，任务成果 ${pendingResults.value} 项。`, to: '/teacher/confirm' },
+  { title: '待确认事项', description: `课时申请 ${pendingHours.value} 项，补交成果 ${pendingSupplements.value} 项，普通延期 ${pendingExtensions.value} 项，学分兑换 ${pendingExchanges.value} 项，任务成果 ${pendingResults.value} 项，申诉再确认 ${pendingAppeals.value} 项。`, to: '/teacher/confirm' },
   { title: '我的处理记录', description: '查看已经处理的业务记录。', to: '/teacher/records' },
   { title: '信息通知', description: '查看指导老师端通知消息。', to: '/teacher/notifications' },
 ])

@@ -1,4 +1,5 @@
 <script setup>
+// 后端暂未实现通知接口，当前页面继续使用 Mock。
 import { computed, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
 import { getNotificationsByUser, markAllNotificationsRead, NOTIFICATION_TYPES } from '../mock/notifications.js'

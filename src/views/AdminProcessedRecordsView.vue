@@ -9,7 +9,7 @@ import { getComplaints } from '../mock/complaints.js'
 
 const type = ref(''); const result = ref(''); const keyword = ref(''); const selected = ref(null)
 const typeOptions = ['任务发布确认', '直接发布任务', '审核分配', '课时最终确认', '学分兑换最终确认', '特殊延期审核', '申诉处理', '申诉复审分配', '申诉最终确认', '投诉处理']
-const resultText = (value) => ({ approved: '通过', rejected: '驳回', assigned: '已分配', accepted: '已受理', not_accepted: '不受理', published: '已发布', processed: '已处理', confirmed: '已确认' }[value] || value || '--')
+const resultText = (value) => ({ approved: '通过', rejected: '驳回', assigned: '已分配', accepted: '已受理', not_accepted: '不受理', published: '已发布', confirmed: '已确认' }[value] || value || '--')
 function record(data) { return { person: '--', comment: '--', beforeStatus: '--', afterStatus: '--', currentStatus: '', detail: {}, ...data } }
 
 const allRecords = computed(() => {
@@ -29,7 +29,6 @@ const allRecords = computed(() => {
     if (item.reviewAssignTime) records.push(record({ id: `APPEAL-ASSIGN-${item.appealId}`, type: '申诉复审分配', title: item.applicationTitle, person: item.reviewTeacherName, result: 'assigned', comment: `已分配复审老师：${item.reviewTeacherName}`, time: item.reviewAssignTime, beforeStatus: 'pending_review_assignment', afterStatus: 'pending_re_review', currentStatus: item.status, detail: { 申诉编号: item.appealId, 学生姓名: item.studentName, 复审老师: item.reviewTeacherName, 分配管理员: item.assignAdminName } }))
     if (item.finalConfirmTime) records.push(record({ id: `APPEAL-FINAL-${item.appealId}`, type: '申诉最终确认', title: item.applicationTitle, person: item.studentName, result: item.finalResult, comment: item.finalAdminComment, time: item.finalConfirmTime, beforeStatus: item.reviewResult === 'approved' ? 're_review_approved' : 're_review_rejected', afterStatus: 'final_confirmed', currentStatus: item.status, detail: { 申诉编号: item.appealId, 复审老师: item.reviewTeacherName, 复审结果: item.reviewResult, 复审课时: item.reviewHours } }))
   })
-  getComplaints().filter((item) => item.adminHandleTime).forEach((item) => records.push(record({ id: `COMPLAINT-${item.complaintId}`, type: '投诉处理', title: item.relatedApplicationTitle || item.complaintType, person: item.isAnonymous ? '匿名投诉人' : item.studentName, result: 'processed', comment: item.adminComment, time: item.adminHandleTime, beforeStatus: 'pending_admin', afterStatus: 'processed', currentStatus: item.status, detail: { 投诉编号: item.complaintId, 投诉类型: item.complaintType, 是否匿名: item.isAnonymous ? '是' : '否', 关联申请: item.relatedApplicationTitle || '--' } })))
   return records.sort((a, b) => String(b.time || '').localeCompare(String(a.time || '')))
 })
 const resultOptions = computed(() => [...new Set(allRecords.value.map((item) => resultText(item.result)))])
