@@ -1,11 +1,14 @@
 <script setup>
-import { computed,ref } from 'vue'
+import { computed,onMounted,ref } from 'vue'
 import { useRoute,useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
 import { APPEAL_STATUS,assignReviewTeacher,getAppealById,getReviewerPendingAppeals } from '../mock/appeals.js'
 import { getApplications,mockReviewers } from '../mock/applications.js'
+import { loadReviewerOptions } from '../services/commonDependencyService.js'
 const route=useRoute();const router=useRouter();const selectedId=ref('');const appeal=computed(()=>getAppealById(route.params.id));const application=computed(()=>appeal.value?getApplications().find((item)=>item.id===appeal.value.applicationId):null);const pending=computed(()=>appeal.value?.status===APPEAL_STATUS.PENDING_REVIEW_ASSIGNMENT)
-const reviewers=computed(()=>mockReviewers.map((item)=>({...item,appealPendingCount:getReviewerPendingAppeals(item.reviewerId).length})))
+const reviewerOptions=ref(mockReviewers.map((item)=>({...item})))
+const reviewers=computed(()=>reviewerOptions.value.map((item)=>({...item,appealPendingCount:getReviewerPendingAppeals(item.reviewerId).length})))
+onMounted(async()=>{reviewerOptions.value=await loadReviewerOptions(mockReviewers)})
 function back(){router.push('/admin/appeals-complaints/assign')}function preview(){window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。')}function download(){window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。')}
 function assign(){if(!pending.value)return window.alert('该申诉已完成复审老师分配。');if(!selectedId.value)return window.alert('请选择一名复审老师。');const teacher=reviewers.value.find((item)=>item.reviewerId===selectedId.value);if(!assignReviewTeacher(appeal.value.appealId,teacher))return window.alert('复审老师分配失败。');window.alert('复审老师分配成功，等待审核老师复审。');back()}
 </script>

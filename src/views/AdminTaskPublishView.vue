@@ -1,28 +1,34 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ADMIN_TASK_ADVISORS, TASK_TYPE_OPTIONS, adminDirectPublishTask } from '../mock/tasks.js'
+import { uploadAttachment } from '../api/fileApi.js'
+import { loadAdvisorOptions, loadTaskTypeOptions } from '../services/commonDependencyService.js'
 
 const router = useRouter()
 const submitting = ref(false)
+const taskTypeOptions = ref(TASK_TYPE_OPTIONS.map((item) => ({ ...item })))
+const advisorOptions = ref(ADMIN_TASK_ADVISORS.map((item) => ({ ...item })))
 const form = reactive({
   title: '', taskType: '', description: '', resultRequirement: '', advisorId: '',
   registrationDeadline: '', attachments: [],
 })
-const advisor = computed(() => ADMIN_TASK_ADVISORS.find((item) => item.advisorId === form.advisorId))
+const advisor = computed(() => advisorOptions.value.find((item) => item.advisorId === form.advisorId))
 const formatSize = (size) => size < 1024 * 1024 ? `${Math.max(1, Math.round(size / 1024))} KB` : `${(size / 1024 / 1024).toFixed(2)} MB`
 const formatTime = (date = new Date()) => date.toLocaleString('zh-CN', { hour12: false }).replaceAll('/', '-')
 
-function chooseFiles(event) {
-  Array.from(event.target.files || []).forEach((file) => form.attachments.push({
-    id: `file_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    fileName: file.name,
-    fileType: file.type || file.name.split('.').pop()?.toLowerCase() || 'unknown',
-    fileSize: formatSize(file.size),
-    uploadTime: formatTime(),
-    mockUrl: URL.createObjectURL(file),
-  }))
+async function chooseFiles(event) {
+  const files = Array.from(event.target.files || [])
   event.target.value = ''
+  for (const file of files) {
+    try {
+      const result = await uploadAttachment(file, 'task')
+      form.attachments.push({ ...result.attachment, fileName: result.attachment.name, fileType: result.attachment.type, fileSize: formatSize(result.attachment.size), uploadTime: result.attachment.uploadedAt, attachmentIds: result.attachmentIds })
+    } catch (error) {
+      console.warn('[attachment] 管理员任务附件上传失败，保留 Mock 文件。', error)
+      form.attachments.push({ id: `file_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, fileName: file.name, fileType: file.type || file.name.split('.').pop()?.toLowerCase() || 'unknown', fileSize: formatSize(file.size), uploadTime: formatTime(), mockUrl: URL.createObjectURL(file), attachmentIds: [] })
+    }
+  }
 }
 function removeFile(index) {
   const [file] = form.attachments.splice(index, 1)
@@ -38,12 +44,17 @@ function submit() {
   if (deadline <= Date.now()) return window.alert('报名截止时间必须晚于当前时间。')
   submitting.value = true
   try {
-    const task = adminDirectPublishTask({ ...form, advisorName: advisor.value.advisorName, attachments: form.attachments.map((item) => ({ ...item })) })
+    const task = adminDirectPublishTask({ ...form, advisorName: advisor.value.advisorName, attachments: form.attachments.map((item) => ({ ...item })), attachmentIds: form.attachments.flatMap((item) => item.attachmentIds || (Number.isInteger(item.id) ? [item.id] : [])) })
     window.alert('任务已直接发布，学生端任务广场可见。')
     router.push(`/admin/tasks/list/${task.taskId}`)
   } catch (error) { window.alert(error.message || '任务发布失败。') }
   finally { submitting.value = false }
 }
+onMounted(async () => {
+  const [types, advisors] = await Promise.all([loadTaskTypeOptions(TASK_TYPE_OPTIONS), loadAdvisorOptions(ADMIN_TASK_ADVISORS)])
+  taskTypeOptions.value = types.filter((item) => item.allowAdminTask !== false)
+  advisorOptions.value = advisors
+})
 </script>
 
 <template>
@@ -52,13 +63,13 @@ function submit() {
     <form class="panel" @submit.prevent="submit">
       <h2>任务信息</h2><div class="grid">
         <label><span>任务名称 *</span><input v-model="form.title" /></label>
-        <label><span>任务类型 *</span><select v-model="form.taskType"><option value="">请选择</option><option v-for="item in TASK_TYPE_OPTIONS" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
-        <label><span>指导老师 *</span><select v-model="form.advisorId"><option value="">请选择</option><option v-for="item in ADMIN_TASK_ADVISORS" :key="item.advisorId" :value="item.advisorId">{{ item.advisorName }}（{{ item.college }}）</option></select></label>
+        <label><span>任务类型 *</span><select v-model="form.taskType"><option value="">请选择</option><option v-for="item in taskTypeOptions" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
+        <label><span>指导老师 *</span><select v-model="form.advisorId"><option value="">请选择</option><option v-for="item in advisorOptions" :key="item.advisorId" :value="item.advisorId">{{ item.advisorName }}（{{ item.college || item.major || '未设置院系' }}）</option></select></label>
         <label class="wide"><span>任务说明 *</span><textarea v-model="form.description" rows="4" /></label>
         <label class="wide"><span>成果提交要求 *</span><textarea v-model="form.resultRequirement" rows="3" /></label>
         <label><span>报名截止时间 *</span><input v-model="form.registrationDeadline" type="datetime-local" /></label>
       </div>
-      <section class="upload"><h2>附件上传</h2><p>请从本地选择任务说明、成果要求、模板文件或其他辅助材料。当前阶段为 Mock 上传，仅保存文件信息，不会真正上传到服务器。</p><label class="file-button">选择本地文件<input type="file" multiple @change="chooseFiles" /></label>
+      <section class="upload"><h2>附件上传</h2><p>附件优先上传后端并保存 attachment_ids；接口不可用时保留 Mock 回退。</p><label class="file-button">选择本地文件<input type="file" multiple @change="chooseFiles" /></label>
         <div v-if="form.attachments.length" class="table-wrap"><table><thead><tr><th>文件名</th><th>类型</th><th>大小</th><th>上传时间</th><th>操作</th></tr></thead><tbody><tr v-for="(file,index) in form.attachments" :key="file.id"><td>{{ file.fileName }}</td><td>{{ file.fileType }}</td><td>{{ file.fileSize }}</td><td>{{ file.uploadTime }}</td><td><button type="button" class="link" @click="preview(file)">预览</button><button type="button" class="link" @click="download">下载</button><button type="button" class="danger" @click="removeFile(index)">删除</button></td></tr></tbody></table></div><p v-else class="empty">暂未选择附件</p>
       </section>
       <div class="actions"><RouterLink class="cancel" to="/admin/tasks">返回</RouterLink><button class="submit" type="submit" :disabled="submitting">{{ submitting ? '发布中…' : '直接发布' }}</button></div>

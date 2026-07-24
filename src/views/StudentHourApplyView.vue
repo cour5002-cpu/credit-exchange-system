@@ -1,12 +1,13 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AttachmentNotice from '../components/AttachmentNotice.vue'
 import MemberInputTable from '../components/MemberInputTable.vue'
 import StageDescription from '../components/StageDescription.vue'
 import { addApplication, getApplications } from '../mock/applications.js'
 import { getApprovedTaskResultsForStudent, markTaskResultApplicationCreated } from '../mock/taskResults.js'
-import { getTaskById } from '../mock/tasks.js'
+import { TASK_TYPE_OPTIONS, getTaskById } from '../mock/tasks.js'
+import { loadAdvisorOptions, loadTaskTypeOptions } from '../services/commonDependencyService.js'
 
 const router = useRouter()
 
@@ -19,13 +20,15 @@ const currentUser = {
   major: '数据科学与大数据技术',
 }
 
-const teachers = [
+const mockTeachers = [
   { id: 'T001', name: '张明', department: '计算机学院' },
   { id: 'T002', name: '李华', department: '管理学院' },
   { id: 'T003', name: '王芳', department: '艺术学院' },
   { id: 'T004', name: '陈强', department: '校团委' },
   { id: 'T005', name: '赵敏', department: '创新创业学院' },
 ]
+const teachers = ref(mockTeachers.map((item) => ({ ...item })))
+const taskTypeOptions = ref(TASK_TYPE_OPTIONS.map((item) => ({ ...item })))
 
 function createCurrentUserMember() {
   return {
@@ -43,6 +46,7 @@ const form = reactive({
   source: 'student',
   taskId: '',
   requestedHours: '',
+  taskType: '',
   applicationType: 'with_result',
   primaryTeacherId: '',
   observerTeacherIds: [],
@@ -94,7 +98,7 @@ const permissionState = computed(() => {
 })
 const canSubmitApplication = computed(() => permissionState.value.allowed)
 const observerTeacherOptions = computed(() =>
-  teachers.filter((teacher) => teacher.id !== form.primaryTeacherId),
+  teachers.value.filter((teacher) => teacher.id !== form.primaryTeacherId),
 )
 const filteredObserverTeachers = computed(() => {
   const keyword = observerSearch.value.trim().toLowerCase()
@@ -108,7 +112,7 @@ const filteredObserverTeachers = computed(() => {
 })
 const selectedObserverNames = computed(() =>
   form.observerTeacherIds
-    .map((id) => teachers.find((teacher) => teacher.id === id)?.name)
+    .map((id) => teachers.value.find((teacher) => teacher.id === id)?.name)
     .filter(Boolean),
 )
 
@@ -140,6 +144,7 @@ function handleTaskChange() {
 
 function validateForm() {
   if (!form.title.trim()) return '请填写申请标题'
+  if (form.source === 'student' && !form.taskType) return '请选择任务类别'
   if (form.source === 'task') {
     if (!form.taskId) return '请选择关联任务'
     form.requestedHours = selectedTask.value?.hours ?? ''
@@ -206,9 +211,9 @@ function submitApplication() {
       }))
   const mainAdvisor = form.source === 'task'
     ? { id: task.advisorId, name: task.advisorName, department: '' }
-    : teachers.find((teacher) => teacher.id === form.primaryTeacherId) ?? null
+    : teachers.value.find((teacher) => teacher.id === form.primaryTeacherId) ?? null
   const viewAdvisors = form.observerTeacherIds
-    .map((id) => teachers.find((teacher) => teacher.id === id))
+    .map((id) => teachers.value.find((teacher) => teacher.id === id))
     .filter(Boolean)
 
   const addedApplication = addApplication({
@@ -217,6 +222,7 @@ function submitApplication() {
     studentId: currentUser.studentId,
     source: form.source === 'student' ? 'self' : 'task_result',
     sourceText: form.source === 'student' ? '学生自主申请' : '任务成果申请',
+    taskType: form.taskType,
     applyType: form.applicationType,
     expectedResultDate: form.expectedResultDate,
     requestedHours: Number(form.requestedHours),
@@ -268,6 +274,11 @@ function downloadTaskResultFile() { window.alert('当前为 Mock 附件下载，
 function goBack() {
   router.push('/student/dashboard')
 }
+onMounted(async () => {
+  const [types, advisors] = await Promise.all([loadTaskTypeOptions(TASK_TYPE_OPTIONS), loadAdvisorOptions(mockTeachers)])
+  taskTypeOptions.value = types.filter((item) => item.allowStudentSelf !== false)
+  teachers.value = advisors
+})
 </script>
 
 <template>
@@ -311,6 +322,14 @@ function goBack() {
                 placeholder="请输入本次课时申请标题"
                 :disabled="!canSubmitApplication"
               />
+            </div>
+
+            <div class="form-field">
+              <label for="application-task-type">任务类别 <span class="required-mark">*</span></label>
+              <select id="application-task-type" v-model="form.taskType" :disabled="!canSubmitApplication">
+                <option value="">请选择任务类别</option>
+                <option v-for="option in taskTypeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+              </select>
             </div>
 
             <fieldset class="form-field form-field-wide option-fieldset">

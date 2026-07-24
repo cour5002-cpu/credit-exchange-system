@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ReviewActionBar from '../components/ReviewActionBar.vue'
 import StatusTag from '../components/StatusTag.vue'
@@ -9,6 +9,7 @@ import {
   getApplications,
   mockReviewers,
 } from '../mock/applications.js'
+import { loadReviewerOptions } from '../services/commonDependencyService.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -16,6 +17,8 @@ const item = computed(() => getApplications().find((application) => application.
 const opinion = ref('')
 const selectedReviewerId = ref('')
 const feedback = ref({ type: '', message: '' })
+const reviewers = ref(mockReviewers.map((item) => ({ ...item })))
+onMounted(async () => { reviewers.value = await loadReviewerOptions(mockReviewers) })
 
 function acceptApplication() {
   if (!item.value || item.value.status !== APPLICATION_STATUS.PENDING_ADMIN_ACCEPT) return
@@ -43,7 +46,7 @@ function goBack() { router.push('/admin/review-assign') }
       <section class="card"><h2>团队成员</h2><div class="table-wrapper"><table><thead><tr><th>姓名</th><th>学号</th><th>学院</th><th>专业</th><th>角色</th></tr></thead><tbody><tr v-for="member in item.members" :key="member.id"><td>{{ member.name }}</td><td>{{ member.studentId }}</td><td>{{ member.college || '--' }}</td><td>{{ member.major || '--' }}</td><td>{{ member.role === 'captain' ? '队长' : '成员' }}</td></tr></tbody></table></div></section>
       <section class="card"><h2>指导老师确认意见</h2><dl class="info-grid"><div><dt>指导老师</dt><dd>{{ item.mainAdvisor?.name || '--' }} · {{ item.mainAdvisor?.department || '--' }}</dd></div><div><dt>确认状态</dt><dd><StatusTag :status="item.advisorStatus" text="已确认" /></dd></div><div><dt>确认时间</dt><dd>{{ item.advisorConfirmTime || '--' }}</dd></div></dl><p class="teacher-opinion">{{ item.advisorComment || '指导老师未填写确认意见。' }}</p></section>
       <section class="card"><h2>学生上传材料</h2><div v-if="item.attachments?.length" class="attachment-list"><article v-for="file in item.attachments" :key="file.id" class="attachment-item"><div class="file-icon">文</div><div><h3>{{ file.name }}</h3><p class="meta">{{ file.type }}<template v-if="file.uploadedAt"> · 上传时间：{{ file.uploadedAt }}</template></p><p>{{ file.description }}</p></div><div class="file-actions"><button type="button" @click="previewFile(file)">预览</button><button type="button" @click="downloadFile(file)">下载</button></div></article></div><p v-else class="empty">暂无上传材料</p></section>
-      <section class="card reviewer-assignment"><label for="assigned-reviewer"><strong>选择审核老师 <span class="required">*</span></strong></label><select id="assigned-reviewer" v-model="selectedReviewerId"><option value="">请选择审核老师</option><option v-for="reviewer in mockReviewers" :key="reviewer.reviewerId" :value="reviewer.reviewerId">{{ reviewer.reviewerName }} · {{ reviewer.college }} · {{ reviewer.direction }}（待处理 {{ reviewer.pendingCount }} 项）</option></select><p>请从系统预设审核老师池中选择，确认后申请将进入审核老师审核。</p></section>
+      <section class="card reviewer-assignment"><label for="assigned-reviewer"><strong>选择审核老师 <span class="required">*</span></strong></label><select id="assigned-reviewer" v-model="selectedReviewerId"><option value="">请选择审核老师</option><option v-for="reviewer in reviewers" :key="reviewer.reviewerId" :value="reviewer.reviewerId">{{ reviewer.reviewerName }} · {{ reviewer.college || '未设置学院' }} · {{ reviewer.direction || '未设置方向' }}（待处理 {{ reviewer.pendingCount }} 项）</option></select><p>请从系统审核老师池中选择，确认后申请将进入审核老师审核。</p></section>
       <section class="acceptance-notice">管理员在此阶段分配审核老师，不在此阶段驳回申请。</section>
       <section class="card"><label for="acceptance-opinion"><strong>管理员分配意见</strong></label><textarea id="acceptance-opinion" v-model="opinion" rows="5" placeholder="请输入分配说明。"></textarea><p v-if="feedback.message" class="feedback" :class="`feedback--${feedback.type}`">{{ feedback.message }}</p></section>
       <ReviewActionBar approve-text="确认分配" :show-reject="false" :disabled="item.status !== APPLICATION_STATUS.PENDING_ADMIN_ACCEPT" @approve="acceptApplication"><template #before><button class="back-button" type="button" @click="goBack">返回</button></template></ReviewActionBar>
