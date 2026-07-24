@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { authState, getHomePath, getPortalRole, restoreSession } from '../stores/authStore.js'
 
 const placeholderRoutes = [
   ['/student/feedback', 'student-feedback', '问题反馈', '提交使用过程中遇到的问题。'],
@@ -372,6 +373,32 @@ const router = createRouter({
       redirect: '/login',
     },
   ],
+})
+
+function getRequiredRole(path) {
+  if (path.startsWith('/student/')) return 'student'
+  if (path.startsWith('/teacher/')) return 'advisor'
+  if (path.startsWith('/reviewer/')) return 'reviewer'
+  if (path.startsWith('/admin/')) return 'admin'
+  return null
+}
+
+router.beforeEach(async (to) => {
+  let user
+  try {
+    user = await restoreSession()
+  } catch (error) {
+    // 非认证类网络/服务端错误保留到登录页展示，避免进入受保护页面。
+    if (to.path === '/login') return true
+    return { path: '/login', query: { redirect: to.fullPath } }
+  }
+
+  if (to.path === '/login') return user ? getHomePath(user) : true
+  if (!user) return { path: '/login', query: { redirect: to.fullPath } }
+
+  const requiredRole = getRequiredRole(to.path)
+  if (requiredRole && requiredRole !== getPortalRole(authState.user)) return getHomePath(user)
+  return true
 })
 
 export default router
