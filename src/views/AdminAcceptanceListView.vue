@@ -1,20 +1,26 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
 import {
   adminAccept,
   getAdminAcceptApplications,
 } from '../mock/applications.js'
+import { getPendingAssignmentApplications } from '../api/applicationApi.js'
+import { adaptApplicationList } from '../adapters/applicationAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
 const selectedType = ref('')
 const keyword = ref('')
 const selectedIds = ref([])
 const refreshKey = ref(0)
+const realItems = ref([])
+async function loadItems(){try{realItems.value=adaptApplicationList(await getPendingAssignmentApplications({page_size:100})).items}catch(error){window.alert(getApiErrorMessage(error,'待分配申请加载失败'))}}
+onMounted(loadItems)
 
 const filteredItems = computed(() => {
   refreshKey.value
   const search = keyword.value.trim().toLowerCase()
-  return getAdminAcceptApplications().filter((item) =>
+  return realItems.value.filter((item) =>
     (!selectedType.value || item.applyType === selectedType.value) &&
     (!search || item.studentName.toLowerCase().includes(search) || item.title.toLowerCase().includes(search)),
   )
@@ -36,23 +42,7 @@ function toggleSelectAll(event) {
 }
 
 function batchAccept() {
-  if (!selectedIds.value.length) {
-    window.alert('请先选择要分配审核老师的申请')
-    return
-  }
-
-  const selectedItems = getAdminAcceptApplications().filter((item) => selectedIds.value.includes(item.id))
-  if (!selectedItems.length) return
-
-  if (!window.confirm(`确定要为已选择的 ${selectedItems.length} 条申请分配审核老师吗？`)) return
-
-  const assignments = selectedItems.map((item) => {
-    const acceptedApplication = adminAccept(item.id, '管理员批量分配审核老师')
-    return `${item.title} → ${acceptedApplication.reviewer.name}老师`
-  })
-  selectedIds.value = []
-  refreshKey.value += 1
-  window.alert(`批量分配成功：\n${assignments.join('\n')}`)
+  window.alert('真实接口暂不提供批量分配，请进入申请详情选择审核老师。')
 }
 </script>
 

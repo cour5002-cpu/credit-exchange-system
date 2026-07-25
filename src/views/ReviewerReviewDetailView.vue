@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ReviewActionBar from '../components/ReviewActionBar.vue'
 import StatusTag from '../components/StatusTag.vue'
@@ -11,27 +11,31 @@ import {
   reviewerModifiedApprove,
   reviewerReject,
 } from '../mock/applications.js'
+import { approveApplicationByReviewer, getReviewerApplication, modifiedApproveApplication, rejectApplicationByReviewer } from '../api/applicationApi.js'
+import { adaptApplicationEnvelope } from '../adapters/applicationAdapter.js'
+import { getApiErrorMessage, hasServerAction } from '../utils/apiFeedback.js'
 
 const route = useRoute(); const router = useRouter()
-const item = computed(() => getApplications().find((application) =>
-  application.id === route.params.id && application.reviewerId === currentReviewerId.value,
-))
+const item = ref(null)
 const readonly = computed(() => route.name === 'reviewer-review-record-detail')
-const recognizedHours = ref(item.value?.recognizedHours ?? item.value?.requestedHours ?? '')
+const recognizedHours = ref('')
 const opinion = ref(item.value?.reviewComment ?? '')
 const feedback = ref({ type: '', message: '' })
 const hoursChanged = computed(() => item.value
   ? Number(recognizedHours.value) !== Number(item.value.requestedHours)
   : false)
+async function loadItem(){try{item.value=adaptApplicationEnvelope(await getReviewerApplication(Number(route.params.id)));recognizedHours.value=item.value.reviewerSuggestedHours??item.value.requestedHours??'';opinion.value=item.value.reviewComment??''}catch(error){window.alert(getApiErrorMessage(error,'审核详情加载失败'))}}
+onMounted(loadItem)
 
 function validateRecognizedHours() {
   if (recognizedHours.value === '' || !Number.isFinite(Number(recognizedHours.value)) || Number(recognizedHours.value) <= 0) return '审核认定课时必须为大于 0 的数字'
   return ''
 }
 function showError(message) { feedback.value = { type: 'error', message }; window.alert(message) }
-function approve() { const error = validateRecognizedHours(); if (error) return showError(error); if (hoursChanged.value) return showError('认定课时已修改，请使用“修改课时后审核通过”'); reviewerApprove(item.value.id, Number(recognizedHours.value), opinion.value.trim(), currentReviewerId.value); feedback.value = { type: 'success', message: '审核通过成功，申请已进入管理员最终确认环节。' }; window.alert(feedback.value.message); goBack() }
-function approveWithChange() { const error = validateRecognizedHours(); if (error) return showError(error); if (!hoursChanged.value) return showError('认定课时未修改，请使用“审核通过”'); if (!opinion.value.trim()) return showError('请填写修改课时原因或审核意见'); reviewerModifiedApprove(item.value.id, Number(recognizedHours.value), opinion.value.trim(), currentReviewerId.value); feedback.value = { type: 'success', message: '已修改课时并审核通过，申请已进入管理员最终确认环节。' }; window.alert(feedback.value.message); goBack() }
-function reject() { if (!opinion.value.trim()) return showError('请填写驳回原因'); reviewerReject(item.value.id, opinion.value.trim(), currentReviewerId.value); feedback.value = { type: 'success', message: '已驳回' }; window.alert(feedback.value.message); goBack() }
+async function runAction(request,body,message){try{await request(item.value.id,body);await loadItem();feedback.value={type:'success',message};window.alert(message)}catch(error){showError(getApiErrorMessage(error))}}
+function approve() { const error = validateRecognizedHours(); if (error) return showError(error); if (hoursChanged.value) return showError('认定课时已修改，请使用“修改课时后审核通过”'); if(!hasServerAction(item.value.actions,['approve','reviewer_approve'],item.value.status==='pending_review'))return;return runAction(approveApplicationByReviewer,{comment:opinion.value.trim()},'审核通过成功，申请已进入管理员最终确认环节。') }
+function approveWithChange() { const error = validateRecognizedHours(); if (error) return showError(error); if (!hoursChanged.value) return showError('认定课时未修改，请使用“审核通过”'); if (!opinion.value.trim()) return showError('请填写修改课时原因或审核意见');return runAction(modifiedApproveApplication,{reviewer_suggested_hours:Number(recognizedHours.value),comment:opinion.value.trim()},'已修改课时并审核通过，申请已进入管理员最终确认环节。') }
+function reject() { if (!opinion.value.trim()) return showError('请填写驳回原因');return runAction(rejectApplicationByReviewer,{comment:opinion.value.trim()},'已驳回') }
 function preview() { window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。') } function download() { window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。') }
 function goBack() { router.push(readonly.value ? '/reviewer/review-records' : '/reviewer/review-tasks') }
 </script>
@@ -45,7 +49,7 @@ function goBack() { router.push(readonly.value ? '/reviewer/review-records' : '/
   <section class="card"><h2>前序处理意见</h2><div class="opinion-block"><strong>指导老师确认意见</strong><p>{{ item.mainAdvisor?.name || '--' }} · {{ item.mainAdvisor?.department || '--' }}</p><p>{{ item.advisorComment || '未填写确认意见' }}</p></div><div class="opinion-block"><strong>管理员受理意见</strong><p>{{ item.adminAcceptComment || '未填写受理意见' }}</p></div></section>
   <section class="card"><h2>学生上传材料</h2><div v-if="item.attachments.length" class="attachments"><article v-for="file in item.attachments" :key="file.id"><div><h3>{{ file.name }}</h3><small>{{ file.type }}<template v-if="file.uploadedAt"> · {{ file.uploadedAt }}</template></small><p>{{ file.description }}</p></div><div><button type="button" @click="preview(file)">预览</button><button type="button" @click="download(file)">下载</button></div></article></div><p v-else class="empty">暂无上传材料</p></section>
   <section class="card review-form"><div class="hours-reference"><span>原申请课时</span><strong>{{ item.requestedHours }} 小时</strong></div><label for="recognized-hours">审核认定课时</label><input id="recognized-hours" v-model="recognizedHours" type="number" min="1" step="1" :readonly="readonly" /><p v-if="!readonly" class="hours-hint">{{ hoursChanged ? '认定课时已修改，将使用“修改课时后审核通过”。' : '认定课时与原申请一致，可直接审核通过。' }}</p><label for="review-opinion">审核意见</label><textarea id="review-opinion" v-model="opinion" rows="5" :readonly="readonly" placeholder="请输入审核意见；修改课时或驳回时必须填写。"></textarea><p v-if="readonly && item.reviewTime" class="review-time">审核时间：{{ item.reviewTime }}</p><p v-if="feedback.message" class="feedback" :class="`feedback--${feedback.type}`">{{ feedback.message }}</p></section>
-  <ReviewActionBar v-if="!readonly && item.status === APPLICATION_STATUS.PENDING_REVIEWER" :approve-text="hoursChanged ? '修改课时并通过' : '审核通过'" reject-text="审核驳回" @approve="hoursChanged ? approveWithChange() : approve()" @reject="reject"><template #before><button class="back-button" type="button" @click="goBack">返回</button></template></ReviewActionBar>
+  <ReviewActionBar v-if="!readonly && hasServerAction(item.actions,['approve','reviewer_approve'],item.status === 'pending_review')" :approve-text="hoursChanged ? '修改课时并通过' : '审核通过'" reject-text="审核驳回" @approve="hoursChanged ? approveWithChange() : approve()" @reject="reject"><template #before><button class="back-button" type="button" @click="goBack">返回</button></template></ReviewActionBar>
   <div v-else class="readonly-actions"><button class="back-button" type="button" @click="goBack">返回</button></div>
 </template><section v-else class="not-found"><h1>未找到审核任务</h1><button class="back-button" @click="goBack">返回</button></section></div></main></template>
 

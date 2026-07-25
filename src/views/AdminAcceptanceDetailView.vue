@@ -10,27 +10,28 @@ import {
   mockReviewers,
 } from '../mock/applications.js'
 import { loadReviewerOptions } from '../services/commonDependencyService.js'
+import { assignApplicationReviewer, getAdminApplication } from '../api/applicationApi.js'
+import { adaptApplicationEnvelope } from '../adapters/applicationAdapter.js'
+import { getApiErrorMessage, hasServerAction } from '../utils/apiFeedback.js'
 
 const route = useRoute()
 const router = useRouter()
-const item = computed(() => getApplications().find((application) => application.id === route.params.id))
+const item = ref(null)
 const opinion = ref('')
 const selectedReviewerId = ref('')
 const feedback = ref({ type: '', message: '' })
 const reviewers = ref(mockReviewers.map((item) => ({ ...item })))
-onMounted(async () => { reviewers.value = await loadReviewerOptions(mockReviewers) })
+async function loadItem(){try{item.value=adaptApplicationEnvelope(await getAdminApplication(Number(route.params.id)))}catch(error){window.alert(getApiErrorMessage(error,'申请详情加载失败'))}}
+onMounted(async () => { reviewers.value = await loadReviewerOptions(mockReviewers); await loadItem() })
 
-function acceptApplication() {
-  if (!item.value || item.value.status !== APPLICATION_STATUS.PENDING_ADMIN_ACCEPT) return
+async function acceptApplication() {
+  if (!item.value || !hasServerAction(item.value.actions,['assign_reviewer','assign'],item.value.status==='pending_assignment')) return
   if (!selectedReviewerId.value) {
     feedback.value = { type: 'error', message: '请选择审核老师' }
     window.alert(feedback.value.message)
     return
   }
-  const acceptedApplication = adminAccept(item.value.id, opinion.value.trim(), selectedReviewerId.value)
-  feedback.value = { type: 'success', message: `分配成功，已分配给${acceptedApplication.reviewer.name}老师。` }
-  window.alert(feedback.value.message)
-  goBack()
+  try{await assignApplicationReviewer(item.value.id,{reviewer_teacher_id:Number(selectedReviewerId.value),comment:opinion.value.trim()});await loadItem();feedback.value={type:'success',message:'审核老师分配成功。'};window.alert(feedback.value.message)}catch(error){window.alert(getApiErrorMessage(error,'分配失败'))}
 }
 function previewFile() { window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。') }
 function downloadFile() { window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。') }
@@ -49,7 +50,7 @@ function goBack() { router.push('/admin/review-assign') }
       <section class="card reviewer-assignment"><label for="assigned-reviewer"><strong>选择审核老师 <span class="required">*</span></strong></label><select id="assigned-reviewer" v-model="selectedReviewerId"><option value="">请选择审核老师</option><option v-for="reviewer in reviewers" :key="reviewer.reviewerId" :value="reviewer.reviewerId">{{ reviewer.reviewerName }} · {{ reviewer.college || '未设置学院' }} · {{ reviewer.direction || '未设置方向' }}（待处理 {{ reviewer.pendingCount }} 项）</option></select><p>请从系统审核老师池中选择，确认后申请将进入审核老师审核。</p></section>
       <section class="acceptance-notice">管理员在此阶段分配审核老师，不在此阶段驳回申请。</section>
       <section class="card"><label for="acceptance-opinion"><strong>管理员分配意见</strong></label><textarea id="acceptance-opinion" v-model="opinion" rows="5" placeholder="请输入分配说明。"></textarea><p v-if="feedback.message" class="feedback" :class="`feedback--${feedback.type}`">{{ feedback.message }}</p></section>
-      <ReviewActionBar approve-text="确认分配" :show-reject="false" :disabled="item.status !== APPLICATION_STATUS.PENDING_ADMIN_ACCEPT" @approve="acceptApplication"><template #before><button class="back-button" type="button" @click="goBack">返回</button></template></ReviewActionBar>
+      <ReviewActionBar approve-text="确认分配" :show-reject="false" :disabled="item.status !== 'pending_assignment'" @approve="acceptApplication"><template #before><button class="back-button" type="button" @click="goBack">返回</button></template></ReviewActionBar>
     </template>
     <section v-else class="not-found"><h1>未找到待分配申请</h1><button class="back-button" type="button" @click="goBack">返回审核分配列表</button></section>
   </div></main>

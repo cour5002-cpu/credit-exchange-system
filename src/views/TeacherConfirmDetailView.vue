@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AttachmentNotice from '../components/AttachmentNotice.vue'
 import ReviewActionBar from '../components/ReviewActionBar.vue'
@@ -10,31 +10,33 @@ import {
   advisorReject,
   getApplications,
 } from '../mock/applications.js'
+import { approveApplicationByAdvisor, getAdvisorApplication, rejectApplicationByAdvisor } from '../api/applicationApi.js'
+import { adaptApplicationEnvelope } from '../adapters/applicationAdapter.js'
+import { getApiErrorMessage, hasServerAction } from '../utils/apiFeedback.js'
 
 const route = useRoute()
 const router = useRouter()
-const confirmation = computed(() => getApplications().find((item) => item.id === route.params.id))
+const confirmation = ref(null)
 const opinion = ref('')
 const feedback = ref({ type: '', message: '' })
+const canConfirm = computed(()=>confirmation.value && hasServerAction(confirmation.value.actions,['approve','advisor_approve'],confirmation.value.status==='submitted'))
 
-function approveConfirmation() {
+async function loadConfirmation(){try{confirmation.value=adaptApplicationEnvelope(await getAdvisorApplication(Number(route.params.id)))}catch(error){window.alert(getApiErrorMessage(error,'申请详情加载失败'))}}
+onMounted(loadConfirmation)
+async function approveConfirmation() {
   if (!confirmation.value) return
-  const updated = advisorApprove(confirmation.value.id, opinion.value.trim())
-  feedback.value = { type: 'success', message: updated?.status === APPLICATION_STATUS.PENDING_MATERIAL ? '指导老师已确认，无成果申请需等待学生补交成果。' : '确认通过成功，申请已进入管理员分配审核老师环节。' }
-  window.alert(feedback.value.message)
-  goBack()
+  if(!hasServerAction(confirmation.value.actions,['approve','advisor_approve'],confirmation.value.status==='submitted')) return
+  try{await approveApplicationByAdvisor(confirmation.value.id,{comment:opinion.value.trim()});await loadConfirmation();feedback.value={type:'success',message:'确认通过成功，申请已进入管理员分配审核老师环节。'};window.alert(feedback.value.message)}catch(error){window.alert(getApiErrorMessage(error,'确认失败'))}
 }
 
-function rejectConfirmation() {
+async function rejectConfirmation() {
   if (!opinion.value.trim()) {
     feedback.value = { type: 'error', message: '请填写驳回原因' }
     window.alert(feedback.value.message)
     return
   }
-  advisorReject(confirmation.value.id, opinion.value.trim())
-  feedback.value = { type: 'success', message: '驳回成功' }
-  window.alert(feedback.value.message)
-  goBack()
+  if(!hasServerAction(confirmation.value.actions,['reject','advisor_reject'],confirmation.value.status==='submitted')) return
+  try{await rejectApplicationByAdvisor(confirmation.value.id,{comment:opinion.value.trim()});await loadConfirmation();feedback.value={type:'success',message:'驳回成功'};window.alert(feedback.value.message)}catch(error){window.alert(getApiErrorMessage(error,'驳回失败'))}
 }
 
 function goBack() {
@@ -129,7 +131,7 @@ function downloadAttachment(file) {
         <ReviewActionBar
           approve-text="确认通过"
           reject-text="驳回"
-          :disabled="confirmation.status !== APPLICATION_STATUS.PENDING_ADVISOR"
+          :disabled="!canConfirm"
           @approve="approveConfirmation"
           @reject="rejectConfirmation"
         >

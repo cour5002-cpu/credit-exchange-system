@@ -1,16 +1,18 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
 import { APPLICATION_STATUS, canApplyExtension, canSupplementResult, getApplications } from '../mock/applications.js'
 import { isApplicationAppealable } from '../mock/appeals.js'
+import { getStudentApplication } from '../api/applicationApi.js'
+import { adaptApplicationEnvelope } from '../adapters/applicationAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
 const route = useRoute()
 const router = useRouter()
 const currentUser = { id: 'stu001', name: '张三', studentId: '2024001' }
-const application = computed(() =>
-  getApplications().find((item) => item.id === route.params.id && item.currentUserId === currentUser.id),
-)
+const application = ref(null)
+onMounted(async () => { try { application.value = adaptApplicationEnvelope(await getStudentApplication(Number(route.params.id))) } catch (error) { window.alert(getApiErrorMessage(error, '申请详情加载失败')) } })
 
 const timeline = computed(() => {
   if (!application.value) return []

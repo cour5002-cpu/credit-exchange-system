@@ -1,28 +1,31 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
 import { finalApprove, getAdminFinalApplications } from '../mock/applications.js'
+import { finalApproveApplication, getPendingFinalApplications } from '../api/applicationApi.js'
+import { adaptApplicationList } from '../adapters/applicationAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
 const source = ref('')
 const result = ref('')
 const keyword = ref('')
 const selectedIds = ref([])
 const refreshKey = ref(0)
+const realItems=ref([])
+async function loadItems(){try{realItems.value=adaptApplicationList(await getPendingFinalApplications({page_size:100})).items}catch(error){window.alert(getApiErrorMessage(error,'待最终确认申请加载失败'))}}
+onMounted(loadItems)
 const items = computed(() => {
   refreshKey.value
   const search = keyword.value.trim().toLowerCase()
-  return getAdminFinalApplications().filter((item) => (!source.value || item.source === source.value || (source.value === 'task_result' && item.source === 'task')) && (!result.value || item.reviewStatus === result.value) && (!search || item.studentName.toLowerCase().includes(search) || item.title.toLowerCase().includes(search)))
+  return realItems.value.filter((item) => (!source.value || item.source === source.value || (source.value === 'task_result' && item.source === 'task')) && (!result.value || item.reviewStatus === result.value) && (!search || item.studentName.toLowerCase().includes(search) || item.title.toLowerCase().includes(search)))
 })
 const allSelected = computed(() => items.value.length > 0 && items.value.every((item) => selectedIds.value.includes(item.id)))
 function toggleAll(event) { const ids = items.value.map((item) => item.id); selectedIds.value = event.target.checked ? [...new Set([...selectedIds.value, ...ids])] : selectedIds.value.filter((id) => !ids.includes(id)) }
-function batchConfirm() {
+async function batchConfirm() {
   if (!selectedIds.value.length) return window.alert('请先选择要确认的申请')
-  const selected = getAdminFinalApplications().filter((item) => selectedIds.value.includes(item.id))
+  const selected = realItems.value.filter((item) => selectedIds.value.includes(item.id))
   if (!selected.length || !window.confirm(`确定批量最终确认通过已选择的 ${selected.length} 条申请吗？`)) return
-  selected.forEach((item) => finalApprove(item.id, '管理员批量最终确认通过'))
-  selectedIds.value = []
-  refreshKey.value += 1
-  window.alert('批量最终确认通过成功')
+  try{for(const item of selected) await finalApproveApplication(item.id,{comment:'管理员批量最终确认通过'});selectedIds.value=[];await loadItems();window.alert('批量最终确认通过成功')}catch(error){window.alert(getApiErrorMessage(error,'批量最终确认失败'));await loadItems()}
 }
 </script>
 

@@ -8,6 +8,10 @@ import { addApplication, getApplications } from '../mock/applications.js'
 import { getApprovedTaskResultsForStudent, markTaskResultApplicationCreated } from '../mock/taskResults.js'
 import { TASK_TYPE_OPTIONS, getTaskById } from '../mock/tasks.js'
 import { loadAdvisorOptions, loadTaskTypeOptions } from '../services/commonDependencyService.js'
+import { submitApplication as submitApplicationApi } from '../api/applicationApi.js'
+import { uploadAttachment } from '../api/fileApi.js'
+import { toApplicationPayload } from '../adapters/applicationAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
 const router = useRouter()
 
@@ -43,6 +47,7 @@ function createCurrentUserMember() {
 
 const form = reactive({
   title: '',
+  description: '',
   source: 'student',
   taskId: '',
   requestedHours: '',
@@ -52,6 +57,8 @@ const form = reactive({
   observerTeacherIds: [],
   expectedResultDate: '',
   members: [createCurrentUserMember()],
+  attachmentIds: [],
+  attachments: [],
 })
 
 const feedback = ref({ type: '', message: '' })
@@ -175,7 +182,24 @@ function saveDraft() {
   window.alert(feedback.value.message)
 }
 
-function submitApplication() {
+async function uploadFiles(event) {
+  const files = Array.from(event.target.files || [])
+  event.target.value = ''
+  for (const file of files) {
+    try {
+      const uploaded = await uploadAttachment(file, 'hour_application')
+      form.attachments.push(uploaded.attachment)
+      form.attachmentIds.push(uploaded.id)
+    } catch (error) { window.alert(getApiErrorMessage(error, '附件上传失败')) }
+  }
+}
+
+function removeUploadedFile(index) {
+  form.attachments.splice(index, 1)
+  form.attachmentIds.splice(index, 1)
+}
+
+async function submitApplication() {
   if (!canSubmitApplication.value) {
     feedback.value = { type: 'error', message: permissionState.value.message }
     window.alert(permissionState.value.message)
@@ -186,6 +210,22 @@ function submitApplication() {
   if (error) {
     feedback.value = { type: 'error', message: error }
     window.alert(error)
+    return
+  }
+
+  if (form.applicationType === 'with_result' && form.source === 'student') {
+    if (!form.attachmentIds.length) return window.alert('请先上传成果附件')
+    try {
+      await submitApplicationApi(toApplicationPayload({
+        ...form,
+        applyType: 'with_result',
+        taskTypeId: form.taskType,
+        advisorTeacherId: form.primaryTeacherId,
+        viewTeacherIds: form.observerTeacherIds,
+      }))
+      window.alert('课时申请提交成功，等待指导老师确认。')
+      router.push('/student/hour-progress')
+    } catch (apiError) { window.alert(getApiErrorMessage(apiError, '课时申请提交失败')) }
     return
   }
 
@@ -324,6 +364,11 @@ onMounted(async () => {
               />
             </div>
 
+            <div class="form-field form-field-wide">
+              <label for="application-description">申请说明</label>
+              <input id="application-description" v-model="form.description" type="text" placeholder="请简要说明成果和申请依据" />
+            </div>
+
             <div class="form-field">
               <label for="application-task-type">任务类别 <span class="required-mark">*</span></label>
               <select id="application-task-type" v-model="form.taskType" :disabled="!canSubmitApplication">
@@ -437,6 +482,10 @@ onMounted(async () => {
             :required="true"
             :accept-types="['PDF', 'Word', '图片']"
           />
+          <div v-if="form.applicationType === 'with_result'" class="form-field form-field-wide">
+            <input type="file" multiple :disabled="!canSubmitApplication" @change="uploadFiles" />
+            <div v-for="(file, index) in form.attachments" :key="file.id"><span>{{ file.name }}</span> <button type="button" @click="removeUploadedFile(index)">删除</button></div>
+          </div>
           </section>
 
           <section class="form-section">

@@ -1,18 +1,23 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
 import { getAdvisorPendingApplications } from '../mock/applications.js'
 import { getAdvisorPendingAppealConfirmations, reconfirmAppeal } from '../mock/appeals.js'
+import { getAdvisorPendingApplications as getPendingApi } from '../api/applicationApi.js'
+import { adaptApplicationList } from '../adapters/applicationAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
 const selectedSource = ref('')
 const keyword = ref('')
 const currentAdvisorId = 'T001'
 const pendingAppeals = computed(() => getAdvisorPendingAppealConfirmations())
+const realApplications = ref([])
+onMounted(async()=>{try{realApplications.value=adaptApplicationList(await getPendingApi({page_size:100})).items}catch(error){window.alert(getApiErrorMessage(error,'待确认申请加载失败'))}})
 function handleAppeal(item, decision) { const comment = window.prompt(decision === 'approve' ? '请输入再次确认意见（可选）' : '请输入驳回意见') || ''; if (decision === 'reject' && !comment.trim()) return; if (!reconfirmAppeal(item.appealId, decision, comment)) return window.alert('申诉再次确认失败。'); window.alert(decision === 'approve' ? '已确认，等待管理员分配复审老师。' : '已驳回，申诉处理完成。') }
 
 const filteredConfirmations = computed(() => {
   const normalizedKeyword = keyword.value.trim().toLowerCase()
-  return getAdvisorPendingApplications(currentAdvisorId).filter((item) => {
+  return realApplications.value.filter((item) => {
     const matchesSource = !selectedSource.value || item.source === selectedSource.value
       || (selectedSource.value === 'task_result' && item.source === 'task')
     const matchesKeyword =

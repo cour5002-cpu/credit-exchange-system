@@ -1,13 +1,20 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
 import { APPLICATION_STATUS, canApplyExtension, canSupplementResult, getApplications } from '../mock/applications.js'
 import { getStatusText } from '../utils/status.js'
 import { isApplicationAppealable } from '../mock/appeals.js'
+import { getStudentApplications } from '../api/applicationApi.js'
+import { adaptApplicationList } from '../adapters/applicationAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
 const currentUser = { id: 'stu001', name: '张三', studentId: '2024001' }
 const selectedStatus = ref('')
 const keyword = ref('')
+const remoteApplications = ref([])
+const loadError = ref('')
+async function loadApplications() { try { remoteApplications.value = adaptApplicationList(await getStudentApplications({ page_size: 100 })).items; loadError.value = '' } catch (error) { loadError.value = getApiErrorMessage(error, '课时申请加载失败') } }
+onMounted(loadApplications)
 
 const statusOptions = [
   APPLICATION_STATUS.PENDING_ADVISOR,
@@ -29,8 +36,7 @@ const statusOptions = [
 
 const applications = computed(() => {
   const search = keyword.value.trim().toLowerCase()
-  return getApplications()
-    .filter((application) => application.currentUserId === currentUser.id)
+  return remoteApplications.value
     .filter((application) => !selectedStatus.value || application.status === selectedStatus.value)
     .filter((application) => !search || application.title.toLowerCase().includes(search))
     .sort((a, b) => b.submitTime.localeCompare(a.submitTime))
@@ -101,7 +107,7 @@ const applications = computed(() => {
                 </td>
               </tr>
               <tr v-if="!applications.length">
-                <td class="empty" colspan="7">暂无符合条件的课时申请。</td>
+                <td class="empty" colspan="7">{{ loadError || '暂无符合条件的课时申请。' }}</td>
               </tr>
             </tbody>
           </table>
