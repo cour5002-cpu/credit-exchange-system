@@ -8,7 +8,7 @@ async function loadWithFallback(request, adapter, fallback, label) {
     throw new Error(`${label}接口返回空列表`)
   } catch (error) {
     console.warn(`[common-api] ${label}加载失败，继续使用 Mock 回退。`, error)
-    return fallback.map((item) => ({ ...item }))
+    return fallback.map((item) => ({ ...item, isMockFallback: true }))
   }
 }
 

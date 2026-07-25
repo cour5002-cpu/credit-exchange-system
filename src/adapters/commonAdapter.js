@@ -18,12 +18,13 @@ export function adaptTaskType(item) {
     allowStudentSelf: item.allow_student_self ?? true,
     allowAdminTask: item.allow_admin_task ?? true,
     allowTeacherTask: item.allow_teacher_task ?? true,
+    isMockFallback: false,
   }
 }
 
 export function adaptAdvisor(item) {
   const teacher = adaptTeacher(item)
-  return teacher && { ...teacher, advisorId: teacher.id, advisorName: teacher.name }
+  return teacher && { ...teacher, advisorId: teacher.id, advisorName: teacher.name, isMockFallback: false }
 }
 
 export function adaptReviewer(item) {
@@ -34,5 +35,6 @@ export function adaptReviewer(item) {
     reviewerName: teacher.name,
     direction: teacher.major,
     pendingCount: item.pending_count ?? 0,
+    isMockFallback: false,
   }
 }

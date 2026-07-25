@@ -8,7 +8,7 @@ import { addApplication, getApplications } from '../mock/applications.js'
 import { getApprovedTaskResultsForStudent, markTaskResultApplicationCreated } from '../mock/taskResults.js'
 import { TASK_TYPE_OPTIONS, getTaskById } from '../mock/tasks.js'
 import { loadAdvisorOptions, loadTaskTypeOptions } from '../services/commonDependencyService.js'
-import { submitApplication as submitApplicationApi } from '../api/applicationApi.js'
+import { getStudentApplication, submitApplication as submitApplicationApi } from '../api/applicationApi.js'
 import { uploadAttachment } from '../api/fileApi.js'
 import { toApplicationPayload } from '../adapters/applicationAdapter.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
@@ -31,8 +31,9 @@ const mockTeachers = [
   { id: 'T004', name: '陈强', department: '校团委' },
   { id: 'T005', name: '赵敏', department: '创新创业学院' },
 ]
-const teachers = ref(mockTeachers.map((item) => ({ ...item })))
-const taskTypeOptions = ref(TASK_TYPE_OPTIONS.map((item) => ({ ...item })))
+const teachers = ref(mockTeachers.map((item) => ({ ...item, isMockFallback: true })))
+const taskTypeOptions = ref(TASK_TYPE_OPTIONS.map((item) => ({ ...item, isMockFallback: true })))
+const dependenciesLoaded = ref(false)
 
 function createCurrentUserMember() {
   return {
@@ -215,15 +216,41 @@ async function submitApplication() {
 
   if (form.applicationType === 'with_result' && form.source === 'student') {
     if (!form.attachmentIds.length) return window.alert('请先上传成果附件')
+    const selectedTaskType = taskTypeOptions.value.find((item) => item.value === form.taskType)
+    const selectedAdvisor = teachers.value.find((item) => item.id === form.primaryTeacherId)
+    const selectedViewTeachers = form.observerTeacherIds.map((id) => teachers.value.find((item) => item.id === id))
+    if (!dependenciesLoaded.value || selectedTaskType?.isMockFallback || selectedAdvisor?.isMockFallback || selectedViewTeachers.some((item) => item?.isMockFallback)) {
+      return window.alert('当前任务类型或指导老师使用的是 Mock 回退数据，不能提交到后端')
+    }
+    const isPositiveInteger = (value) => Number.isInteger(value) && value > 0
+    if (!isPositiveInteger(form.taskType)
+      || !isPositiveInteger(form.primaryTeacherId)
+      || !form.observerTeacherIds.every(isPositiveInteger)
+      || !form.attachmentIds.every(isPositiveInteger)) {
+      return window.alert('当前任务类型、指导老师或附件不是后端真实数据，请刷新后重试')
+    }
     try {
-      await submitApplicationApi(toApplicationPayload({
+      const submitted = await submitApplicationApi(toApplicationPayload({
         ...form,
         applyType: 'with_result',
         taskTypeId: form.taskType,
         advisorTeacherId: form.primaryTeacherId,
         viewTeacherIds: form.observerTeacherIds,
       }))
-      window.alert('课时申请提交成功，等待指导老师确认。')
+      const saved = submitted?.application ?? submitted
+      const applicationId = Number(saved?.id)
+      window.alert(`课时申请提交成功\nid: ${saved?.id ?? '--'}\napplication_no: ${saved?.application_no ?? '--'}\nstatus: ${saved?.status ?? '--'}`)
+      if (!Number.isInteger(applicationId) || applicationId <= 0) {
+        window.alert('提交成功但详情查询失败，请联系后端检查持久化或权限')
+        return
+      }
+      try {
+        await getStudentApplication(applicationId)
+        window.alert('后端已保存申请')
+      } catch (detailError) {
+        console.error('[hour-application] 提交成功后详情验证失败。', detailError)
+        window.alert('提交成功但详情查询失败，请联系后端检查持久化或权限')
+      }
       router.push('/student/hour-progress')
     } catch (apiError) { window.alert(getApiErrorMessage(apiError, '课时申请提交失败')) }
     return
@@ -318,6 +345,7 @@ onMounted(async () => {
   const [types, advisors] = await Promise.all([loadTaskTypeOptions(TASK_TYPE_OPTIONS), loadAdvisorOptions(mockTeachers)])
   taskTypeOptions.value = types.filter((item) => item.allowStudentSelf !== false)
   teachers.value = advisors
+  dependenciesLoaded.value = true
 })
 </script>
 
@@ -500,7 +528,7 @@ onMounted(async () => {
               <select id="primary-teacher" v-model="form.primaryTeacherId" @change="handlePrimaryTeacherChange">
                 <option value="">请选择主指导老师</option>
                 <option v-for="teacher in teachers" :key="teacher.id" :value="teacher.id">
-                  {{ teacher.name }} · {{ teacher.department }}
+                  {{ teacher.name }}（teacher_no: {{ teacher.teacherNo || teacher.teacherId || teacher.id }}）
                 </option>
               </select>
             </div>

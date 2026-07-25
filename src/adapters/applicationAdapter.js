@@ -6,6 +6,7 @@ const applicationTypeMap = { with_result: 'with_material', without_result: 'with
 export function adaptApplication(item) {
   if (!item) return null
   const advisorRelation = (item.advisors ?? []).find((relation) => relation.advisor_role === 'primary')
+  const viewAdvisorRelations = (item.advisors ?? []).filter((relation) => relation.advisor_role !== 'primary')
   const reviewerReview = [...(item.reviews ?? [])].reverse().find((review) => String(review.review_result ?? review.result ?? '').includes('reviewer'))
   const advisorReview = [...(item.reviews ?? [])].reverse().find((review) => String(review.review_result ?? review.result ?? '').includes('advisor'))
   const finalReview = [...(item.reviews ?? [])].reverse().find((review) => String(review.review_result ?? review.result ?? '').includes('final'))
@@ -42,7 +43,9 @@ export function adaptApplication(item) {
     reviews: item.reviews ?? [],
     assignments: item.assignments ?? [],
     actions: item.actions ?? {},
+    canOperate: item.can_operate ?? item.can_review ?? advisorRelation?.can_operate ?? false,
     mainAdvisor: adaptTeacher(advisorRelation?.teacher ?? item.advisor),
+    viewAdvisors: viewAdvisorRelations.map((relation) => adaptTeacher(relation.teacher)).filter(Boolean),
     advisorStatus: advisorReview ? 'approved' : '',
     advisorComment: advisorReview?.comment ?? '',
     advisorConfirmTime: advisorReview?.created_at ?? advisorReview?.reviewed_at ?? '',
@@ -74,6 +77,7 @@ export function adaptApplicationEnvelope(payload) {
     final_hours: payload.final_hours ?? payload.application.final_hours,
     requested_hours: payload.requested_hours ?? payload.application.requested_hours,
     can_review: payload.can_review ?? payload.application.can_review,
+    can_operate: payload.can_operate ?? payload.application.can_operate,
     actions: payload.actions ?? payload.application.actions,
   })
 }

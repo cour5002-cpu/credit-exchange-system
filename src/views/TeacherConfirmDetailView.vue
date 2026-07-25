@@ -4,28 +4,49 @@ import { useRoute, useRouter } from 'vue-router'
 import AttachmentNotice from '../components/AttachmentNotice.vue'
 import ReviewActionBar from '../components/ReviewActionBar.vue'
 import StatusTag from '../components/StatusTag.vue'
-import {
-  APPLICATION_STATUS,
-  advisorApprove,
-  advisorReject,
-  getApplications,
-} from '../mock/applications.js'
 import { approveApplicationByAdvisor, getAdvisorApplication, rejectApplicationByAdvisor } from '../api/applicationApi.js'
 import { adaptApplicationEnvelope } from '../adapters/applicationAdapter.js'
-import { getApiErrorMessage, hasServerAction } from '../utils/apiFeedback.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
 const route = useRoute()
 const router = useRouter()
 const confirmation = ref(null)
+const loading = ref(true)
+const loadError = ref('')
 const opinion = ref('')
 const feedback = ref({ type: '', message: '' })
-const canConfirm = computed(()=>confirmation.value && hasServerAction(confirmation.value.actions,['approve','advisor_approve'],confirmation.value.status==='submitted'))
+const canApprove = computed(() => Boolean(confirmation.value && (
+  confirmation.value.actions?.can_approve === true
+  || (confirmation.value.canOperate === true && confirmation.value.status === 'submitted')
+)))
+const canReject = computed(() => Boolean(confirmation.value && (
+  confirmation.value.actions?.can_reject === true
+  || (confirmation.value.canOperate === true && confirmation.value.status === 'submitted')
+)))
 
-async function loadConfirmation(){try{confirmation.value=adaptApplicationEnvelope(await getAdvisorApplication(Number(route.params.id)))}catch(error){window.alert(getApiErrorMessage(error,'申请详情加载失败'))}}
+async function loadConfirmation(){
+  loading.value = true
+  loadError.value = ''
+  const applicationId = Number(route.params.id)
+  if (!Number.isInteger(applicationId) || applicationId <= 0) {
+    loadError.value = '申请 ID 无效，无法加载详情。'
+    loading.value = false
+    return
+  }
+  try {
+    confirmation.value = adaptApplicationEnvelope(await getAdvisorApplication(applicationId))
+    if (!confirmation.value) loadError.value = '接口未返回申请详情。'
+  } catch (error) {
+    confirmation.value = null
+    loadError.value = getApiErrorMessage(error, '申请详情加载失败')
+  } finally {
+    loading.value = false
+  }
+}
 onMounted(loadConfirmation)
 async function approveConfirmation() {
   if (!confirmation.value) return
-  if(!hasServerAction(confirmation.value.actions,['approve','advisor_approve'],confirmation.value.status==='submitted')) return
+  if (!canApprove.value) return
   try{await approveApplicationByAdvisor(confirmation.value.id,{comment:opinion.value.trim()});await loadConfirmation();feedback.value={type:'success',message:'确认通过成功，申请已进入管理员分配审核老师环节。'};window.alert(feedback.value.message)}catch(error){window.alert(getApiErrorMessage(error,'确认失败'))}
 }
 
@@ -35,7 +56,7 @@ async function rejectConfirmation() {
     window.alert(feedback.value.message)
     return
   }
-  if(!hasServerAction(confirmation.value.actions,['reject','advisor_reject'],confirmation.value.status==='submitted')) return
+  if (!canReject.value) return
   try{await rejectApplicationByAdvisor(confirmation.value.id,{comment:opinion.value.trim()});await loadConfirmation();feedback.value={type:'success',message:'驳回成功'};window.alert(feedback.value.message)}catch(error){window.alert(getApiErrorMessage(error,'驳回失败'))}
 }
 
@@ -55,7 +76,8 @@ function downloadAttachment(file) {
 <template>
   <main class="detail-page">
     <div class="detail-content">
-      <template v-if="confirmation">
+      <section v-if="loading" class="not-found"><h1>正在加载申请详情…</h1></section>
+      <template v-else-if="confirmation">
         <header class="page-header">
           <div><p class="eyebrow">CONFIRMATION DETAIL</p><h1>{{ confirmation.title }}</h1><p>课时申请确认</p></div>
           <StatusTag :status="confirmation.status" />
@@ -74,7 +96,7 @@ function downloadAttachment(file) {
         <section class="detail-card">
           <h2>申请信息</h2>
           <dl class="info-grid">
-            <div><dt>事项编号</dt><dd>{{ confirmation.id }}</dd></div>
+            <div><dt>事项编号</dt><dd>{{ confirmation.applicationNo || confirmation.id }}</dd></div>
             <div><dt>申请来源</dt><dd>{{ confirmation.sourceText }}</dd></div>
             <div><dt>申请类型</dt><dd>{{ confirmation.applyTypeText }}</dd></div>
             <div><dt>申请课时</dt><dd>{{ confirmation.requestedHours }} 小时</dd></div>
@@ -131,7 +153,8 @@ function downloadAttachment(file) {
         <ReviewActionBar
           approve-text="确认通过"
           reject-text="驳回"
-          :disabled="!canConfirm"
+          :approve-disabled="!canApprove"
+          :reject-disabled="!canReject"
           @approve="approveConfirmation"
           @reject="rejectConfirmation"
         >
@@ -139,7 +162,7 @@ function downloadAttachment(file) {
         </ReviewActionBar>
       </template>
 
-      <section v-else class="not-found"><h1>未找到确认事项</h1><p>该事项可能不存在或已被移除。</p><button class="back-button" type="button" @click="goBack">返回待确认事项</button></section>
+      <section v-else class="not-found"><h1>申请详情加载失败</h1><p>{{ loadError || '暂时无法获取申请详情，请稍后重试。' }}</p><button class="back-button" type="button" @click="loadConfirmation">重新加载</button><button class="back-button" type="button" @click="goBack">返回待确认事项</button></section>
     </div>
   </main>
 </template>

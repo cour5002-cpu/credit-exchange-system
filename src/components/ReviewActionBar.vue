@@ -4,6 +4,14 @@ defineProps({
     type: Boolean,
     default: false,
   },
+  approveDisabled: {
+    type: Boolean,
+    default: false,
+  },
+  rejectDisabled: {
+    type: Boolean,
+    default: false,
+  },
   loading: {
     type: Boolean,
     default: false,
@@ -32,7 +40,7 @@ defineEmits(['approve', 'reject'])
       v-if="showReject"
       class="review-action review-action--reject"
       type="button"
-      :disabled="disabled || loading"
+      :disabled="disabled || rejectDisabled || loading"
       @click="$emit('reject')"
     >
       {{ rejectText }}
@@ -40,7 +48,7 @@ defineEmits(['approve', 'reject'])
     <button
       class="review-action review-action--approve"
       type="button"
-      :disabled="disabled || loading"
+      :disabled="disabled || approveDisabled || loading"
       @click="$emit('approve')"
     >
       {{ loading ? '处理中…' : approveText }}
