@@ -29,8 +29,8 @@ export function adaptTask(task) {
     advisorId: task.advisor?.id,
     advisorName: task.advisor?.name ?? task.publisher_name,
     attachments: (task.attachments ?? []).map(adaptAttachment),
-    registrations: (task.registrations ?? []).map((item) => ({ ...item, id: item.id, registrationId: item.id, student: adaptStudent(item.student), studentDbId: item.student?.id, studentId: item.student?.student_no, studentName: item.student?.name, college: item.student?.college_name, major: item.student?.major_name, applyStatus: item.status, applyTime: item.submitted_at, selected: item.status === 'selected' })),
-    applicants: (task.registrations ?? []).map((item) => ({ ...item, id: item.id, registrationId: item.id, studentDbId: item.student?.id, studentId: item.student?.student_no, studentName: item.student?.name, college: item.student?.college_name, major: item.student?.major_name, applyStatus: item.status, applyTime: item.submitted_at, selected: item.status === 'selected' })),
+    registrations: adaptTaskRegistrations(task.registrations),
+    applicants: adaptTaskRegistrations(task.registrations),
     members: (task.members ?? []).map((item) => ({ ...item, student: adaptStudent(item.student), studentId: item.student?.student_no, studentName: item.student?.name, isLeader: item.is_leader })),
     leader: adaptStudent(task.leader),
     leaderId: task.leader?.id,
@@ -41,6 +41,30 @@ export function adaptTask(task) {
     canRegister: task.actions?.can_register ?? task.can_register ?? false,
   }
 }
+
+export function adaptTaskRegistration(item) {
+  if (!item) return null
+  const student = adaptStudent(item.student)
+  return {
+    ...item,
+    id: item.id,
+    registrationId: item.id,
+    student,
+    studentDbId: item.student?.id,
+    studentId: item.student?.student_no,
+    studentName: item.student?.name,
+    college: student?.college || item.student?.college_name || '',
+    major: student?.major || item.student?.major_name || '',
+    className: student?.className || item.student?.class_name || '',
+    applyStatus: item.status,
+    applyTime: item.registered_at ?? item.submitted_at,
+    selected: item.status === 'selected',
+  }
+}
+
+export const adaptTaskRegistrations = (payload) => (
+  Array.isArray(payload) ? payload : payload?.items ?? payload?.registrations ?? []
+).map(adaptTaskRegistration).filter(Boolean)
 
 export function adaptTaskResult(result) {
   if (!result) return null
