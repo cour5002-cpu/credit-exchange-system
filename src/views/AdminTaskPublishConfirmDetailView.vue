@@ -1,14 +1,17 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
-import { TASK_STATUS, adminApproveTaskPublish, adminRejectTaskPublish, getTask, getTaskTypeText } from '../mock/tasks.js'
+import { getTaskTypeText } from '../mock/tasks.js'
+import { approveTaskPublish, getTaskPublishRequest, rejectTaskPublish } from '../api/taskApi.js'
+import { adaptTaskEnvelope } from '../adapters/taskAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
 const route=useRoute();const router=useRouter();const comment=ref('');const feedback=ref('')
-const task=computed(()=>{const found=getTask(route.params.id);return found?.source==='advisor'?found:null})
-const canProcess=computed(()=>task.value?.status===TASK_STATUS.PENDING_ADMIN_PUBLISH)
+const task=ref(null);onMounted(loadTask);async function loadTask(){try{task.value=adaptTaskEnvelope(await getTaskPublishRequest(Number(route.params.id)))}catch(error){window.alert(getApiErrorMessage(error,'任务详情加载失败'))}}
+const canProcess=computed(()=>task.value?.status==='pending_publish_review')
 function back(){router.push('/admin/tasks/publish-confirm')}
-function approve(){if(!canProcess.value)return;if(!window.confirm('确定正式发布该任务吗？'))return;if(!adminApproveTaskPublish(task.value.taskId,comment.value))return window.alert('当前任务无法确认发布。');window.alert('任务已确认发布，学生端任务广场可见。');back()}
-function reject(){if(!canProcess.value)return;if(!comment.value.trim()){feedback.value='驳回发布必须填写处理意见。';return window.alert(feedback.value)};if(!adminRejectTaskPublish(task.value.taskId,comment.value))return window.alert('当前任务无法驳回。');window.alert('任务已驳回，已退回指导老师端。');back()}
+async function approve(){if(!canProcess.value)return;if(!window.confirm('确定正式发布该任务吗？'))return;try{await approveTaskPublish(task.value.id,{comment:comment.value.trim()});window.alert('任务已确认发布，学生端任务广场可见。');back()}catch(error){window.alert(getApiErrorMessage(error,'确认发布失败'))}}
+async function reject(){if(!canProcess.value)return;if(!comment.value.trim()){feedback.value='驳回发布必须填写处理意见。';return window.alert(feedback.value)};try{await rejectTaskPublish(task.value.id,{comment:comment.value.trim()});window.alert('任务已驳回，已退回指导老师端。');back()}catch(error){window.alert(getApiErrorMessage(error,'驳回发布失败'))}}
 function preview(){window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。')}
 function download(){window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。')}
 </script>

@@ -1,15 +1,18 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
-import { TASK_TYPE_OPTIONS, applyTask, getPublishedTasks, getTaskTypeText, hasStudentApplied } from '../mock/tasks.js'
-const currentStudent={studentId:'2024001',studentName:'张三',college:'计算机学院',major:'软件工程'}
+import { TASK_TYPE_OPTIONS, getTaskTypeText } from '../mock/tasks.js'
+import { getStudentTasks, registerTask } from '../api/taskApi.js'
+import { adaptTaskList } from '../adapters/taskAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
 const keyword=ref('');const selectedType=ref('');const registrationStatus=ref('');const version=ref(0)
 function deadlineTime(task){return new Date(String(task.registrationDeadline).replace(' ','T')).getTime()}
 function isClosed(task){const time=deadlineTime(task);return !Number.isFinite(time)||Date.now()>=time}
-function isApplied(task){version.value;return hasStudentApplied(task.taskId,currentStudent.studentId)}
+function isApplied(task){version.value;return Boolean(task.myRegistration)}
 function derivedStatus(task){if(isApplied(task))return'applied';if(isClosed(task))return'closed';return'available'}
-const items=computed(()=>{version.value;const search=keyword.value.trim().toLowerCase();return getPublishedTasks().filter(item=>(!selectedType.value||item.taskType===selectedType.value)&&(!registrationStatus.value||derivedStatus(item)===registrationStatus.value)&&(!search||item.title.toLowerCase().includes(search))).sort((a,b)=>String(a.registrationDeadline).localeCompare(String(b.registrationDeadline)))})
-function apply(item){const result=applyTask(item.taskId,currentStudent);window.alert(result.message);if(result.success)version.value+=1}
+const remoteItems=ref([]);async function loadItems(){try{remoteItems.value=adaptTaskList(await getStudentTasks({page_size:100}))}catch(error){window.alert(getApiErrorMessage(error,'任务广场加载失败'))}}onMounted(loadItems)
+const items=computed(()=>{version.value;const search=keyword.value.trim().toLowerCase();return remoteItems.value.filter(item=>item.status==='published').filter(item=>(!selectedType.value||item.taskTypeId===selectedType.value)&&(!registrationStatus.value||derivedStatus(item)===registrationStatus.value)&&(!search||item.title.toLowerCase().includes(search))).sort((a,b)=>String(a.registrationDeadline).localeCompare(String(b.registrationDeadline)))})
+async function apply(item){try{await registerTask(item.id,{remark:''});window.alert('报名成功');await loadItems()}catch(error){if(error?.status===409||error?.code===40901)return window.alert(Date.now()>=deadlineTime(item)?'报名已截止':'当前状态已变化，请刷新后重试');window.alert(getApiErrorMessage(error,'报名失败'))}}
 function summary(text){const value=String(text||'暂无要求');return value.length>42?`${value.slice(0,42)}…`:value}
 </script>
 <template><main class="page"><div class="content"><header class="header"><div><p class="eyebrow">S201 · TASK SQUARE</p><h1>任务广场</h1><p>浏览管理员已确认发布的任务，并在截止时间前报名。</p></div><RouterLink class="back" to="/student/dashboard">返回学生首页</RouterLink></header>

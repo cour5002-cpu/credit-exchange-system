@@ -2,15 +2,18 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AttachmentNotice from '../components/AttachmentNotice.vue'
-import { TASK_STATUS, TASK_TYPE_OPTIONS, getTask, saveTaskDraft, submitTaskForPublish } from '../mock/tasks.js'
+import { TASK_TYPE_OPTIONS } from '../mock/tasks.js'
+import { publishAdvisorTask, saveAdvisorTaskDraft } from '../api/taskApi.js'
+import { toAdvisorTaskPayload } from '../adapters/taskAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
 import { uploadAttachment } from '../api/fileApi.js'
 import { loadTaskTypeOptions } from '../services/commonDependencyService.js'
 
 const route = useRoute()
 const router = useRouter()
 const currentAdvisor = { id: 'T001', name: '张明' }
-const existing = route.params.id ? getTask(route.params.id) : null
-const editable = !route.params.id || Boolean(existing && [TASK_STATUS.DRAFT, TASK_STATUS.PUBLISH_REJECTED].includes(existing.status))
+const existing = null
+const editable = !route.params.id
 const form = reactive({
   taskId: existing?.taskId || '', title: existing?.title || '', taskType: existing?.taskType || '',
   description: existing?.description || '', resultRequirement: existing?.resultRequirement || '',
@@ -25,8 +28,8 @@ async function selectAttachments(event) { const files = Array.from(event.target.
 function removeAttachment(id) { const file = form.attachments.find((item) => item.id === id); if (file?.mockUrl?.startsWith('blob:')) URL.revokeObjectURL(file.mockUrl); form.attachments = form.attachments.filter((item) => item.id !== id) }
 function payload() { return { taskId: form.taskId, title: form.title.trim(), taskType: form.taskType, description: form.description.trim(), resultRequirement: form.resultRequirement.trim(), registrationDeadline: form.registrationDeadline.replace('T', ' '), attachments: form.attachments.map((file) => ({ ...file })), attachmentIds: form.attachments.flatMap((file) => file.attachmentIds || (Number.isInteger(file.id) ? [file.id] : [])), advisorId: currentAdvisor.id, advisorName: currentAdvisor.name, source: 'advisor' } }
 function validate() { if (!form.title.trim()) return '任务名称必填。'; if (!form.taskType) return '任务类型必填。'; if (!form.description.trim()) return '任务说明必填。'; if (!form.resultRequirement.trim()) return '成果提交要求必填。'; if (!form.registrationDeadline) return '报名截止时间必填。'; if (new Date(form.registrationDeadline).getTime() <= Date.now()) return '报名截止时间必须晚于当前时间。'; return '' }
-function save() { if (!editable) return; const task = saveTaskDraft(payload()); if (!task) return window.alert('当前状态不可保存草稿。'); window.alert('草稿保存成功。'); router.push('/teacher/publish-task') }
-function submit() { if (!editable) return; const error = validate(); if (error) { feedback.value = error; return window.alert(error) } const task = submitTaskForPublish(payload()); if (!task) return window.alert('当前状态不可提交发布申请。'); window.alert('发布申请已提交，等待管理员确认。'); router.push('/teacher/publish-task') }
+async function save() { if (!editable) return; const error=validate();if(error)return window.alert(error);try{await saveAdvisorTaskDraft(toAdvisorTaskPayload({title:form.title.trim(),description:form.description.trim(),taskTypeId:form.taskType,resultRequirement:form.resultRequirement.trim(),registrationDeadline:form.registrationDeadline}));window.alert('草稿保存成功。');router.push('/teacher/publish-task')}catch(error){window.alert(getApiErrorMessage(error,'草稿保存失败'))} }
+async function submit() { if (!editable) return; const error = validate(); if (error) { feedback.value = error; return window.alert(error) } try{await publishAdvisorTask(toAdvisorTaskPayload({title:form.title.trim(),description:form.description.trim(),taskTypeId:form.taskType,resultRequirement:form.resultRequirement.trim(),registrationDeadline:form.registrationDeadline}));window.alert('发布申请已提交，等待管理员确认。');router.push('/teacher/publish-task')}catch(apiError){window.alert(getApiErrorMessage(apiError,'发布申请提交失败'))} }
 onMounted(async () => { taskTypeOptions.value = (await loadTaskTypeOptions(TASK_TYPE_OPTIONS)).filter((item) => item.allowTeacherTask !== false) })
 </script>
 

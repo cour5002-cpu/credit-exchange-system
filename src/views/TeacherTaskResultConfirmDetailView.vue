@@ -1,20 +1,22 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
-import { TASK_RESULT_STATUS, approveTaskResult, getTaskResultById, rejectTaskResult } from '../mock/taskResults.js'
-import { getTaskById, getTaskTypeText } from '../mock/tasks.js'
+import { getTaskTypeText } from '../mock/tasks.js'
+import { approveTaskResult, getTaskResult, rejectTaskResult } from '../api/taskApi.js'
+import { adaptTaskResultEnvelope } from '../adapters/taskAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
-const route = useRoute(); const router = useRouter(); const advisorId = 'T001'
+const route = useRoute(); const router = useRouter()
 const comment = ref('')
-const result = computed(() => { const item = getTaskResultById(route.params.id); return item?.advisorId === advisorId ? item : null })
-const task = computed(() => result.value ? getTaskById(result.value.taskId) : null)
-const pending = computed(() => result.value?.status === TASK_RESULT_STATUS.PENDING_ADVISOR_RESULT_CONFIRM)
+const result = ref(null);onMounted(loadResult);async function loadResult(){try{result.value=adaptTaskResultEnvelope(await getTaskResult(Number(route.params.id)))}catch(error){window.alert(getApiErrorMessage(error,'成果详情加载失败'))}}
+const task = computed(() => result.value?.task)
+const pending = computed(() => result.value?.actions?.can_approve===true||result.value?.actions?.can_reject===true||(result.value?.canOperate===true&&result.value?.status==='submitted')||result.value?.status==='submitted')
 function back(){router.push('/teacher/confirm/results')}
 function preview(){window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。')}
 function download(){window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。')}
-function approve(){if(!pending.value)return window.alert('该成果已处理，不能重复确认。');if(!approveTaskResult(result.value.resultId,comment.value))return window.alert('成果确认失败。');window.alert('成果确认通过，关联课时申请已进入待分配。');back()}
-function reject(){if(!pending.value)return window.alert('该成果已处理，不能重复确认。');if(!comment.value.trim())return window.alert('驳回成果时必须填写确认意见。');if(!rejectTaskResult(result.value.resultId,comment.value))return window.alert('成果驳回失败。');window.alert('成果已驳回，队长可修改后重新提交。');back()}
+async function approve(){if(!pending.value)return window.alert('该成果已处理，不能重复确认。');try{await approveTaskResult(result.value.id,{comment:comment.value.trim()});window.alert('成果确认通过，关联课时申请已进入待分配。');back()}catch(error){window.alert(getApiErrorMessage(error,'成果确认失败'))}}
+async function reject(){if(!pending.value)return window.alert('该成果已处理，不能重复确认。');if(!comment.value.trim())return window.alert('驳回成果时必须填写确认意见。');try{await rejectTaskResult(result.value.id,{comment:comment.value.trim()});window.alert('成果已驳回，队长可修改后重新提交。');back()}catch(error){window.alert(getApiErrorMessage(error,'成果驳回失败'))}}
 </script>
 
 <template><main class="page"><div class="content"><template v-if="result">

@@ -1,11 +1,15 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
-import { TASK_STATUS, getAdvisorTasks, getTaskTypeText, submitTaskForPublish } from '../mock/tasks.js'
-const currentAdvisorId='T001'; const keyword=ref(''); const selectedStatus=ref(''); const version=ref(0)
-const items=computed(()=>{version.value;const search=keyword.value.trim().toLowerCase();return getAdvisorTasks(currentAdvisorId).filter(item=>(!selectedStatus.value||item.status===selectedStatus.value)&&(!search||item.title.toLowerCase().includes(search))).sort((a,b)=>String(b.submitTime).localeCompare(String(a.submitTime)))})
+import { TASK_STATUS, getTaskTypeText } from '../mock/tasks.js'
+import { getAdvisorTasks } from '../api/taskApi.js'
+import { adaptTaskList } from '../adapters/taskAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
+const keyword=ref(''); const selectedStatus=ref(''); const version=ref(0);const remoteItems=ref([])
+onMounted(async()=>{try{remoteItems.value=adaptTaskList(await getAdvisorTasks({page_size:100}))}catch(error){window.alert(getApiErrorMessage(error,'任务列表加载失败'))}})
+const items=computed(()=>{version.value;const search=keyword.value.trim().toLowerCase();return remoteItems.value.filter(item=>(!selectedStatus.value||item.status===selectedStatus.value)&&(!search||item.title.toLowerCase().includes(search))).sort((a,b)=>String(b.submitTime).localeCompare(String(a.submitTime)))})
 const canEdit=(item)=>[TASK_STATUS.DRAFT,TASK_STATUS.PUBLISH_REJECTED].includes(item.status)
-function resubmit(item){if(item.status!==TASK_STATUS.PUBLISH_REJECTED)return;const complete=item.title&&item.taskType&&item.description&&item.resultRequirement&&item.registrationDeadline&&new Date(item.registrationDeadline.replace(' ','T')).getTime()>Date.now();if(!complete)return window.alert('任务信息不完整或报名截止时间已过，请先进入编辑页修改后再提交。');if(!window.confirm(`确定重新提交“${item.title}”的发布申请吗？`))return;submitTaskForPublish({...item});version.value+=1;window.alert('已重新提交，等待管理员确认发布。')}
+function resubmit(){window.alert('请新建发布申请；当前 V1 未提供已驳回任务编辑重提接口。')}
 </script>
 <template><main class="page"><div class="content"><header class="header"><div><p class="eyebrow">T201 · TASK PUBLISH MANAGEMENT</p><h1>发布任务管理</h1><p>管理本人创建的任务及其发布确认进度。</p></div><div class="header-actions"><RouterLink class="secondary" to="/teacher/dashboard">返回首页</RouterLink><RouterLink class="primary" to="/teacher/publish-task/new">发布新任务</RouterLink></div></header>
 <section class="filters"><label><span>任务名称</span><input v-model="keyword" type="search" placeholder="搜索任务名称" /></label><label><span>发布状态</span><select v-model="selectedStatus"><option value="">全部状态</option><option :value="TASK_STATUS.DRAFT">草稿</option><option :value="TASK_STATUS.PENDING_ADMIN_PUBLISH">待管理员确认发布</option><option :value="TASK_STATUS.PUBLISHED">已发布</option><option :value="TASK_STATUS.PUBLISH_REJECTED">发布被驳回</option></select></label></section>

@@ -1,15 +1,19 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
-import { TASK_TYPE_OPTIONS, batchApproveTaskPublish, batchRejectTaskPublish, getPendingAdminPublishTasks, getTaskTypeText } from '../mock/tasks.js'
+import { TASK_TYPE_OPTIONS, getTaskTypeText } from '../mock/tasks.js'
+import { getTaskPublishRequests } from '../api/taskApi.js'
+import { adaptTaskList } from '../adapters/taskAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
 const keyword=ref('');const selectedType=ref('');const selectedIds=ref([]);const batchComment=ref('');const batchResult=ref(null);const version=ref(0)
-const items=computed(()=>{version.value;const search=keyword.value.trim().toLowerCase();return getPendingAdminPublishTasks().filter(item=>(!selectedType.value||item.taskType===selectedType.value)&&(!search||item.title.toLowerCase().includes(search))).sort((a,b)=>String(b.submitTime).localeCompare(String(a.submitTime)))})
+const remoteItems=ref([]);onMounted(async()=>{try{remoteItems.value=adaptTaskList(await getTaskPublishRequests({page_size:100}))}catch(error){window.alert(getApiErrorMessage(error,'待确认任务加载失败'))}})
+const items=computed(()=>{version.value;const search=keyword.value.trim().toLowerCase();return remoteItems.value.filter(item=>(!selectedType.value||item.taskTypeId===selectedType.value)&&(!search||item.title.toLowerCase().includes(search))).sort((a,b)=>String(b.submitTime).localeCompare(String(a.submitTime)))})
 const allSelected=computed(()=>items.value.length>0&&items.value.every(item=>selectedIds.value.includes(item.taskId)))
 const partiallySelected=computed(()=>!allSelected.value&&items.value.some(item=>selectedIds.value.includes(item.taskId)))
 function toggleAll(event){const ids=items.value.map(item=>item.taskId);selectedIds.value=event.target.checked?[...new Set([...selectedIds.value,...ids])]:selectedIds.value.filter(id=>!ids.includes(id))}
 function finish(result,action){batchResult.value={...result,action};selectedIds.value=[];version.value+=1}
-function approve(){if(!selectedIds.value.length)return window.alert('请先选择要确认发布的任务。');if(!window.confirm(`确定确认发布所选 ${selectedIds.value.length} 条任务吗？`))return;finish(batchApproveTaskPublish(selectedIds.value,batchComment.value.trim()),'批量确认发布')}
-function reject(){if(!selectedIds.value.length)return window.alert('请先选择要驳回发布的任务。');if(!batchComment.value.trim())return window.alert('批量驳回发布必须填写处理意见。');if(!window.confirm(`确定驳回所选 ${selectedIds.value.length} 条任务吗？`))return;finish(batchRejectTaskPublish(selectedIds.value,batchComment.value.trim()),'批量驳回发布')}
+function approve(){window.alert('请进入任务详情逐条确认发布。')}
+function reject(){window.alert('请进入任务详情逐条驳回发布。')}
 </script>
 <template><main class="page"><div class="content"><header class="header"><div><p class="eyebrow">A101 · TASK PUBLISH CONFIRMATION</p><h1>任务发布确认</h1><p>确认指导老师提交并等待发布到学生端的任务。</p></div><RouterLink class="back" to="/admin/tasks">返回任务管理</RouterLink></header>
 <section class="filters"><label><span>任务名称</span><input v-model="keyword" type="search" placeholder="搜索任务名称" /></label><label><span>任务类型</span><select v-model="selectedType"><option value="">全部类型</option><option v-for="option in TASK_TYPE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option></select></label><label><span>批量处理意见</span><input v-model="batchComment" placeholder="批量驳回时必填" /></label></section>

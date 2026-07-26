@@ -20,7 +20,7 @@ onMounted(loadItems)
 const filteredItems = computed(() => {
   refreshKey.value
   const search = keyword.value.trim().toLowerCase()
-  return realItems.value.filter((item) =>
+  return realItems.value.filter((item) => item.status === 'pending_assignment').filter((item) =>
     (!selectedType.value || item.applyType === selectedType.value) &&
     (!search || item.studentName.toLowerCase().includes(search) || item.title.toLowerCase().includes(search)),
   )

@@ -1,21 +1,19 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
-import { TASK_RESULT_STATUS, getTaskResultByTaskId } from '../mock/taskResults.js'
-import { getSelectedStudents, getStudentTaskDetail, getTaskTypeText } from '../mock/tasks.js'
+import { getTaskTypeText } from '../mock/tasks.js'
+import { getStudentTask,getTaskTeam } from '../api/taskApi.js';import { adaptTaskEnvelope } from '../adapters/taskAdapter.js';import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
-const route = useRoute(); const router = useRouter(); const studentId = '2024001'
-const detail = computed(() => getStudentTaskDetail(route.params.id, studentId))
-const task = computed(() => detail.value?.task)
-const members = computed(() => task.value ? getSelectedStudents(task.value.taskId) : [])
-const result = computed(() => task.value ? getTaskResultByTaskId(task.value.taskId) : null)
-const canSubmitResult = computed(() => detail.value?.isLeader && (!result.value || result.value.status === TASK_RESULT_STATUS.ADVISOR_RESULT_REJECTED))
+const route = useRoute(); const router = useRouter();const task=ref(null);const team=ref(null);onMounted(async()=>{try{const [taskPayload,teamPayload]=await Promise.all([getStudentTask(Number(route.params.id)),getTaskTeam(Number(route.params.id))]);task.value=adaptTaskEnvelope(taskPayload);team.value=teamPayload}catch(error){window.alert(getApiErrorMessage(error,'任务详情加载失败'))}})
+const detail = computed(() => ({task:task.value,applyResult:task.value?.myRegistration,isLeader:team.value?.can_submit_result===true}))
+const members = computed(() => team.value?.members??[])
+const result = computed(() => task.value?.resultSubmission??(team.value?.task_result_submission_id?{id:team.value.task_result_submission_id,status:team.value.task_result_status}:null))
+const canSubmitResult = computed(() => detail.value?.isLeader && (!result.value || result.value.status === 'advisor_rejected'))
 const resultText = computed(() => ({
-  [TASK_RESULT_STATUS.PENDING_ADVISOR_RESULT_CONFIRM]: '待指导老师确认成果',
-  [TASK_RESULT_STATUS.ADVISOR_RESULT_APPROVED]: '成果已确认',
-  [TASK_RESULT_STATUS.ADVISOR_RESULT_REJECTED]: '成果已驳回，可重新提交',
-  [TASK_RESULT_STATUS.APPLICATION_CREATED]: '已用于课时申请',
+  submitted: '待指导老师确认成果',
+  advisor_rejected: '成果已驳回，可重新提交',
+  converted_to_hour_application: '已转入课时认定',
 }[result.value?.status] || '未提交'))
 function back(){router.push('/student/tasks')}
 function preview(){window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。')}

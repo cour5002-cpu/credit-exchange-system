@@ -1,13 +1,16 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
-import { TASK_STATUS, applyTask, getTaskById, getTaskTypeText, hasStudentApplied } from '../mock/tasks.js'
-const route=useRoute();const router=useRouter();const version=ref(0);const currentStudent={studentId:'2024001',studentName:'张三',college:'计算机学院',major:'软件工程'}
-const task=computed(()=>{version.value;const found=getTaskById(route.params.id);return found?.status===TASK_STATUS.PUBLISHED?found:null})
+import { getTaskTypeText } from '../mock/tasks.js'
+import { getStudentTask, registerTask } from '../api/taskApi.js'
+import { adaptTaskEnvelope } from '../adapters/taskAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
+const route=useRoute();const router=useRouter();const version=ref(0);const task=ref(null)
+async function loadTask(){try{task.value=adaptTaskEnvelope(await getStudentTask(Number(route.params.id)))}catch(error){window.alert(getApiErrorMessage(error,'任务详情加载失败'))}}onMounted(loadTask)
 const closed=computed(()=>{const time=new Date(String(task.value?.registrationDeadline||'').replace(' ','T')).getTime();return !Number.isFinite(time)||Date.now()>=time})
-const applied=computed(()=>{version.value;return task.value?hasStudentApplied(task.value.taskId,currentStudent.studentId):false})
-function apply(){const result=applyTask(task.value.taskId,currentStudent);window.alert(result.message);if(result.success)version.value+=1}
+const applied=computed(()=>Boolean(task.value?.myRegistration))
+async function apply(){try{await registerTask(task.value.id,{remark:''});window.alert('报名成功');await loadTask()}catch(error){if(error?.status===409||error?.code===40901)return window.alert(closed.value?'报名已截止':'当前状态已变化，请刷新后重试');window.alert(getApiErrorMessage(error,'报名失败'))}}
 function back(){router.push('/student/task-square')}
 function preview(){window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。')}
 function download(){window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。')}

@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
-import { APPLICATION_STATUS, canApplyExtension, canSupplementResult, getApplications } from '../mock/applications.js'
+import { APPLICATION_STATUS } from '../mock/applications.js'
 import { isApplicationAppealable } from '../mock/appeals.js'
 import { getStudentApplication } from '../api/applicationApi.js'
 import { adaptApplicationEnvelope } from '../adapters/applicationAdapter.js'
@@ -13,6 +13,8 @@ const router = useRouter()
 const currentUser = { id: 'stu001', name: '张三', studentId: '2024001' }
 const application = ref(null)
 onMounted(async () => { try { application.value = adaptApplicationEnvelope(await getStudentApplication(Number(route.params.id))) } catch (error) { window.alert(getApiErrorMessage(error, '申请详情加载失败')) } })
+const canSupplementResult = (item) => item?.applicationType === 'without_material' && item.status === 'pending_material'
+const canApplyExtension = (item) => item?.applicationType === 'without_material' && item.status === 'pending_material'
 
 const timeline = computed(() => {
   if (!application.value) return []

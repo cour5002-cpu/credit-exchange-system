@@ -1,23 +1,42 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
-import { APPLICATION_STATUS, canApplyExtension, canSupplementResult, getApplications } from '../mock/applications.js'
 import { getStatusText } from '../utils/status.js'
 import { isApplicationAppealable } from '../mock/appeals.js'
-import { getStudentApplications } from '../api/applicationApi.js'
-import { adaptApplicationList } from '../adapters/applicationAdapter.js'
+import { getStudentApplication, getStudentApplications } from '../api/applicationApi.js'
+import { adaptApplicationEnvelope, adaptApplicationList } from '../adapters/applicationAdapter.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
 const currentUser = { id: 'stu001', name: '张三', studentId: '2024001' }
+const route = useRoute()
 const selectedStatus = ref('')
 const keyword = ref('')
 const remoteApplications = ref([])
 const loadError = ref('')
-async function loadApplications() { try { remoteApplications.value = adaptApplicationList(await getStudentApplications({ page_size: 100 })).items; loadError.value = '' } catch (error) { loadError.value = getApiErrorMessage(error, '课时申请加载失败') } }
+async function loadApplications() {
+  try {
+    const listed = adaptApplicationList(await getStudentApplications({ page_size: 100 })).items
+    const submittedId = Number(route.query.submittedId)
+    if (Number.isInteger(submittedId) && submittedId > 0 && !listed.some((item) => item.id === submittedId)) {
+      const submitted = adaptApplicationEnvelope(await getStudentApplication(submittedId))
+      if (submitted) listed.unshift(submitted)
+    }
+    remoteApplications.value = listed
+    loadError.value = ''
+  } catch (error) { loadError.value = getApiErrorMessage(error, '课时申请加载失败') }
+}
 onMounted(loadApplications)
+const canSupplementResult = (application) => application?.applicationType === 'without_material' && application.status === 'pending_material'
+const canApplyExtension = (application) => application?.applicationType === 'without_material' && application.status === 'pending_material'
 
 const statusOptions = [
   'submitted',
+  'pending_material',
+  'material_submitted',
+  'extension_requested',
+  'extension_admin_review',
+  'material_overdue',
   'pending_assignment',
   'pending_review',
   'pending_admin_final',
@@ -31,8 +50,8 @@ const applications = computed(() => {
   const search = keyword.value.trim().toLowerCase()
   return remoteApplications.value
     .filter((application) => !selectedStatus.value || application.status === selectedStatus.value)
-    .filter((application) => !search || application.title.toLowerCase().includes(search))
-    .sort((a, b) => b.submitTime.localeCompare(a.submitTime))
+    .filter((application) => !search || String(application.title || '').toLowerCase().includes(search))
+    .sort((a, b) => String(b.submitTime || b.createdAt || '').localeCompare(String(a.submitTime || a.createdAt || '')))
 })
 </script>
 

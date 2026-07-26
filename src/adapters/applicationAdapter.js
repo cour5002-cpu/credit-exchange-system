@@ -19,6 +19,7 @@ export function adaptApplication(item) {
     applicationNo: item.application_no,
     title: item.title,
     applyType: item.application_type,
+    applicationType: item.application_type,
     applyTypeText: typeTextMap[item.application_type] ?? item.application_type,
     source: item.source_type,
     sourceText: sourceTextMap[item.source_type] ?? item.source_type ?? '课时申请',
@@ -37,6 +38,10 @@ export function adaptApplication(item) {
     createdAt: item.created_at,
     description: item.description,
     expectedResultDate: item.material_due_at,
+    resultDescription: item.achievement_summary ?? item.result_summary ?? '',
+    resultMaterials: (item.attachments ?? []).map(adaptAttachment),
+    proofMaterials: [],
+    supplementTime: item.material_submitted_at ?? item.updated_at,
     members: (item.members ?? []).map((member) => ({ ...adaptStudent(member.student), isLeader: member.is_leader, canView: member.can_view, joinedAt: member.joined_at })),
     advisors: (item.advisors ?? []).map((relation) => ({ teacher: adaptTeacher(relation.teacher), role: relation.advisor_role, canOperate: relation.can_operate, reviewedAt: relation.reviewed_at })),
     attachments: (item.attachments ?? []).map(adaptAttachment),
@@ -84,7 +89,46 @@ export function adaptApplicationEnvelope(payload) {
 
 export const adaptApplicationList = (payload) => ({
   ...(payload ?? {}),
-  items: (Array.isArray(payload) ? payload : payload?.items ?? []).map(adaptApplication),
+  items: (Array.isArray(payload) ? payload : payload?.items ?? payload?.applications ?? payload?.records ?? []).map(adaptApplication),
+})
+
+export function adaptExtensionRequest(payload) {
+  if (!payload) return null
+  const extension = payload.extension_request ?? payload
+  const application = adaptApplication(payload.application ?? extension.application)
+  const applicant = adaptStudent(extension.applicant)
+  return {
+    id: extension.id,
+    applicationId: extension.application_id ?? application?.id,
+    applicant,
+    studentName: extension.applicant_name ?? applicant?.name ?? application?.studentName,
+    studentId: applicant?.studentNo ?? application?.studentId,
+    oldDueAt: extension.old_due_at,
+    requestedDueAt: extension.requested_due_at,
+    reason: extension.reason,
+    reviewLevel: extension.review_level,
+    status: extension.status,
+    reviewComment: extension.review_comment,
+    createdAt: extension.created_at,
+    reviewedAt: extension.reviewed_at,
+    actions: payload.actions ?? extension.actions ?? {},
+    canOperate: payload.can_operate ?? extension.can_operate ?? false,
+    application,
+    title: application?.title,
+    applyTypeText: application?.applyTypeText,
+    requestedHours: application?.requestedHours,
+    mainAdvisor: application?.mainAdvisor,
+    originalExpectedResultTime: extension.old_due_at,
+    newExpectedResultTime: extension.requested_due_at,
+    extensionReason: extension.reason,
+    extensionSubmitTime: extension.created_at,
+    extensionMaterials: (extension.attachments ?? []).map(adaptAttachment),
+  }
+}
+
+export const adaptExtensionList = (payload) => ({
+  ...(payload ?? {}),
+  items: (Array.isArray(payload) ? payload : payload?.items ?? []).map(adaptExtensionRequest),
 })
 
 export const toApplicationPayload = (form) => ({
@@ -96,4 +140,5 @@ export const toApplicationPayload = (form) => ({
   advisor_teacher_id: Number(form.advisorTeacherId ?? form.mainAdvisor?.id ?? form.mainAdvisor),
   view_teacher_ids: (form.viewTeacherIds ?? form.viewAdvisors ?? []).map((teacher) => Number(teacher.id ?? teacher)),
   attachment_ids: form.attachmentIds ?? [],
+  ...(form.expectedResultDate ? { material_due_at: form.expectedResultDate } : {}),
 })

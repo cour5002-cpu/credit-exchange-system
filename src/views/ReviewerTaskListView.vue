@@ -14,7 +14,7 @@ const realApplications=ref([])
 onMounted(async()=>{try{realApplications.value=adaptApplicationList(await getReviewerPendingApi({page_size:100})).items}catch(error){window.alert(getApiErrorMessage(error,'待审核申请加载失败'))}})
 
 const allItems = computed(() => [
-  ...realApplications.value.map((item) => ({
+  ...realApplications.value.filter((item) => item.status === 'pending_review').map((item) => ({
     key: `normal-${item.id}`, id: item.id, reviewType: 'normal', reviewTypeText: '普通审核', title: item.title,
     studentName: item.studentName, sourceText: item.sourceText || '课时申请', hours: item.requestedHours,
     assignTime: item.adminAcceptTime, status: item.status, detailTo: `/reviewer/review-tasks/${item.id}`,

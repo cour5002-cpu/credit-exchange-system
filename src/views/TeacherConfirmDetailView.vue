@@ -47,7 +47,8 @@ onMounted(loadConfirmation)
 async function approveConfirmation() {
   if (!confirmation.value) return
   if (!canApprove.value) return
-  try{await approveApplicationByAdvisor(confirmation.value.id,{comment:opinion.value.trim()});await loadConfirmation();feedback.value={type:'success',message:'确认通过成功，申请已进入管理员分配审核老师环节。'};window.alert(feedback.value.message)}catch(error){window.alert(getApiErrorMessage(error,'确认失败'))}
+  const isWithoutMaterial = confirmation.value.applyType === 'without_material'
+  try{await approveApplicationByAdvisor(confirmation.value.id,{comment:opinion.value.trim()});await loadConfirmation();feedback.value={type:'success',message:isWithoutMaterial?'首次确认通过，申请已进入待补交成果阶段。':'确认通过成功，申请已进入管理员分配审核老师环节。'};window.alert(feedback.value.message)}catch(error){if(error?.code===40301||error?.status===403)return window.alert('无权限操作该申请');window.alert(getApiErrorMessage(error,'确认失败'))}
 }
 
 async function rejectConfirmation() {
@@ -57,7 +58,7 @@ async function rejectConfirmation() {
     return
   }
   if (!canReject.value) return
-  try{await rejectApplicationByAdvisor(confirmation.value.id,{comment:opinion.value.trim()});await loadConfirmation();feedback.value={type:'success',message:'驳回成功'};window.alert(feedback.value.message)}catch(error){window.alert(getApiErrorMessage(error,'驳回失败'))}
+  try{await rejectApplicationByAdvisor(confirmation.value.id,{comment:opinion.value.trim()});await loadConfirmation();feedback.value={type:'success',message:'驳回成功'};window.alert(feedback.value.message)}catch(error){if(error?.code===40301||error?.status===403)return window.alert('无权限操作该申请');window.alert(getApiErrorMessage(error,'驳回失败'))}
 }
 
 function goBack() {

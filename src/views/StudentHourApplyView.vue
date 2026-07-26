@@ -214,25 +214,23 @@ async function submitApplication() {
     return
   }
 
-  if (form.applicationType === 'with_result' && form.source === 'student') {
-    if (!form.attachmentIds.length) return window.alert('请先上传成果附件')
+  if (form.source === 'student') {
+    if (form.applicationType === 'with_result' && !form.attachmentIds.length) return window.alert('请先上传成果附件')
     const selectedTaskType = taskTypeOptions.value.find((item) => item.value === form.taskType)
     const selectedAdvisor = teachers.value.find((item) => item.id === form.primaryTeacherId)
     const selectedViewTeachers = form.observerTeacherIds.map((id) => teachers.value.find((item) => item.id === id))
     if (!dependenciesLoaded.value || selectedTaskType?.isMockFallback || selectedAdvisor?.isMockFallback || selectedViewTeachers.some((item) => item?.isMockFallback)) {
       return window.alert('当前任务类型或指导老师使用的是 Mock 回退数据，不能提交到后端')
     }
-    const isPositiveInteger = (value) => Number.isInteger(value) && value > 0
-    if (!isPositiveInteger(form.taskType)
-      || !isPositiveInteger(form.primaryTeacherId)
-      || !form.observerTeacherIds.every(isPositiveInteger)
-      || !form.attachmentIds.every(isPositiveInteger)) {
+    const isPositiveInteger = (value) => Number.isInteger(Number(value)) && Number(value) > 0
+    if (!isPositiveInteger(form.taskType) || !isPositiveInteger(form.primaryTeacherId)
+      || !form.observerTeacherIds.every(isPositiveInteger) || !form.attachmentIds.every(isPositiveInteger)) {
       return window.alert('当前任务类型、指导老师或附件不是后端真实数据，请刷新后重试')
     }
     try {
       const submitted = await submitApplicationApi(toApplicationPayload({
         ...form,
-        applyType: 'with_result',
+        applyType: form.applicationType,
         taskTypeId: form.taskType,
         advisorTeacherId: form.primaryTeacherId,
         viewTeacherIds: form.observerTeacherIds,
@@ -251,7 +249,7 @@ async function submitApplication() {
         console.error('[hour-application] 提交成功后详情验证失败。', detailError)
         window.alert('提交成功但详情查询失败，请联系后端检查持久化或权限')
       }
-      router.push('/student/hour-progress')
+      router.push({ path: '/student/hour-progress', query: { submittedId: applicationId } })
     } catch (apiError) { window.alert(getApiErrorMessage(apiError, '课时申请提交失败')) }
     return
   }

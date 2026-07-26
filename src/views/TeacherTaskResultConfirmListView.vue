@@ -1,14 +1,16 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
-import { TASK_RESULT_STATUS, getAdvisorPendingTaskResults } from '../mock/taskResults.js'
+import { getAdvisorTask, getAdvisorTasks } from '../api/taskApi.js'
+import { adaptTaskEnvelope, adaptTaskList } from '../adapters/taskAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
-const advisorId = 'T001'
 const keyword = ref('')
-const statusFilter = ref(TASK_RESULT_STATUS.PENDING_ADVISOR_RESULT_CONFIRM)
+const statusFilter = ref('submitted');const remoteResults=ref([])
+onMounted(async()=>{try{const summaries=adaptTaskList(await getAdvisorTasks({page_size:100}));const details=await Promise.all(summaries.filter(task=>task.status==='result_submitted'||task.resultSubmission).map(async task=>adaptTaskEnvelope(await getAdvisorTask(task.id))));remoteResults.value=details.map(task=>task.resultSubmission?{...task.resultSubmission,taskTitle:task.title,taskId:task.id,advisorName:task.advisorName}:null).filter(Boolean)}catch(error){window.alert(getApiErrorMessage(error,'待确认成果加载失败'))}})
 const results = computed(() => {
   const search = keyword.value.trim().toLowerCase()
-  return getAdvisorPendingTaskResults(advisorId).filter((item) => {
+  return remoteResults.value.filter((item) => {
     const matchesStatus = !statusFilter.value || item.status === statusFilter.value
     const matchesKeyword = !search || [item.taskTitle, item.leaderName].some((value) => String(value || '').toLowerCase().includes(search))
     return matchesStatus && matchesKeyword
@@ -19,7 +21,7 @@ const results = computed(() => {
 <template><main class="page"><div class="content">
   <header><div><p class="eyebrow">T106 · RESULT CONFIRMATION</p><h1>任务成果确认</h1><p>确认队长提交的任务成果，通过后学生方可发起课时申请。</p></div><RouterLink class="back" to="/teacher/confirm">返回待确认事项</RouterLink></header>
   <nav class="tabs"><RouterLink to="/teacher/confirm">课时申请确认</RouterLink><RouterLink to="/teacher/confirm/exchanges">学分兑换确认</RouterLink><RouterLink class="active" to="/teacher/confirm/results">任务成果确认</RouterLink></nav>
-  <section class="filters"><label><span>搜索</span><input v-model="keyword" type="search" placeholder="任务名称或队长姓名" /></label><label><span>成果状态</span><select v-model="statusFilter"><option value="">全部</option><option :value="TASK_RESULT_STATUS.PENDING_ADVISOR_RESULT_CONFIRM">待指导老师确认成果</option></select></label></section>
+  <section class="filters"><label><span>搜索</span><input v-model="keyword" type="search" placeholder="任务名称或队长姓名" /></label><label><span>成果状态</span><select v-model="statusFilter"><option value="">全部</option><option value="submitted">待指导老师确认成果</option></select></label></section>
   <section class="panel"><div class="panel-head"><h2>待确认成果</h2><span>共 {{ results.length }} 项</span></div><div class="table-wrap"><table><thead><tr><th>成果编号</th><th>任务名称</th><th>队长姓名</th><th>团队成员数量</th><th>提交时间</th><th>当前成果状态</th><th>操作</th></tr></thead><tbody>
     <tr v-for="item in results" :key="item.resultId"><td>{{ item.resultId }}</td><td>{{ item.taskTitle }}</td><td>{{ item.leaderName }}</td><td>{{ item.teamMembers?.length || 0 }}</td><td>{{ item.submitTime }}</td><td><StatusTag :status="item.status" /></td><td><RouterLink class="detail" :to="`/teacher/confirm/results/${item.resultId}`">查看详情</RouterLink></td></tr>
     <tr v-if="!results.length"><td colspan="7" class="empty">暂无待确认成果</td></tr>

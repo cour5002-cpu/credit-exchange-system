@@ -1,10 +1,13 @@
 <script setup>
-import { computed } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
-import { TASK_STATUS, getTask, getTaskTypeText } from '../mock/tasks.js'
-const route=useRoute();const router=useRouter();const currentAdvisorId='T001'
-const task=computed(()=>{const found=getTask(route.params.id);return found?.advisorId===currentAdvisorId&&found.source==='advisor'?found:null})
+import { TASK_STATUS, getTaskTypeText } from '../mock/tasks.js'
+import { getAdvisorTask } from '../api/taskApi.js'
+import { adaptTaskEnvelope } from '../adapters/taskAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
+const route=useRoute();const router=useRouter();const task=ref(null)
+onMounted(async()=>{try{task.value=adaptTaskEnvelope(await getAdvisorTask(Number(route.params.id)))}catch(error){window.alert(getApiErrorMessage(error,'任务详情加载失败'))}})
 function back(){router.push('/teacher/publish-task')}
 function previewFile(){window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。')}
 function downloadFile(){window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。')}

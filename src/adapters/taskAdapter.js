@@ -16,25 +16,42 @@ export function adaptTask(task) {
     publisherName: task.publisher_name,
     taskTypeId: task.task_type_id,
     taskType: task.task_type_name,
+    taskTypeName: task.task_type_name,
     description: task.description,
     resultRequirement: task.result_requirement ?? task.requirement,
     registrationDeadline: task.registration_deadline,
     resultDeadline: task.material_due_at,
     status: task.status,
     createdAt: task.created_at,
+    submitTime: task.submitted_at ?? task.created_at,
+    publishTime: task.published_at,
     advisor: adaptTeacher(task.advisor),
-    registrations: (task.registrations ?? []).map((item) => ({ ...item, student: adaptStudent(item.student), studentId: item.student?.student_no, studentName: item.student?.name, applyStatus: item.status, applyTime: item.submitted_at })),
+    advisorId: task.advisor?.id,
+    advisorName: task.advisor?.name ?? task.publisher_name,
+    attachments: (task.attachments ?? []).map(adaptAttachment),
+    registrations: (task.registrations ?? []).map((item) => ({ ...item, id: item.id, registrationId: item.id, student: adaptStudent(item.student), studentDbId: item.student?.id, studentId: item.student?.student_no, studentName: item.student?.name, college: item.student?.college_name, major: item.student?.major_name, applyStatus: item.status, applyTime: item.submitted_at, selected: item.status === 'selected' })),
+    applicants: (task.registrations ?? []).map((item) => ({ ...item, id: item.id, registrationId: item.id, studentDbId: item.student?.id, studentId: item.student?.student_no, studentName: item.student?.name, college: item.student?.college_name, major: item.student?.major_name, applyStatus: item.status, applyTime: item.submitted_at, selected: item.status === 'selected' })),
     members: (task.members ?? []).map((item) => ({ ...item, student: adaptStudent(item.student), studentId: item.student?.student_no, studentName: item.student?.name, isLeader: item.is_leader })),
     leader: adaptStudent(task.leader),
+    leaderId: task.leader?.id,
+    leaderName: task.leader?.name,
     resultSubmission: adaptTaskResult(task.result_submission),
     actions: task.actions ?? {},
+    myRegistration: task.my_registration ?? null,
+    canRegister: task.actions?.can_register ?? task.can_register ?? false,
   }
 }
 
 export function adaptTaskResult(result) {
   if (!result) return null
-  return { id: result.id, resultId: result.id, taskId: result.task_id, leader: adaptStudent(result.leader), leaderId: result.leader?.student_no, leaderName: result.leader?.name, resultDescription: result.summary ?? result.achievement_summary, requestedHours: result.requested_hours, resultMaterials: (result.attachments ?? []).map(adaptAttachment), versions: result.versions ?? [], status: result.status, submitTime: result.submitted_at }
+  const task = adaptTask(result.task)
+  return { id: result.id, resultId: result.id, taskId: result.task_id ?? task?.id, task, taskTitle: result.task_title ?? task?.title, advisorName: result.advisor_name ?? task?.advisorName, leader: adaptStudent(result.leader), leaderId: result.leader?.id, leaderName: result.leader?.name, teamMembers: (result.members ?? []).map((item) => ({ ...adaptStudent(item.student ?? item), role: item.is_leader ? 'captain' : 'member' })), resultDescription: result.summary ?? result.achievement_summary, requestedHours: result.requested_hours, resultMaterials: (result.attachments ?? []).map(adaptAttachment), proofMaterials: [], actions: result.actions ?? {}, canOperate: result.can_operate ?? false, versions: result.versions ?? [], status: result.status, submitTime: result.submitted_at }
 }
+
+export const adaptTaskEnvelope = (payload) => adaptTask(payload?.task ? { ...payload.task, my_registration: payload.my_registration ?? payload.task.my_registration, actions: payload.actions ?? payload.task.actions, can_register: payload.can_register ?? payload.task.can_register, registrations: payload.registrations ?? payload.items ?? payload.task.registrations, members: payload.members ?? payload.task.members, leader: payload.leader ?? payload.task.leader, result_submission: payload.result_submission ?? payload.task.result_submission } : payload)
+export const adaptTaskList = (payload) => (Array.isArray(payload) ? payload : payload?.items ?? payload?.tasks ?? []).map(adaptTask)
+export const adaptTaskResultEnvelope = (payload) => adaptTaskResult(payload?.result_submission ?? payload?.submission ?? payload)
+export const adaptTaskResultList = (payload) => (Array.isArray(payload) ? payload : payload?.items ?? payload?.submissions ?? []).map(adaptTaskResult)
 
 export const toTaskResultPayload = (form) => ({
   summary: form.summary ?? form.description,
@@ -50,4 +67,12 @@ export const toTaskPayload = (task) => ({
   registration_deadline: task.registrationDeadline,
   advisor_teacher_id: task.advisorId,
   attachment_ids: task.attachmentIds ?? [],
+})
+
+export const toAdvisorTaskPayload = (task) => ({
+  title: task.title,
+  description: task.description,
+  task_type_id: Number(task.taskTypeId),
+  result_requirement: task.resultRequirement,
+  registration_deadline: task.registrationDeadline,
 })

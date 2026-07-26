@@ -8,8 +8,9 @@ export const STATUS_TEXT = Object.freeze({
     pending_review: '待审核老师审核', pending_admin_final: '待管理员最终确认',
     advisor_rejected: '指导老师已驳回', reviewer_rejected: '审核老师已驳回',
     final_approved: '最终确认通过', final_rejected: '最终确认驳回', appealed: '申诉中',
-    material_submitted: '成果已补交', closed: '已关闭', discarded: '已作废',
-    // TODO: 后端需确认无成果申请等待补交、补交驳回及各延期节点的完整状态值。
+    pending_material: '待学生补交成果', material_submitted: '补交成果待指导老师确认',
+    extension_requested: '普通延期待指导老师确认', extension_admin_review: '特殊延期待管理员审核',
+    material_overdue: '成果补交已逾期', closed: '已关闭', discarded: '已作废',
   },
   task: {
     draft: '草稿', pending_publish_review: '待管理员确认发布', publish_rejected: '发布被驳回',
@@ -34,7 +35,6 @@ export const STATUS_TEXT = Object.freeze({
   },
   extension: {
     submitted: '已提交', approved: '已通过', rejected: '已驳回', closed: '已关闭',
-    // TODO: 后端需确认普通/特殊延期在申请主表上的状态值及 30 天分流规则。
   },
 })
 

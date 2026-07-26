@@ -1,25 +1,26 @@
 <script setup>
-import { computed, reactive } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AttachmentNotice from '../components/AttachmentNotice.vue'
 import StatusTag from '../components/StatusTag.vue'
-import { TASK_RESULT_STATUS, addTaskResult, getTaskResultByTaskId, hasActiveTaskResult, resubmitTaskResult } from '../mock/taskResults.js'
-import { getSelectedStudents, getTaskById, getTaskTypeText, markTaskResultSubmitted } from '../mock/tasks.js'
+import { getTaskTypeText } from '../mock/tasks.js'
+import { getStudentTask, getTaskTeam, resubmitTaskResult, submitTaskResult } from '../api/taskApi.js'
+import { uploadAttachment } from '../api/fileApi.js'
+import { adaptTaskEnvelope, toTaskResultPayload } from '../adapters/taskAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
 const route = useRoute(); const router = useRouter()
-const currentStudent = { studentId: '2024001', name: '张三' }
-const task = computed(() => getTaskById(route.params.id))
-const existingResult = computed(() => getTaskResultByTaskId(route.params.id))
-const isLeader = computed(() => task.value?.leaderId === currentStudent.studentId)
-const isResubmit = computed(() => existingResult.value?.status === TASK_RESULT_STATUS.ADVISOR_REJECTED)
-const duplicate = computed(() => hasActiveTaskResult(route.params.id) && !isResubmit.value)
-const teamMembers = computed(() => task.value ? getSelectedStudents(task.value.taskId) : [])
-const form = reactive({ description: existingResult.value?.resultDescription || '', requestedHours: existingResult.value?.requestedHours || '', resultFiles: [], proofFiles: [] })
-function nowText() { return new Date().toLocaleString('zh-CN', { hour12: false }).replaceAll('/', '-') }
-function readFiles(event, target, category) { Array.from(event.target.files || []).forEach((file, index) => target.push({ id: `RESULT-ATT-${Date.now()}-${index}`, name: file.name, type: file.type || '未知类型', size: `${file.size} B`, uploadedAt: nowText(), mockUrl: URL.createObjectURL(file), category })); event.target.value = '' }
-function removeFile(target, id) { const index = target.findIndex((item) => item.id === id); if (index < 0) return; if (target[index].mockUrl) URL.revokeObjectURL(target[index].mockUrl); target.splice(index, 1) }
+const task = ref(null);const team=ref(null);const existingResult=computed(()=>team.value?.resultSubmission??(team.value?.task_result_submission_id?{resultId:team.value.task_result_submission_id,status:team.value.task_result_status}:null))
+const isLeader = computed(() => team.value?.can_submit_result===true||team.value?.canSubmitResult===true)
+const isResubmit = computed(() => existingResult.value?.status === 'advisor_rejected')
+const duplicate = computed(() => Boolean(existingResult.value) && !isResubmit.value)
+const teamMembers = computed(() => team.value?.members??[])
+const form = reactive({ description: '', requestedHours: '', resultFiles: [], proofFiles: [], attachmentIds: [] })
+onMounted(async()=>{try{const [taskPayload,teamPayload]=await Promise.all([getStudentTask(Number(route.params.id)),getTaskTeam(Number(route.params.id))]);task.value=adaptTaskEnvelope(taskPayload);team.value=teamPayload;const result=task.value?.resultSubmission;if(result){form.description=result.resultDescription||'';form.requestedHours=result.requestedHours||''}}catch(error){window.alert(getApiErrorMessage(error,'任务信息加载失败'))}})
+async function readFiles(event, target, category) { const files=Array.from(event.target.files||[]);event.target.value='';for(const file of files){try{const uploaded=await uploadAttachment(file,'task_result');const id=Number(uploaded.id);if(!Number.isInteger(id)||id<=0)throw new Error('无效附件 ID');target.push({...uploaded.attachment,id,category});form.attachmentIds.push(id)}catch(error){window.alert('附件上传失败，请重新上传')}} }
+function removeFile(target, id) { const index=target.findIndex((item)=>item.id===id);if(index>=0)target.splice(index,1);const idIndex=form.attachmentIds.indexOf(Number(id));if(idIndex>=0)form.attachmentIds.splice(idIndex,1) }
 function validate() { if (!task.value) return '任务不存在。'; if (!isLeader.value) return '只有被指定的队长才能提交任务成果。'; if (duplicate.value) return '该任务已有成果记录，请勿重复创建。'; if (!form.description.trim()) return '请填写成果说明。'; if (!Number.isFinite(Number(form.requestedHours)) || Number(form.requestedHours) <= 0) return '申请课时必须大于 0。'; if (!form.resultFiles.length) return '请至少上传 1 个成果材料。'; return '' }
-function submit() { const error = validate(); if (error) return window.alert(error); const members = teamMembers.value.map((member) => ({ id: member.studentId, name: member.studentName, studentId: member.studentId, college: member.college || '', major: member.major || '', role: member.studentId === task.value.leaderId ? 'captain' : 'member' })); const data = { taskId: task.value.taskId, taskTitle: task.value.title, taskHours: Number(form.requestedHours), requestedHours: Number(form.requestedHours), leaderId: task.value.leaderId, leaderName: task.value.leaderName, advisorId: task.value.advisorId, advisorName: task.value.advisorName, teamMembers: members, resultDescription: form.description.trim(), resultMaterials: form.resultFiles.map((file) => ({ ...file })), proofMaterials: form.proofFiles.map((file) => ({ ...file })) }; const result = isResubmit.value ? resubmitTaskResult(existingResult.value.resultId, data) : addTaskResult(data); if (!result) return window.alert('成果提交失败，请检查当前状态。'); markTaskResultSubmitted(task.value.taskId, currentStudent.studentId); window.alert(isResubmit.value ? '成果已重新提交。' : '成果已提交；真实接口会自动创建关联课时申请。'); router.push(`/student/tasks/${task.value.taskId}`) }
+async function submit() { const error=validate();if(error)return window.alert(error);const payload=toTaskResultPayload({description:form.description.trim(),requestedHours:form.requestedHours,attachmentIds:form.attachmentIds});try{if(isResubmit.value){await resubmitTaskResult(Number(existingResult.value.resultId??existingResult.value.id),payload)}else{await submitTaskResult(task.value.id,payload)}window.alert(isResubmit.value?'成果已重新提交。':'成果已提交，后端已自动创建关联课时申请。');router.push(`/student/tasks/${task.value.id}`)}catch(error){window.alert(getApiErrorMessage(error,'成果提交失败'))} }
 </script>
 
 <template><main class="page"><div class="content"><template v-if="task"><header><div><p class="eyebrow">S105 · RESULT SUBMISSION</p><h1>{{ isResubmit ? '重新提交任务成果' : '队长上传成果' }}</h1><p>{{ task.title }} · {{ task.taskId }}</p></div><StatusTag :status="existingResult?.status || task.status" /></header><p v-if="!isLeader || duplicate" class="warning">{{ !isLeader ? '只有当前任务队长可以提交成果。' : '该任务已有成果记录，请勿重复创建。' }}</p><section class="card"><h2>任务信息</h2><dl class="grid"><div><dt>任务名称</dt><dd>{{ task.title }}</dd></div><div><dt>任务类型</dt><dd>{{ getTaskTypeText(task.taskType) }}</dd></div><div><dt>指导老师</dt><dd>{{ task.advisorName }}</dd></div><div class="wide"><dt>成果要求</dt><dd>{{ task.resultRequirement }}</dd></div></dl></section><section class="card"><h2>成果申请</h2><label>申请课时<input v-model.number="form.requestedHours" type="number" min="0.5" step="0.5" :disabled="!isLeader||duplicate" /></label><label>成果说明<textarea v-model="form.description" rows="6" :disabled="!isLeader||duplicate" /></label></section><section class="card"><h2>成果材料</h2><AttachmentNotice title="成果材料" description="首次提交或驳回重提均须重新提交附件。" :required="true" :accept-types="['PDF','Word','Excel','PPT','图片','压缩包']" /><input type="file" multiple :disabled="!isLeader||duplicate" @change="readFiles($event,form.resultFiles,'result')" /><article v-for="file in form.resultFiles" :key="file.id" class="file"><span>{{ file.name }}</span><button @click="removeFile(form.resultFiles,file.id)">删除</button></article></section><section class="card"><h2>证明材料（可选）</h2><input type="file" multiple :disabled="!isLeader||duplicate" @change="readFiles($event,form.proofFiles,'proof')" /><article v-for="file in form.proofFiles" :key="file.id" class="file"><span>{{ file.name }}</span><button @click="removeFile(form.proofFiles,file.id)">删除</button></article></section><div class="actions"><button @click="router.push(`/student/tasks/${task.taskId}`)">返回</button><button class="primary" :disabled="!isLeader||duplicate" @click="submit">{{ isResubmit ? '重新提交' : '提交成果' }}</button></div></template></div></main></template>

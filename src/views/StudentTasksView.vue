@@ -1,16 +1,15 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
-import { TASK_RESULT_STATUS, getTaskResultByTaskId } from '../mock/taskResults.js'
-import { TASK_STATUS, getStudentAppliedTasks, getStudentApplyResult, getStudentSelectedTasks, getTaskTypeText, getTasks } from '../mock/tasks.js'
+import { getTaskTypeText } from '../mock/tasks.js'
+import { getMyTasks } from '../api/taskApi.js';import { adaptTaskList } from '../adapters/taskAdapter.js';import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
-const studentId = '2024001'
 const keyword = ref('')
 const filter = ref('')
+const remoteTasks=ref([]);onMounted(async()=>{try{remoteTasks.value=adaptTaskList(await getMyTasks({page_size:100}))}catch(error){window.alert(getApiErrorMessage(error,'我的任务加载失败'))}})
 
 const tasks = computed(() => {
-  const related = [...getStudentAppliedTasks(studentId), ...getStudentSelectedTasks(studentId), ...getTasks().filter((task) => task.leaderId === studentId)]
-  const unique = [...new Map(related.map((task) => [task.taskId, task])).values()]
+  const unique = remoteTasks.value
   return unique.filter((task) => {
     const apply = applyResult(task)
     const matchesStatus = !filter.value
@@ -18,27 +17,26 @@ const tasks = computed(() => {
       || (filter.value === 'selected' && apply.selected)
       || (filter.value === 'rejected' && apply.applyStatus === 'not_selected')
       || (filter.value === 'leader' && apply.isLeader)
-      || (filter.value === 'in_progress' && task.status === TASK_STATUS.IN_PROGRESS)
-      || (filter.value === 'finished' && task.status === TASK_STATUS.FINISHED)
+      || (filter.value === 'in_progress' && task.status === 'task_in_progress')
+      || (filter.value === 'finished' && task.status === 'result_approved')
     return matchesStatus && (!keyword.value.trim() || task.title.toLowerCase().includes(keyword.value.trim().toLowerCase()))
   }).sort((a, b) => String(b.submitTime).localeCompare(String(a.submitTime)))
 })
 
 function applyResult(task) {
-  return getStudentApplyResult(task.taskId, studentId) || { isLeader: task.leaderId === studentId }
+  return { applyStatus: task.myRegistration?.status, selected: task.myRegistration?.status === 'selected', isLeader: task.actions?.can_submit_result === true }
 }
-function taskResult(task) { return getTaskResultByTaskId(task.taskId) }
+function taskResult(task) { return task.resultSubmission }
 function canSubmitResult(task) {
   const result = taskResult(task)
-  return applyResult(task).isLeader && (!result || result.status === TASK_RESULT_STATUS.ADVISOR_RESULT_REJECTED)
+  return applyResult(task).isLeader && (!result || result.status === 'advisor_rejected')
 }
 function resultStatus(task) {
   const status = taskResult(task)?.status
   return {
-    [TASK_RESULT_STATUS.PENDING_ADVISOR_RESULT_CONFIRM]: '待指导老师确认成果',
-    [TASK_RESULT_STATUS.ADVISOR_RESULT_APPROVED]: '成果已确认',
-    [TASK_RESULT_STATUS.ADVISOR_RESULT_REJECTED]: '成果已驳回，可重新提交',
-    [TASK_RESULT_STATUS.APPLICATION_CREATED]: '已用于课时申请',
+    submitted: '待指导老师确认成果',
+    advisor_rejected: '成果已驳回，可重新提交',
+    converted_to_hour_application: '已转入课时认定',
   }[status] || '未提交'
 }
 </script>

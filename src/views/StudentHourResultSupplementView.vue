@@ -1,23 +1,25 @@
 <script setup>
-import { computed, reactive } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AttachmentNotice from '../components/AttachmentNotice.vue'
 import StatusTag from '../components/StatusTag.vue'
-import { canSupplementResult, getApplications, supplementApplicationResult } from '../mock/applications.js'
+import { getStudentApplication, submitApplicationMaterials } from '../api/applicationApi.js'
+import { uploadAttachment } from '../api/fileApi.js'
+import { adaptApplicationEnvelope } from '../adapters/applicationAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
 const route = useRoute(); const router = useRouter()
-const currentUser = { id: 'stu001', studentId: '2024001' }
-const application = computed(() => getApplications().find((item) => item.id === route.params.id && item.currentUserId === currentUser.id))
-const allowed = computed(() => canSupplementResult(application.value))
-const form = reactive({ description: '', resultFiles: [], proofFiles: [] })
-function nowText(){return new Date().toLocaleString('zh-CN',{hour12:false}).replaceAll('/','-')}
-function sizeText(bytes){if(bytes>=1048576)return`${(bytes/1048576).toFixed(2)} MB`;if(bytes>=1024)return`${(bytes/1024).toFixed(2)} KB`;return`${bytes} B`}
-function selectFiles(event,target,category){Array.from(event.target.files||[]).forEach((file,index)=>target.push({id:`SUP-${Date.now()}-${index}`,name:file.name,type:file.type||'未知类型',size:sizeText(file.size),uploadedAt:nowText(),mockUrl:URL.createObjectURL(file),category}));event.target.value=''}
-function removeFile(target,id){const file=target.find((item)=>item.id===id);if(file?.mockUrl)URL.revokeObjectURL(file.mockUrl);const index=target.findIndex((item)=>item.id===id);if(index>=0)target.splice(index,1)}
+const application = ref(null)
+const allowed = computed(() => application.value?.applicationType === 'without_material' && application.value?.status === 'pending_material')
+const form = reactive({ description: '', resultFiles: [], proofFiles: [], attachmentIds: [] })
+async function loadApplication(){try{application.value=adaptApplicationEnvelope(await getStudentApplication(Number(route.params.id)))}catch(error){window.alert(getApiErrorMessage(error,'申请详情加载失败'))}}
+onMounted(loadApplication)
+async function selectFiles(event,target,category){const files=Array.from(event.target.files||[]);event.target.value='';for(const file of files){try{const uploaded=await uploadAttachment(file,'hour_application');const attachmentId=Number(uploaded.id);if(!Number.isInteger(attachmentId)||attachmentId<=0)throw new Error('附件响应缺少有效 ID');target.push({...uploaded.attachment,id:attachmentId,category});form.attachmentIds.push(attachmentId)}catch(error){console.error('[supplement-material] 附件上传失败',error);window.alert('附件上传失败，请重新上传')}}}
+function removeFile(target,id){const index=target.findIndex((item)=>item.id===id);if(index>=0)target.splice(index,1);const attachmentIndex=form.attachmentIds.indexOf(Number(id));if(attachmentIndex>=0)form.attachmentIds.splice(attachmentIndex,1)}
 function preview(){window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。')}
 function download(){window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。')}
 function back(){router.push(application.value?`/student/hour-progress/${application.value.id}`:'/student/hour-progress')}
-function submit(){if(!allowed.value)return window.alert('当前申请不支持补交成果。');if(!form.description.trim())return window.alert('请填写成果说明。');if(!form.resultFiles.length)return window.alert('请至少上传一项成果材料。');const updated=supplementApplicationResult(application.value.id,{resultDescription:form.description,resultMaterials:form.resultFiles,proofMaterials:form.proofFiles});if(!updated)return window.alert('补交成果失败，请检查当前申请状态。');window.alert('成果已补交，等待指导老师再次确认。');router.push('/student/hour-progress')}
+async function submit(){if(!allowed.value)return window.alert('当前申请不支持补交成果。');if(!form.attachmentIds.length)return window.alert('请先上传成果文件');if(!form.attachmentIds.every((id)=>Number.isInteger(id)&&id>0))return window.alert('附件上传失败，请重新上传');if(!form.description.trim())return window.alert('请填写成果说明。');try{const result=await submitApplicationMaterials(application.value.id,{attachment_ids:[...form.attachmentIds],achievement_summary:form.description.trim()});if((result?.application??result)?.status!=='material_submitted')throw new Error('补交成果接口未返回 material_submitted 状态');await loadApplication();window.alert('成果已补交，等待指导老师再次确认。');router.push('/student/hour-progress')}catch(error){if(error?.code===40301||error?.status===403)return window.alert('无权限补交该申请');window.alert(getApiErrorMessage(error,'补交成果失败，请稍后重试'))}}
 </script>
 
 <template><main class="page"><div class="content"><template v-if="application">
@@ -25,7 +27,7 @@ function submit(){if(!allowed.value)return window.alert('当前申请不支持�
   <section v-if="!allowed" class="warning">当前申请不支持补交成果。</section>
   <section class="card"><h2>原申请基本信息</h2><dl class="grid"><div><dt>申请名称</dt><dd>{{ application.title }}</dd></div><div><dt>申请类型</dt><dd>{{ application.applyTypeText }}</dd></div><div><dt>主指导老师</dt><dd>{{ application.mainAdvisor?.name || '--' }}</dd></div><div><dt>当前状态</dt><dd><StatusTag :status="application.status" /></dd></div><div><dt>原预计成果提交时间</dt><dd>{{ application.expectedResultDate || '--' }}</dd></div><div><dt>已补交次数</dt><dd>{{ application.supplementCount || 0 }} / 1</dd></div><div class="wide"><dt>原申请说明</dt><dd>{{ application.description || application.title }}</dd></div></dl></section>
   <section class="card"><h2>成果说明</h2><textarea v-model="form.description" rows="6" :disabled="!allowed" placeholder="请说明成果内容、完成情况和补充原因。"></textarea></section>
-  <section class="card"><h2>成果材料</h2><AttachmentNotice title="成果材料" description="请选择成果报告、作品、数据文件或其他成果证明。当前为 Mock 上传。" :required="true" :accept-types="['PDF','Word','Excel','PPT','图片','压缩包']" /><input type="file" multiple :disabled="!allowed" @change="selectFiles($event,form.resultFiles,'result')" /><div class="files"><article v-for="file in form.resultFiles" :key="file.id"><div><strong>{{ file.name }}</strong><small>{{ file.type }} · {{ file.size }} · {{ file.uploadedAt }}</small></div><div><button type="button" @click="preview">预览</button><button type="button" @click="download">下载</button><button type="button" class="delete" @click="removeFile(form.resultFiles,file.id)">删除</button></div></article></div></section>
+  <section class="card"><h2>成果材料</h2><AttachmentNotice title="成果材料" description="请选择成果报告、作品、数据文件或其他成果证明。附件将上传到后端。" :required="true" :accept-types="['PDF','Word','Excel','PPT','图片','压缩包']" /><input type="file" multiple :disabled="!allowed" @change="selectFiles($event,form.resultFiles,'result')" /><div class="files"><article v-for="file in form.resultFiles" :key="file.id"><div><strong>{{ file.name }}</strong><small>{{ file.type }} · {{ file.size }} · {{ file.uploadedAt }}</small></div><div><button type="button" @click="preview">预览</button><button type="button" @click="download">下载</button><button type="button" class="delete" @click="removeFile(form.resultFiles,file.id)">删除</button></div></article></div></section>
   <section class="card"><h2>证明材料</h2><AttachmentNotice title="证明材料" description="可选填过程记录、参与证明或其他辅助材料。" :required="false" :accept-types="['PDF','Word','图片']" /><input type="file" multiple :disabled="!allowed" @change="selectFiles($event,form.proofFiles,'proof')" /><div class="files"><article v-for="file in form.proofFiles" :key="file.id"><div><strong>{{ file.name }}</strong><small>{{ file.type }} · {{ file.size }} · {{ file.uploadedAt }}</small></div><div><button type="button" @click="preview">预览</button><button type="button" @click="download">下载</button><button type="button" class="delete" @click="removeFile(form.proofFiles,file.id)">删除</button></div></article></div></section>
   <div class="actions"><button type="button" @click="back">返回</button><button type="button" class="submit" :disabled="!allowed" @click="submit">提交补交成果</button></div>
 </template><section v-else class="card empty">申请不存在或不属于当前学生。<button type="button" @click="back">返回</button></section></div></main></template>
