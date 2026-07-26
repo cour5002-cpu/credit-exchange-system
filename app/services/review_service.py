@@ -5,6 +5,7 @@ from app.extensions import db
 from app.models.hour_application import HourApplication
 from app.models.hour_application_review import HourApplicationReview
 from app.services.hour_account_service import add_hours
+from app.utils.time_utils import business_now
 
 
 def get_teacher_application_detail(application_id, teacher_id):
@@ -35,7 +36,7 @@ def submit_review(application, teacher_id, user_id, form):
         )
         application.status = "approved"
         application.final_hours = final_hours
-        application.reviewed_at = datetime.now()
+        application.reviewed_at = business_now()
         add_hours(
             student_id=application.student_id,
             hours=final_hours,
@@ -47,7 +48,7 @@ def submit_review(application, teacher_id, user_id, form):
     else:
         application.status = "rejected"
         application.final_hours = Decimal("0.00")
-        application.reviewed_at = datetime.now()
+        application.reviewed_at = business_now()
 
     db.session.commit()
     return review

@@ -1,12 +1,16 @@
 import click
+from datetime import datetime, timedelta
 
 from app.extensions import db
+from app.models.application_advisor import ApplicationAdvisor
+from app.models.hour_application import HourApplication
 from app.models.student import Student
 from app.models.student_hour_account import StudentHourAccount
 from app.models.system_config import SystemConfig
 from app.models.task_type import TaskType
 from app.models.teacher import Teacher
 from app.models.user import User
+from app.utils.time_utils import business_now, format_api_datetime
 
 
 def register_seed_commands(app) -> None:
@@ -17,6 +21,19 @@ def register_seed_commands(app) -> None:
         seed_default_users()
         db.session.commit()
         click.echo("基础数据初始化完成。")
+
+    @app.cli.command("seed-integration-data")
+    def seed_integration_data():
+        seed_task_types()
+        seed_system_configs()
+        seed_default_users()
+        db.session.commit()
+        application = ensure_teacher1_pending_hour_application()
+        click.echo(
+            "联调数据初始化完成："
+            f"student1 -> teacher1，申请 {application.application_no}，"
+            f"状态 {application.status}。"
+        )
 
 
 def seed_task_types() -> None:
@@ -79,6 +96,65 @@ def seed_default_users() -> None:
     ensure_student_user()
 
 
+def ensure_teacher1_pending_hour_application():
+    student_user = User.query.filter_by(username="student1", status="active").first()
+    teacher_user = User.query.filter_by(username="teacher1", status="active").first()
+    if not student_user or not teacher_user:
+        raise RuntimeError("请先初始化 student1 和 teacher1 测试账号")
+    student = Student.query.filter_by(user_id=student_user.id, status="active").first()
+    teacher = Teacher.query.filter_by(user_id=teacher_user.id, status="active").first()
+    if not student or not teacher:
+        raise RuntimeError("student1 或 teacher1 缺少有效角色资料")
+
+    title = "前后端联调：student1 提交给 teacher1 的待确认课时申请"
+    existing = (
+        HourApplication.query.join(
+            ApplicationAdvisor,
+            ApplicationAdvisor.application_id == HourApplication.id,
+        )
+        .filter(
+            HourApplication.applicant_student_id == student.id,
+            HourApplication.title == title,
+            HourApplication.status == "submitted",
+            ApplicationAdvisor.teacher_id == teacher.id,
+            ApplicationAdvisor.advisor_role == "primary",
+            ApplicationAdvisor.can_operate.is_(True),
+        )
+        .order_by(HourApplication.id.desc())
+        .first()
+    )
+    if existing:
+        return existing
+
+    task_type = TaskType.query.filter_by(status="enabled", allow_student_self=True).order_by(
+        TaskType.sort_order,
+        TaskType.id,
+    ).first()
+    if not task_type:
+        raise RuntimeError("没有可用于学生自主申请的启用任务类型")
+
+    from app.services.week3_hour_application_service import create_student_application
+
+    return create_student_application(
+        student_user,
+        {
+            "application_type": "without_material",
+            "source_type": "student_self",
+            "task_type_id": task_type.id,
+            "requested_hours": 8,
+            "title": title,
+            "advisor_teacher_id": teacher.id,
+            "material_due_at": format_api_datetime(business_now() + timedelta(days=30)),
+            "description": "用于验证 student1 提交后，teacher1 能在指导老师待确认列表中看到该申请。",
+            "course_name": "前后端接口联调",
+            "member_count": 1,
+            "member_student_ids": [student.id],
+            "leader_student_id": student.id,
+        },
+        submit=True,
+    )
+
+
 def ensure_admin_user() -> None:
     exists = User.query.filter_by(username="admin").first()
     if exists:
@@ -106,11 +182,14 @@ def ensure_teacher_users() -> None:
         exists = User.query.filter_by(username=username).first()
         if exists:
             teacher = Teacher.query.filter_by(user_id=exists.id).first()
+            exists.real_name = real_name
+            exists.status = "active"
             if teacher:
                 teacher.name = real_name
                 teacher.major_name = major_name
                 teacher.course_name = course_name
                 teacher.teacher_no = teacher_no
+                teacher.role_flags = "advisor,reviewer"
                 teacher.status = "active"
             continue
 

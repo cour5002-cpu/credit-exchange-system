@@ -29,6 +29,7 @@ from app.models import (
     TaskMember,
     TaskRegistration,
     TaskResultSubmission,
+    TaskResultSubmissionVersion,
     TaskType,
     Teacher,
     User,

@@ -8,6 +8,7 @@ from app.models.student_hour_account import StudentHourAccount
 from app.models.student_hour_transaction import StudentHourTransaction
 from app.services.config_service import calculate_credits_from_hours, get_credit_exchange_ratio
 from app.utils.number_generator import generate_application_no
+from app.utils.time_utils import business_now
 
 
 def calculate_estimated_credits(requested_hours):
@@ -98,7 +99,7 @@ def approve_credit_exchange(application, admin_user_id):
     account.available_hours = after_hours
 
     application.status = "approved"
-    application.approved_at = datetime.now()
+    application.approved_at = business_now()
 
     db.session.add(
         StudentHourTransaction(

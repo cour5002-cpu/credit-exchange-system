@@ -28,3 +28,10 @@ class TaskResultSubmission(db.Model):
     task = relationship("CollegeTask", backref="result_submissions", lazy="joined")
     leader = relationship("Student", lazy="joined")
     hour_application = relationship("HourApplication", foreign_keys=[hour_application_id], lazy="joined")
+    versions = relationship(
+        "TaskResultSubmissionVersion",
+        cascade="all, delete-orphan",
+        lazy="select",
+        order_by="TaskResultSubmissionVersion.version_no",
+        backref="submission",
+    )

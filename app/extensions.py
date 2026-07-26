@@ -2,6 +2,7 @@ from flask import flash, jsonify, redirect, request, url_for
 from flask_login import LoginManager
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import event
 
 
 db = SQLAlchemy()
@@ -23,3 +24,13 @@ def init_extensions(app) -> None:
     db.init_app(app)
     migrate.init_app(app, db)
     login_manager.init_app(app)
+    with app.app_context():
+        engine = db.engine
+        if engine.dialect.name == "mysql":
+            @event.listens_for(engine, "connect")
+            def set_mysql_session_timezone(dbapi_connection, _connection_record):
+                cursor = dbapi_connection.cursor()
+                try:
+                    cursor.execute("SET time_zone = '+08:00'")
+                finally:
+                    cursor.close()

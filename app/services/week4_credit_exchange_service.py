@@ -17,6 +17,8 @@ from app.models.rule_file import RuleFile
 from app.models.student_credit_record import StudentCreditRecord
 from app.services.week3_hour_application_service import BusinessError, current_student, current_teacher
 from app.utils.number_generator import generate_application_no
+from app.utils.pagination import finish_query
+from app.utils.time_utils import business_now, format_api_datetime, parse_api_datetime
 
 
 VALID_RULE_TYPES = {"hour_rule", "credit_rule", "other"}
@@ -110,7 +112,7 @@ def update_conversion_rule(user, rule_id, payload):
 
 
 def list_conversion_rules(status=None, keyword=None):
-    now = datetime.now()
+    now = business_now()
     query = CreditConversionRule.query
     if status == "expired":
         query = query.filter(CreditConversionRule.expires_at <= now)
@@ -122,7 +124,7 @@ def list_conversion_rules(status=None, keyword=None):
 
 
 def current_conversion_rule():
-    now = datetime.now()
+    now = business_now()
     return (
         CreditConversionRule.query.filter(
             CreditConversionRule.status == "active",
@@ -145,9 +147,9 @@ def set_conversion_rule_status(user, rule_id, status):
     return rule
 
 
-def list_available_hour_awards(user):
+def list_available_hour_awards(user, page=None, page_size=None):
     student = current_student(user)
-    return (
+    query = (
         HourAwardRecord.query.join(
             HourApplicationMember,
             HourApplicationMember.application_id == HourAwardRecord.application_id,
@@ -159,8 +161,8 @@ def list_available_hour_awards(user):
             HourApplicationMember.status == "active",
         )
         .order_by(HourAwardRecord.awarded_at.desc(), HourAwardRecord.id.desc())
-        .all()
     )
+    return finish_query(query, page, page_size)
 
 
 def get_exchange_form_data(user, hour_award_record_id):
@@ -176,19 +178,22 @@ def submit_credit_exchange(user, payload, submit=True):
     student = current_student(user)
     award = _get_available_award_for_student(user, _required_int(payload, "hour_award_record_id"))
     rule = current_conversion_rule()
-    if not rule:
+    if submit and not rule:
         raise BusinessError("当前没有生效结构化兑换规则，不能提交兑换申请")
     total_hours = Decimal(str(award.total_hours))
-    if total_hours > Decimal(str(rule.max_single_exchange_hours)):
+    if submit and total_hours > Decimal(str(rule.max_single_exchange_hours)):
         raise BusinessError("本次兑换课时超过当前规则允许的最大单次兑换课时")
 
     attachment_ids = _normalize_id_list(payload.get("attachment_ids"))
     allocations_payload = payload.get("allocations") or []
     if submit and not attachment_ids:
         raise BusinessError("兑换申请必须上传学时学分分配证明附件")
+    if submit and not allocations_payload:
+        raise BusinessError("正式提交兑换申请必须填写完整的成员课时分配表")
     if submit and not payload.get("confirm_calculated_credits"):
         raise BusinessError("必须确认系统计算出的成员学分分配结果")
-    calculated_allocations = _calculate_allocations(award, rule, allocations_payload)
+    calculated_allocations = _calculate_allocations(award, rule, allocations_payload, require_complete=submit)
+    estimated_credits = calculate_credits(total_hours, rule) if rule else None
 
     application = CreditExchangeApplication(
         exchange_no=generate_application_no("EX"),
@@ -199,12 +204,12 @@ def submit_credit_exchange(user, payload, submit=True):
         advisor_teacher_id=_primary_advisor_id(award.application_id),
         requested_hours=total_hours,
         total_hours=total_hours,
-        estimated_credits=calculate_credits(total_hours, rule),
-        estimated_total_credits=calculate_credits(total_hours, rule),
+        estimated_credits=estimated_credits,
+        estimated_total_credits=estimated_credits,
         description=(payload.get("description") or "").strip() or None,
         status="submitted" if submit else "draft",
-        rule_id=rule.id,
-        rule_snapshot=conversion_rule_snapshot(rule),
+        rule_id=rule.id if rule else None,
+        rule_snapshot=conversion_rule_snapshot(rule) if rule else None,
     )
     db.session.add(application)
     db.session.flush()
@@ -226,7 +231,7 @@ def submit_credit_exchange(user, payload, submit=True):
     return application
 
 
-def list_student_credit_exchanges(user, status=None):
+def list_student_credit_exchanges(user, status=None, page=None, page_size=None):
     student = current_student(user)
     query = CreditExchangeApplication.query.outerjoin(
         CreditExchangeAllocation,
@@ -240,7 +245,8 @@ def list_student_credit_exchanges(user, status=None):
     )
     if status:
         query = query.filter(CreditExchangeApplication.status == status)
-    return query.order_by(CreditExchangeApplication.created_at.desc(), CreditExchangeApplication.id.desc()).distinct().all()
+    query = query.order_by(CreditExchangeApplication.created_at.desc(), CreditExchangeApplication.id.desc()).distinct()
+    return finish_query(query, page, page_size)
 
 
 def get_student_credit_exchange(user, exchange_id):
@@ -250,13 +256,13 @@ def get_student_credit_exchange(user, exchange_id):
     raise BusinessError("兑换申请不存在或不可见", code=40401, status=404)
 
 
-def list_advisor_pending_credit_exchanges(user):
+def list_advisor_pending_credit_exchanges(user, page=None, page_size=None):
     teacher = current_teacher(user, "advisor")
-    return (
+    query = (
         CreditExchangeApplication.query.filter_by(advisor_teacher_id=teacher.id, status="submitted")
         .order_by(CreditExchangeApplication.created_at.desc(), CreditExchangeApplication.id.desc())
-        .all()
     )
+    return finish_query(query, page, page_size)
 
 
 def get_advisor_credit_exchange(user, exchange_id):
@@ -274,7 +280,7 @@ def advisor_approve_credit_exchange(user, exchange_id, comment=None):
     item.status = "pending_admin_final"
     item.advisor_reviewed_by = user.id
     item.advisor_review_comment = (comment or "").strip() or None
-    item.advisor_reviewed_at = datetime.now()
+    item.advisor_reviewed_at = business_now()
     _add_operation(user.id, "credit_exchange", item.id, "advisor_approved", before, item.status)
     db.session.commit()
     return item
@@ -289,18 +295,18 @@ def advisor_reject_credit_exchange(user, exchange_id, comment):
     item.status = "advisor_rejected"
     item.advisor_reviewed_by = user.id
     item.advisor_review_comment = comment
-    item.advisor_reviewed_at = datetime.now()
+    item.advisor_reviewed_at = business_now()
     _add_operation(user.id, "credit_exchange", item.id, "advisor_rejected", before, item.status)
     db.session.commit()
     return item
 
 
-def list_admin_pending_final_credit_exchanges():
-    return (
+def list_admin_pending_final_credit_exchanges(page=None, page_size=None):
+    query = (
         CreditExchangeApplication.query.filter_by(status="pending_admin_final")
         .order_by(CreditExchangeApplication.created_at.desc(), CreditExchangeApplication.id.desc())
-        .all()
     )
+    return finish_query(query, page, page_size)
 
 
 def get_admin_credit_exchange(exchange_id):
@@ -308,6 +314,8 @@ def get_admin_credit_exchange(exchange_id):
 
 
 def admin_final_approve_credit_exchange(user, exchange_id, comment=None):
+    from app.services.appeal_lifecycle import complete_appeal_for_target
+
     item = _get_credit_exchange(exchange_id)
     _require_exchange_status(item, "pending_admin_final")
     if CreditExchangeRecord.query.filter_by(exchange_application_id=item.id).first():
@@ -319,7 +327,7 @@ def admin_final_approve_credit_exchange(user, exchange_id, comment=None):
     item.status = "final_approved"
     item.admin_reviewed_by = user.id
     item.admin_review_comment = (comment or "").strip() or None
-    item.admin_reviewed_at = datetime.now()
+    item.admin_reviewed_at = business_now()
     item.reviewed_by_admin_id = user.id
     item.review_comment = item.admin_review_comment
     item.approved_at = item.admin_reviewed_at
@@ -348,11 +356,14 @@ def admin_final_approve_credit_exchange(user, exchange_id, comment=None):
             )
         )
     _add_operation(user.id, "credit_exchange", item.id, "final_approved", before, item.status)
+    complete_appeal_for_target("credit_exchange", item.id, "completed")
     db.session.commit()
     return item, record
 
 
 def admin_final_reject_credit_exchange(user, exchange_id, comment):
+    from app.services.appeal_lifecycle import complete_appeal_for_target
+
     if not comment:
         raise BusinessError("最终驳回原因不能为空")
     item = _get_credit_exchange(exchange_id)
@@ -361,10 +372,11 @@ def admin_final_reject_credit_exchange(user, exchange_id, comment):
     item.status = "final_rejected"
     item.admin_reviewed_by = user.id
     item.admin_review_comment = comment
-    item.admin_reviewed_at = datetime.now()
+    item.admin_reviewed_at = business_now()
     item.reviewed_by_admin_id = user.id
     item.review_comment = comment
     _add_operation(user.id, "credit_exchange", item.id, "final_rejected", before, item.status)
+    complete_appeal_for_target("credit_exchange", item.id, "completed")
     db.session.commit()
     return item
 
@@ -373,11 +385,29 @@ def admin_batch_final_approve_credit_exchanges(user, exchange_ids, comment=None)
     ids = _normalize_id_list(exchange_ids)
     if not ids:
         raise BusinessError("请选择要批量通过的兑换申请")
-    approved = []
+    results = []
     for exchange_id in ids:
-        item, record = admin_final_approve_credit_exchange(user, exchange_id, comment)
-        approved.append({"id": item.id, "status": item.status, "credit_exchange_record_id": record.id})
-    return approved
+        try:
+            item, record = admin_final_approve_credit_exchange(user, exchange_id, comment)
+            results.append({
+                "id": item.id,
+                "success": True,
+                "status": item.status,
+                "credit_exchange_record_id": record.id,
+                "error_code": None,
+                "error_message": None,
+            })
+        except BusinessError as exc:
+            db.session.rollback()
+            results.append({
+                "id": exchange_id,
+                "success": False,
+                "status": None,
+                "credit_exchange_record_id": None,
+                "error_code": exc.code,
+                "error_message": str(exc),
+            })
+    return results
 
 
 def calculate_credits(hours, rule):
@@ -396,8 +426,8 @@ def conversion_rule_snapshot(rule):
         "hours_per_credit": str(rule.hours_per_credit),
         "max_single_exchange_hours": str(rule.max_single_exchange_hours),
         "rounding_mode": rule.rounding_mode,
-        "effective_at": rule.effective_at.isoformat(),
-        "expires_at": rule.expires_at.isoformat(),
+        "effective_at": format_api_datetime(rule.effective_at),
+        "expires_at": format_api_datetime(rule.expires_at),
         "rule_file_id": rule.rule_file_id,
     }
 
@@ -480,23 +510,32 @@ def _primary_advisor_id(application_id):
     return link.teacher_id
 
 
-def _calculate_allocations(award, rule, allocations_payload):
+def _calculate_allocations(award, rule, allocations_payload, require_complete=False):
     members = _active_members_for_award(award)
     member_ids = {item.student_id for item in members}
     if not allocations_payload:
-        allocations_payload = [{"student_id": item.student_id, "hours": award.total_hours if item.is_leader else 0} for item in members]
+        return []
+    if not isinstance(allocations_payload, list):
+        raise BusinessError("allocations 必须是成员课时分配数组")
 
     seen = set()
     normalized = []
     total_hours = Decimal("0.00")
     for item in allocations_payload:
+        if not isinstance(item, dict):
+            raise BusinessError("allocations 中的每一项都必须是成员分配对象")
         student_id = _required_int(item, "student_id")
         if student_id not in member_ids:
             raise BusinessError("分配学生必须来自原课时申请成员")
         if student_id in seen:
             raise BusinessError("分配学生不能重复")
         seen.add(student_id)
-        hours = _positive_decimal(item.get("hours"), "成员分配课时必须大于 0")
+        raw_hours = item.get("hours")
+        if raw_hours in (None, ""):
+            if require_complete:
+                raise BusinessError("正式提交时每名成员的课时都必须填写")
+            continue
+        hours = _non_negative_decimal(raw_hours, "成员分配课时不能为负数")
         total_hours += hours
         normalized.append(
             {
@@ -507,18 +546,48 @@ def _calculate_allocations(award, rule, allocations_payload):
             }
         )
     award_hours = Decimal(str(award.total_hours))
-    if total_hours != award_hours:
+    if total_hours > award_hours:
+        raise BusinessError("成员分配课时合计不能超过本次兑换总课时")
+    allocation_is_complete = seen == member_ids and len(normalized) == len(member_ids)
+    if require_complete and not allocation_is_complete:
+        raise BusinessError("课时分配表必须包含原课时申请的全部有效成员")
+    if (require_complete or allocation_is_complete) and total_hours != award_hours:
         raise BusinessError("成员分配课时合计必须等于本次兑换总课时")
+    if require_complete and total_hours <= 0:
+        raise BusinessError("至少一名成员的分配课时必须大于 0")
+    if not rule:
+        for item in normalized:
+            item["allocated_credits"] = None
+        return normalized
+
     total_credits = calculate_credits(total_hours, rule)
     running = Decimal("0.00")
+    positive_indexes = [
+        index for index, item in enumerate(normalized)
+        if item["allocated_hours"] > 0
+    ]
+    last_positive_index = positive_indexes[-1] if positive_indexes else None
     for index, item in enumerate(normalized):
-        if index == len(normalized) - 1:
+        if item["allocated_hours"] == 0:
+            credits = Decimal("0.00")
+        elif require_complete and index == last_positive_index:
             credits = total_credits - running
         else:
-            credits = (total_credits * item["allocated_hours"] / total_hours).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            running += credits
+            credits = calculate_credits(item["allocated_hours"], rule)
+            if require_complete:
+                running += credits
         item["allocated_credits"] = credits
     return normalized
+
+
+def _non_negative_decimal(value, message):
+    try:
+        parsed = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        raise BusinessError("成员分配课时必须是数字")
+    if parsed < 0:
+        raise BusinessError(message)
+    return parsed
 
 
 def _bind_exchange_attachments(exchange_id, attachment_ids, user_id):
@@ -610,17 +679,7 @@ def _normalize_id_list(value):
 
 
 def _parse_datetime(value):
-    if not value:
-        return None
-    if isinstance(value, datetime):
-        return value
-    text = str(value).strip()
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
     try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError:
+        return parse_api_datetime(value)
+    except (TypeError, ValueError):
         raise BusinessError("时间格式必须是 ISO 8601 字符串")
-    if parsed.tzinfo:
-        parsed = parsed.replace(tzinfo=None)
-    return parsed

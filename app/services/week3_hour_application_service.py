@@ -20,6 +20,8 @@ from app.models.teacher import Teacher
 from app.services.hour_account_service import add_hours
 from app.services.config_service import get_config_value
 from app.utils.number_generator import generate_application_no
+from app.utils.pagination import finish_query
+from app.utils.time_utils import business_now, parse_api_datetime
 
 
 VALID_APPLICATION_TYPES = {"with_material", "without_material", "task_result"}
@@ -86,7 +88,7 @@ def create_student_application(user, payload, submit=True):
     if application_type == "without_material":
         if not material_due_at:
             raise BusinessError("无成果申请必须填写成果提交时间")
-        if submit and material_due_at <= datetime.now():
+        if submit and material_due_at <= business_now():
             raise BusinessError("成果提交时间不能早于当前时间")
 
     member_ids = _normalize_id_list(payload.get("member_student_ids"))
@@ -139,7 +141,7 @@ def create_student_application(user, payload, submit=True):
         description=(payload.get("description") or "").strip() or None,
         material_due_at=material_due_at,
         status="submitted" if submit else "draft",
-        submitted_at=datetime.now() if submit else None,
+        submitted_at=business_now() if submit else None,
     )
     db.session.add(application)
     db.session.flush()
@@ -178,7 +180,7 @@ def create_student_application(user, payload, submit=True):
     return application
 
 
-def list_student_hour_applications(user, status=None, role=None):
+def list_student_hour_applications(user, status=None, role=None, page=None, page_size=None):
     student = current_student(user)
     query = HourApplication.query.outerjoin(
         HourApplicationMember,
@@ -196,10 +198,11 @@ def list_student_hour_applications(user, status=None, role=None):
         query = query.filter(or_(HourApplication.applicant_student_id == student.id, HourApplication.student_id == student.id))
     elif role == "member":
         query = query.filter(HourApplicationMember.student_id == student.id)
-    return query.order_by(HourApplication.created_at.desc(), HourApplication.id.desc()).distinct().all()
+    query = query.order_by(HourApplication.created_at.desc(), HourApplication.id.desc()).distinct()
+    return finish_query(query, page, page_size)
 
 
-def list_admin_hour_applications(status=None, application_type=None, keyword=None):
+def list_admin_hour_applications(status=None, application_type=None, keyword=None, page=None, page_size=None):
     query = HourApplication.query
     if status:
         query = query.filter_by(status=status)
@@ -215,7 +218,8 @@ def list_admin_hour_applications(status=None, application_type=None, keyword=Non
                 Student.student_no.like(like),
             )
         )
-    return query.order_by(HourApplication.created_at.desc(), HourApplication.id.desc()).all()
+    query = query.order_by(HourApplication.created_at.desc(), HourApplication.id.desc())
+    return finish_query(query, page, page_size)
 
 
 def get_visible_application_for_student(user, application_id):
@@ -240,7 +244,7 @@ def create_extension_request(user, application_id, payload):
     requested_due_at = _parse_datetime(payload.get("requested_due_at"))
     if not requested_due_at:
         raise BusinessError("requested_due_at 不能为空")
-    if requested_due_at <= datetime.now():
+    if requested_due_at <= business_now():
         raise BusinessError("延期后的成果提交时间必须晚于当前时间")
     if not application.material_due_at or requested_due_at <= application.material_due_at:
         raise BusinessError("延期后的成果提交时间必须晚于原截止时间")
@@ -269,9 +273,9 @@ def create_extension_request(user, application_id, payload):
     return extension
 
 
-def list_advisor_pending_extensions(user):
+def list_advisor_pending_extensions(user, page=None, page_size=None):
     teacher = current_teacher(user, "advisor")
-    return (
+    query = (
         ExtensionRequest.query.join(HourApplication, HourApplication.id == ExtensionRequest.application_id)
         .join(ApplicationAdvisor, ApplicationAdvisor.application_id == HourApplication.id)
         .filter(
@@ -282,15 +286,16 @@ def list_advisor_pending_extensions(user):
             ApplicationAdvisor.can_operate.is_(True),
         )
         .order_by(ExtensionRequest.created_at.desc(), ExtensionRequest.id.desc())
-        .all()
     )
+    return finish_query(query, page, page_size)
 
 
-def list_admin_extensions(pending_special=False):
+def list_admin_extensions(pending_special=False, page=None, page_size=None):
     query = ExtensionRequest.query
     if pending_special:
         query = query.filter_by(review_level="admin", status="submitted")
-    return query.order_by(ExtensionRequest.created_at.desc(), ExtensionRequest.id.desc()).all()
+    query = query.order_by(ExtensionRequest.created_at.desc(), ExtensionRequest.id.desc())
+    return finish_query(query, page, page_size)
 
 
 def get_visible_extension_request(user, extension_request_id):
@@ -333,13 +338,13 @@ def review_extension_request(user, extension_request_id, approve, comment=None, 
     extension.status = "approved" if approve else "rejected"
     extension.reviewed_by = user.id
     extension.review_comment = (comment or "").strip() or None
-    extension.reviewed_at = datetime.now()
+    extension.reviewed_at = business_now()
     if approve:
         application.material_due_at = extension.requested_due_at
         application.status = "pending_material"
         decision = "extension_approved"
     else:
-        application.status = "material_overdue" if extension.old_due_at <= datetime.now() else "pending_material"
+        application.status = "material_overdue" if extension.old_due_at <= business_now() else "pending_material"
         decision = "extension_rejected"
     _add_review(application, user.id, teacher_id, reviewer_role, decision, before, application.status, comment)
     _add_operation(user.id, "extension_request", extension.id, decision, before, application.status)
@@ -361,21 +366,23 @@ def close_unfinishable_application(user, application_id, reason):
             extension.status = "closed"
             extension.reviewed_by = user.id
             extension.review_comment = reason
-            extension.reviewed_at = datetime.now()
+            extension.reviewed_at = business_now()
     _add_review(application, user.id, None, "admin", "closed", before, application.status, reason)
     _add_operation(user.id, "hour_application", application.id, "close_unfinishable", before, application.status)
     db.session.commit()
     return application
 
 
-def list_advisor_pending(user, status="submitted"):
+def list_advisor_pending(user, status="submitted", page=None, page_size=None):
     teacher = current_teacher(user, "advisor")
-    return _advisor_query(teacher, status).order_by(HourApplication.created_at.desc(), HourApplication.id.desc()).all()
+    query = _advisor_query(teacher, status).order_by(HourApplication.created_at.desc(), HourApplication.id.desc())
+    return finish_query(query, page, page_size)
 
 
-def list_advisor_material_pending(user):
+def list_advisor_material_pending(user, page=None, page_size=None):
     teacher = current_teacher(user, "advisor")
-    return _advisor_query(teacher, "material_submitted").order_by(HourApplication.created_at.desc(), HourApplication.id.desc()).all()
+    query = _advisor_query(teacher, "material_submitted").order_by(HourApplication.created_at.desc(), HourApplication.id.desc())
+    return finish_query(query, page, page_size)
 
 
 def get_application(application_id):
@@ -407,7 +414,7 @@ def advisor_approve(user, application_id, comment=None, material=False):
         application.status = "pending_material"
     else:
         application.status = "pending_assignment"
-    application.advisor_reviewed_at = datetime.now()
+    application.advisor_reviewed_at = business_now()
     _mark_advisor_reviewed(application.id, teacher.id)
     _add_review(application, user.id, teacher.id, "advisor", "approved", before, application.status, comment)
     db.session.commit()
@@ -425,7 +432,7 @@ def advisor_reject(user, application_id, comment, material=False):
     _require_status(application, expected_status)
     before = application.status
     application.status = "advisor_rejected"
-    application.advisor_reviewed_at = datetime.now()
+    application.advisor_reviewed_at = business_now()
     _mark_advisor_reviewed(application.id, teacher.id)
     _add_review(application, user.id, teacher.id, "advisor", "rejected", before, application.status, comment)
     db.session.commit()
@@ -447,8 +454,8 @@ def submit_materials(user, application_id, payload):
     return application
 
 
-def list_pending_assignment():
-    return list_admin_hour_applications(status="pending_assignment")
+def list_pending_assignment(page=None, page_size=None):
+    return list_admin_hour_applications(status="pending_assignment", page=page, page_size=page_size)
 
 
 def assign_reviewer(user, application_id, reviewer_teacher_id, comment=None):
@@ -472,9 +479,9 @@ def assign_reviewer(user, application_id, reviewer_teacher_id, comment=None):
     return application
 
 
-def list_reviewer_pending(user):
+def list_reviewer_pending(user, page=None, page_size=None):
     teacher = current_teacher(user, "reviewer")
-    return (
+    query = (
         HourApplication.query.join(ReviewAssignment, ReviewAssignment.application_id == HourApplication.id)
         .filter(
             HourApplication.status == "pending_review",
@@ -482,8 +489,8 @@ def list_reviewer_pending(user):
             ReviewAssignment.status == "active",
         )
         .order_by(HourApplication.created_at.desc(), HourApplication.id.desc())
-        .all()
     )
+    return finish_query(query, page, page_size)
 
 
 def get_reviewer_application(user, application_id):
@@ -513,7 +520,7 @@ def reviewer_approve(user, application_id, comment=None, suggested_hours=None, m
         decision = "approved"
         review_status = "reviewer_approved"
     application.status = "pending_admin_final"
-    application.reviewer_reviewed_at = datetime.now()
+    application.reviewer_reviewed_at = business_now()
     _add_review(application, user.id, teacher.id, "reviewer", decision, before, application.status, comment, application.reviewer_suggested_hours)
     _add_operation(user.id, "hour_application", application.id, review_status, before, application.status)
     db.session.commit()
@@ -530,18 +537,20 @@ def reviewer_reject(user, application_id, comment):
     _require_status(application, "pending_review")
     before = application.status
     application.status = "reviewer_rejected"
-    application.reviewer_reviewed_at = datetime.now()
+    application.reviewer_reviewed_at = business_now()
     _add_review(application, user.id, teacher.id, "reviewer", "rejected", before, application.status, comment)
     _add_operation(user.id, "hour_application", application.id, "reviewer_rejected", before, application.status)
     db.session.commit()
     return application
 
 
-def list_pending_final():
-    return list_admin_hour_applications(status="pending_admin_final")
+def list_pending_final(page=None, page_size=None):
+    return list_admin_hour_applications(status="pending_admin_final", page=page, page_size=page_size)
 
 
 def final_approve(user, application_id, final_hours=None, comment=None):
+    from app.services.appeal_lifecycle import complete_appeal_for_target
+
     application = get_application(application_id)
     _require_status(application, "pending_admin_final")
     existing = HourAwardRecord.query.filter_by(application_id=application.id).first()
@@ -553,7 +562,7 @@ def final_approve(user, application_id, final_hours=None, comment=None):
     before = application.status
     application.final_hours = hours
     application.status = "final_approved"
-    application.final_reviewed_at = datetime.now()
+    application.final_reviewed_at = business_now()
     award = HourAwardRecord(
         application_id=application.id,
         leader_student_id=application.leader_student_id or application.applicant_student_id or application.student_id,
@@ -567,20 +576,24 @@ def final_approve(user, application_id, final_hours=None, comment=None):
     add_hours(award.leader_student_id, hours, "hour_application", application.id, user.id, "课时申请最终确认到账")
     _add_review(application, user.id, None, "admin_final", "approved", before, application.status, comment, hours)
     _add_operation(user.id, "hour_application", application.id, "final_approved", before, application.status)
+    complete_appeal_for_target("hour_application", application.id, "completed")
     db.session.commit()
     return application, award
 
 
 def final_reject(user, application_id, comment):
+    from app.services.appeal_lifecycle import complete_appeal_for_target
+
     if not comment:
         raise BusinessError("最终驳回原因不能为空")
     application = get_application(application_id)
     _require_status(application, "pending_admin_final")
     before = application.status
     application.status = "final_rejected"
-    application.final_reviewed_at = datetime.now()
+    application.final_reviewed_at = business_now()
     _add_review(application, user.id, None, "admin_final", "rejected", before, application.status, comment)
     _add_operation(user.id, "hour_application", application.id, "final_rejected", before, application.status)
+    complete_appeal_for_target("hour_application", application.id, "completed")
     db.session.commit()
     return application
 
@@ -651,7 +664,7 @@ def _is_active_reviewer(application_id, teacher_id):
 def _mark_advisor_reviewed(application_id, teacher_id):
     link = ApplicationAdvisor.query.filter_by(application_id=application_id, teacher_id=teacher_id, advisor_role="primary").first()
     if link:
-        link.reviewed_at = datetime.now()
+        link.reviewed_at = business_now()
 
 
 def _bind_legacy_attachments(application_id, attachment_ids, user_id):
@@ -756,17 +769,7 @@ def _normalize_id_list(value):
 
 
 def _parse_datetime(value):
-    if not value:
-        return None
-    if isinstance(value, datetime):
-        return value
-    text = str(value).strip()
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
     try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError:
+        return parse_api_datetime(value)
+    except (TypeError, ValueError):
         raise BusinessError("时间格式必须是 ISO 8601 字符串")
-    if parsed.tzinfo:
-        parsed = parsed.replace(tzinfo=None)
-    return parsed

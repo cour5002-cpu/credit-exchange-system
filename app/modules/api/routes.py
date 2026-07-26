@@ -127,14 +127,21 @@ from app.services.week5_appeal_task_service import (
     get_student_team,
     review_reopened_appeal,
     review_task_result,
+    resubmit_task_result,
     selected_task_members,
     select_task_registrations,
     submit_task_result,
 )
 from app.utils.permissions import role_required
+from app.utils.time_utils import business_now, format_api_datetime, parse_api_datetime, system_time_payload
 
 
 api_bp = Blueprint("api", __name__, url_prefix="/api/v1")
+
+
+@api_bp.route("/system/time")
+def get_system_time():
+    return ok(system_time_payload())
 
 
 @api_bp.route("/auth/login", methods=["POST"])
@@ -363,11 +370,63 @@ def delete_attachment(attachment_id):
     attachment = db.session.get(Attachment, attachment_id)
     if not attachment or attachment.status != "active":
         return fail("附件不存在", code=40401, status=404)
-    if attachment.uploaded_by != current_user.id and not current_user.has_role("admin"):
+    data = request.get_json(silent=True) or {}
+    bound_to_draft = _attachment_bound_to_draft(attachment)
+    uploader_can_delete = attachment.uploaded_by == current_user.id and (
+        not attachment.owner_id or bound_to_draft
+    )
+    if uploader_can_delete:
+        action = "delete"
+        attachment.status = "deleted"
+        reason = (data.get("reason") or "上传者删除未绑定或草稿附件").strip()
+    elif current_user.has_role("admin"):
+        reason = (data.get("reason") or "").strip()
+        if not reason:
+            return fail("管理员作废已提交附件时必须填写原因")
+        action = "void"
+        attachment.status = "voided"
+    elif attachment.uploaded_by == current_user.id:
+        return fail("正式提交后的附件不能由上传者删除", code=40901, status=409)
+    else:
         return fail("无权作废该附件", code=40301, status=403)
-    attachment.status = "deleted"
+    attachment.voided_by = current_user.id
+    attachment.voided_at = business_now()
+    attachment.void_reason = reason
+    db.session.add(OperationLog(
+        user_id=current_user.id,
+        module="attachment",
+        biz_type="attachment",
+        biz_id=attachment.id,
+        action=action,
+        detail=reason,
+    ))
     db.session.commit()
-    return ok({"id": attachment.id, "status": attachment.status})
+    return ok(_attachment_summary(attachment))
+
+
+@api_bp.route("/admin/attachments/<int:attachment_id>/operation-records", methods=["GET"])
+@login_required
+@role_required("admin")
+def admin_attachment_operation_records(attachment_id):
+    attachment = db.session.get(Attachment, attachment_id)
+    if not attachment:
+        return fail("附件不存在", code=40401, status=404)
+    def payload():
+        page, page_size = _pagination_args()
+        result = _paginate_operation_records(
+            OperationLog.query.filter_by(biz_type="attachment", biz_id=attachment.id).order_by(OperationLog.id.desc()),
+            page,
+            page_size,
+        )
+        return ok({
+            "attachment": _attachment_summary(attachment),
+            "items": [_operation_record_summary(item) for item in result.items],
+            "page": result.page,
+            "page_size": result.page_size,
+            "total": result.total,
+            "pages": result.pages,
+        })
+    return _handle_business(payload)
 
 
 @api_bp.route("/admin/exports/hour-applications", methods=["GET"])
@@ -379,9 +438,9 @@ def admin_export_hour_applications():
     if status:
         query = query.filter_by(status=status)
     try:
-        date_from = datetime.fromisoformat(request.args["date_from"]) if request.args.get("date_from") else None
-        date_to = datetime.fromisoformat(request.args["date_to"]) if request.args.get("date_to") else None
-    except ValueError:
+        date_from = parse_api_datetime(request.args["date_from"]) if request.args.get("date_from") else None
+        date_to = parse_api_datetime(request.args["date_to"]) if request.args.get("date_to") else None
+    except (TypeError, ValueError):
         return fail("日期格式必须为 YYYY-MM-DD")
     if date_from:
         query = query.filter(HourApplication.created_at >= date_from)
@@ -505,7 +564,10 @@ def student_save_hour_application_draft():
 def student_hour_applications():
     status = (request.args.get("status") or "").strip() or None
     role = (request.args.get("role") or "").strip() or None
-    return _handle_business(lambda: ok({"items": [_hour_application_summary(item) for item in list_student_hour_applications(current_user, status, role)]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_student_hour_applications(current_user, status, role, page, page_size),
+        _hour_application_summary,
+    ))
 
 
 @api_bp.route("/student/hour-applications/<int:application_id>", methods=["GET"])
@@ -536,21 +598,30 @@ def student_create_extension_request(application_id):
 @role_required("advisor")
 def advisor_pending_hour_applications():
     status = (request.args.get("status") or "submitted").strip()
-    return _handle_business(lambda: ok({"items": [_hour_application_summary(item) for item in list_advisor_pending(current_user, status)]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_advisor_pending(current_user, status, page, page_size),
+        _hour_application_summary,
+    ))
 
 
 @api_bp.route("/advisor/hour-applications/materials/pending", methods=["GET"])
 @login_required
 @role_required("advisor")
 def advisor_pending_materials():
-    return _handle_business(lambda: ok({"items": [_hour_application_summary(item) for item in list_advisor_material_pending(current_user)]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_advisor_material_pending(current_user, page, page_size),
+        _hour_application_summary,
+    ))
 
 
 @api_bp.route("/advisor/extension-requests/pending", methods=["GET"])
 @login_required
 @role_required("advisor")
 def advisor_pending_extension_requests():
-    return _handle_business(lambda: ok({"items": [_extension_request_payload(item) for item in list_advisor_pending_extensions(current_user)]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_advisor_pending_extensions(current_user, page, page_size),
+        _extension_request_payload,
+    ))
 
 
 @api_bp.route("/extension-requests/<int:extension_request_id>", methods=["GET"])
@@ -628,7 +699,10 @@ def admin_hour_applications():
     status = (request.args.get("status") or "").strip() or None
     application_type = (request.args.get("application_type") or "").strip() or None
     keyword = (request.args.get("keyword") or "").strip() or None
-    return _handle_business(lambda: ok({"items": [_admin_hour_application_summary(item) for item in list_admin_hour_applications(status, application_type, keyword)]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_admin_hour_applications(status, application_type, keyword, page, page_size),
+        _admin_hour_application_summary,
+    ))
 
 
 @api_bp.route("/admin/extension-requests", methods=["GET"])
@@ -642,7 +716,10 @@ def admin_extension_requests():
 @login_required
 @role_required("admin")
 def admin_pending_special_extension_requests():
-    return _handle_business(lambda: ok({"items": [_extension_request_payload(item) for item in list_admin_extensions(pending_special=True)]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_admin_extensions(pending_special=True, page=page, page_size=page_size),
+        _extension_request_payload,
+    ))
 
 
 @api_bp.route("/admin/extension-requests/<int:extension_request_id>/approve", methods=["POST"])
@@ -673,14 +750,20 @@ def admin_close_hour_application(application_id):
 @login_required
 @role_required("admin")
 def admin_pending_assignment():
-    return _handle_business(lambda: ok({"items": [_hour_application_summary(item) for item in list_pending_assignment()]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_pending_assignment(page, page_size),
+        _hour_application_summary,
+    ))
 
 
 @api_bp.route("/admin/hour-applications/pending-final", methods=["GET"])
 @login_required
 @role_required("admin")
 def admin_pending_final():
-    return _handle_business(lambda: ok({"items": [_pending_final_summary(item) for item in list_pending_final()]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_pending_final(page, page_size),
+        _pending_final_summary,
+    ))
 
 
 @api_bp.route("/admin/hour-applications/<int:application_id>", methods=["GET"])
@@ -703,7 +786,10 @@ def admin_assign_reviewer(application_id):
 @login_required
 @role_required("reviewer")
 def reviewer_pending_hour_applications():
-    return _handle_business(lambda: ok({"items": [_hour_application_summary(item) for item in list_reviewer_pending(current_user)]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_reviewer_pending(current_user, page, page_size),
+        _hour_application_summary,
+    ))
 
 
 @api_bp.route("/reviewer/hour-applications/<int:application_id>", methods=["GET"])
@@ -764,7 +850,10 @@ def admin_final_reject(application_id):
 @login_required
 @role_required("student")
 def student_available_hour_awards():
-    return _handle_business(lambda: ok({"items": [_hour_award_summary(item) for item in list_available_hour_awards(current_user)]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_available_hour_awards(current_user, page, page_size),
+        _hour_award_summary,
+    ))
 
 
 @api_bp.route("/student/credit-exchanges/form-data", methods=["GET"])
@@ -796,7 +885,10 @@ def student_submit_credit_exchange():
 @role_required("student")
 def student_credit_exchanges():
     status = (request.args.get("status") or "").strip() or None
-    return _handle_business(lambda: ok({"items": [_credit_exchange_summary(item) for item in list_student_credit_exchanges(current_user, status)]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_student_credit_exchanges(current_user, status, page, page_size),
+        _credit_exchange_summary,
+    ))
 
 
 @api_bp.route("/student/credit-exchanges/<int:exchange_id>", methods=["GET"])
@@ -810,7 +902,10 @@ def student_credit_exchange_detail(exchange_id):
 @login_required
 @role_required("advisor")
 def advisor_pending_credit_exchanges():
-    return _handle_business(lambda: ok({"items": [_credit_exchange_summary(item) for item in list_advisor_pending_credit_exchanges(current_user)]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_advisor_pending_credit_exchanges(current_user, page, page_size),
+        _credit_exchange_summary,
+    ))
 
 
 @api_bp.route("/advisor/credit-exchanges/<int:exchange_id>", methods=["GET"])
@@ -840,7 +935,10 @@ def advisor_reject_credit_exchange_api(exchange_id):
 @login_required
 @role_required("admin")
 def admin_pending_final_credit_exchanges():
-    return _handle_business(lambda: ok({"items": [_credit_exchange_summary(item) for item in list_admin_pending_final_credit_exchanges()]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_admin_pending_final_credit_exchanges(page, page_size),
+        _credit_exchange_summary,
+    ))
 
 
 @api_bp.route("/admin/credit-exchanges/<int:exchange_id>", methods=["GET"])
@@ -871,7 +969,18 @@ def admin_final_reject_credit_exchange_api(exchange_id):
 @role_required("admin")
 def admin_batch_approve_credit_exchange_api():
     data = request.get_json(silent=True) or {}
-    return _handle_business(lambda: ok({"items": admin_batch_final_approve_credit_exchanges(current_user, data.get("ids") or data.get("exchange_ids"), data.get("comment"))}))
+    def payload():
+        items = admin_batch_final_approve_credit_exchanges(
+            current_user,
+            data.get("ids") or data.get("exchange_ids"),
+            data.get("comment"),
+        )
+        return ok({
+            "items": items,
+            "success_count": sum(1 for item in items if item["success"]),
+            "failed_count": sum(1 for item in items if not item["success"]),
+        })
+    return _handle_business(payload)
 
 
 @api_bp.route("/student/appeals", methods=["POST"])
@@ -887,9 +996,9 @@ def student_create_appeal():
 @role_required("student")
 def student_appealable_target(target_type, target_id):
     def payload():
-        target = get_appealable_target(current_user, target_type, target_id)
+        target, can_appeal, reason = get_appealable_target(current_user, target_type, target_id)
         summary = _hour_application_summary(target) if target_type == "hour_application" else _credit_exchange_summary(target)
-        return ok({"target": summary, "can_appeal": True, "reason": None})
+        return ok({"target": summary, "can_appeal": can_appeal, "reason": reason})
     return _handle_business(payload)
 
 
@@ -898,7 +1007,10 @@ def student_appealable_target(target_type, target_id):
 @role_required("student")
 def student_appeals():
     status = (request.args.get("status") or "").strip() or None
-    return _handle_business(lambda: ok({"items": [_appeal_summary(item) for item in list_student_appeals(current_user, status)]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_student_appeals(current_user, status, page, page_size),
+        _appeal_summary,
+    ))
 
 
 @api_bp.route("/student/appeals/<int:appeal_id>", methods=["GET"])
@@ -913,7 +1025,10 @@ def student_appeal_detail(appeal_id):
 @role_required("admin")
 def admin_appeals():
     status = (request.args.get("status") or "").strip() or None
-    return _handle_business(lambda: ok({"items": [_appeal_summary(item) for item in list_admin_appeals(status)]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_admin_appeals(status, page, page_size),
+        _appeal_summary,
+    ))
 
 
 @api_bp.route("/admin/appeals/<int:appeal_id>", methods=["GET"])
@@ -943,7 +1058,10 @@ def admin_reject_appeal_api(appeal_id):
 @login_required
 @role_required("advisor")
 def advisor_reopened_appeals():
-    return _handle_business(lambda: ok({"items": [_appeal_summary(item) for item in list_reopened_pending_advisor(current_user)]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_reopened_pending_advisor(current_user, page, page_size),
+        _appeal_summary,
+    ))
 
 
 @api_bp.route("/advisor/appeals/<int:appeal_id>/reconfirm", methods=["POST"])
@@ -958,7 +1076,10 @@ def advisor_reconfirm_appeal_api(appeal_id):
 @login_required
 @role_required("admin")
 def admin_reopened_pending_assignment():
-    return _handle_business(lambda: ok({"items": [_appeal_summary(item) for item in list_reopened_pending_assignment()]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_reopened_pending_assignment(page, page_size),
+        _appeal_summary,
+    ))
 
 
 @api_bp.route("/admin/appeals/<int:appeal_id>/assign-reviewer", methods=["POST"])
@@ -973,7 +1094,10 @@ def admin_assign_reopened_appeal(appeal_id):
 @login_required
 @role_required("reviewer")
 def reviewer_appeal_reviews():
-    return _handle_business(lambda: ok({"items": [_appeal_summary(item) for item in list_reviewer_appeals(current_user)]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_reviewer_appeals(current_user, page, page_size),
+        _appeal_summary,
+    ))
 
 
 @api_bp.route("/reviewer/appeal-reviews/<int:appeal_id>", methods=["GET"])
@@ -1032,7 +1156,10 @@ def admin_create_task():
 @role_required("admin")
 def admin_tasks():
     status = (request.args.get("status") or "").strip() or None
-    return _handle_business(lambda: ok({"items": [_task_summary(item) for item in list_admin_tasks(status)]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_admin_tasks(status, page, page_size),
+        _task_summary,
+    ))
 
 
 @api_bp.route("/admin/tasks/<int:task_id>", methods=["GET"])
@@ -1085,7 +1212,11 @@ def advisor_task_registrations(task_id):
 @role_required("advisor")
 def advisor_select_task_registrations(task_id):
     data = request.get_json(silent=True) or {}
-    return _handle_business(lambda: ok(_task_detail_payload(select_task_registrations(current_user, task_id, data))))
+    def payload():
+        task = select_task_registrations(current_user, task_id, data)
+        selected_count = TaskMember.query.filter_by(task_id=task.id, status="active").count()
+        return ok({"selected_count": selected_count, "task_status": task.status})
+    return _handle_business(payload)
 
 
 @api_bp.route("/advisor/tasks/<int:task_id>/selected-members", methods=["GET"])
@@ -1135,7 +1266,10 @@ def advisor_reject_task_result(submission_id):
 def student_tasks():
     keyword = (request.args.get("keyword") or "").strip() or None
     task_type_id = (request.args.get("task_type_id") or "").strip() or None
-    return _handle_business(lambda: ok({"items": [_task_summary(item) for item in list_student_tasks(current_user, keyword, task_type_id)]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_student_tasks(current_user, keyword, task_type_id, page, page_size),
+        _task_summary,
+    ))
 
 
 @api_bp.route("/student/tasks/<int:task_id>", methods=["GET"])
@@ -1158,6 +1292,16 @@ def student_task_team(task_id):
 def student_submit_task_result(task_id):
     data = request.get_json(silent=True) or {}
     return _handle_business(lambda: ok(_task_result_created_payload(submit_task_result(current_user, task_id, data))))
+
+
+@api_bp.route("/student/task-result-submissions/<int:submission_id>/resubmit", methods=["POST"])
+@login_required
+@role_required("student")
+def student_resubmit_task_result(submission_id):
+    data = request.get_json(silent=True) or {}
+    return _handle_business(lambda: ok(_task_result_created_payload(
+        resubmit_task_result(current_user, submission_id, data)
+    )))
 
 
 @api_bp.route("/student/tasks/<int:task_id>/registrations", methods=["POST"])
@@ -1188,7 +1332,10 @@ def student_task_registration_detail(registration_id):
 @login_required
 @role_required("admin")
 def admin_task_publish_requests():
-    return _handle_business(lambda: ok({"items": [_task_summary(item) for item in list_pending_task_publish_requests()]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_pending_task_publish_requests(page, page_size),
+        _task_summary,
+    ))
 
 
 @api_bp.route("/admin/task-publish-requests/<int:task_id>", methods=["GET"])
@@ -1227,7 +1374,10 @@ def student_create_complaint():
 @role_required("admin")
 def admin_complaints():
     status = (request.args.get("status") or "").strip() or None
-    return _handle_business(lambda: ok({"items": [_complaint_summary(item) for item in list_complaints(status)]}))
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_complaints(status, page, page_size),
+        _complaint_summary,
+    ))
 
 
 @api_bp.route("/admin/complaints/<int:complaint_id>", methods=["GET"])
@@ -1248,7 +1398,10 @@ def operation_records():
     biz_type = (request.args.get("biz_type") or "").strip()
     if biz_type:
         query = query.filter_by(biz_type=biz_type)
-    return ok({"items": [_operation_record_summary(item) for item in query.order_by(OperationLog.id.desc()).all()]})
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: _paginate_operation_records(query.order_by(OperationLog.id.desc()), page, page_size),
+        _operation_record_summary,
+    ))
 
 
 @api_bp.route("/operation-records/<int:record_id>", methods=["GET"])
@@ -1263,6 +1416,36 @@ def operation_record_detail(record_id):
 
 def ok(data=None):
     return jsonify({"code": 0, "message": "success", "data": data or {}})
+
+
+def _pagination_args():
+    try:
+        page = int(request.args.get("page", 1))
+        page_size = int(request.args.get("page_size", 20))
+    except (TypeError, ValueError):
+        raise BusinessError("page 和 page_size 必须是整数")
+    if page < 1:
+        raise BusinessError("page 必须大于等于 1")
+    if page_size < 1 or page_size > 100:
+        raise BusinessError("page_size 必须在 1 到 100 之间")
+    return page, page_size
+
+
+def _paged_response(loader, serializer):
+    page, page_size = _pagination_args()
+    result = loader(page, page_size)
+    return ok({
+        "items": [serializer(item) for item in result.items],
+        "page": result.page,
+        "page_size": result.page_size,
+        "total": result.total,
+        "pages": result.pages,
+    })
+
+
+def _paginate_operation_records(query, page, page_size):
+    from app.utils.pagination import paginate_query
+    return paginate_query(query, page, page_size)
 
 
 def fail(message, code=40001, status=400):
@@ -1327,11 +1510,13 @@ def _credit_exchange_final_payload(application, record):
 
 
 def _credit_exchange_created_payload(application):
-    return {
+    payload = {
         "id": application.id,
         "status": application.status,
-        "calculated_allocations": [_credit_allocation_summary(item) for item in application.allocations],
     }
+    if application.rule_id:
+        payload["calculated_allocations"] = [_credit_allocation_summary(item) for item in application.allocations]
+    return payload
 
 
 def _appeal_created_payload(appeal):
@@ -1577,11 +1762,20 @@ def _task_leader_payload(task, leader_student_id):
 
 def _student_team_payload(task, members, student):
     leader = next((item for item in members if item.is_leader), None)
+    submission = task.result_submissions[0] if task.result_submissions else None
     return {
         "task": _task_detail(task),
         "members": [_task_member_summary(item) for item in members],
         "leader_student_id": leader.student_id if leader else None,
-        "can_submit_result": bool(leader and leader.student_id == student.id and not task.result_submissions),
+        "can_submit_result": bool(leader and leader.student_id == student.id and not submission),
+        "can_resubmit_result": bool(
+            leader
+            and leader.student_id == student.id
+            and submission
+            and submission.status == "advisor_rejected"
+            and task.status == "task_in_progress"
+        ),
+        "task_result_submission_id": submission.id if submission else None,
     }
 
 
@@ -1595,6 +1789,8 @@ def _task_result_created_payload(submission):
 
 
 def _task_result_detail_payload(submission):
+    latest_version = submission.versions[-1] if submission.versions else None
+    current_attachment_ids = set(latest_version.attachment_ids or []) if latest_version else set()
     return {
         "submission": {
             "id": submission.id,
@@ -1609,7 +1805,22 @@ def _task_result_detail_payload(submission):
             "advisor_reviewed_at": _iso(submission.advisor_reviewed_at),
         },
         "task": _task_detail(submission.task),
-        "attachments": _owner_attachments("task_result", submission.id),
+        "attachments": [
+            item for item in _owner_attachments("task_result", submission.id)
+            if not current_attachment_ids or item["id"] in current_attachment_ids
+        ],
+        "versions": [
+            {
+                "id": version.id,
+                "version_no": version.version_no,
+                "summary": version.summary,
+                "requested_hours": _number(version.requested_hours),
+                "attachment_ids": version.attachment_ids or [],
+                "submitted_by": version.submitted_by,
+                "submitted_at": _iso(version.created_at),
+            }
+            for version in submission.versions
+        ],
     }
 
 
@@ -1681,7 +1892,7 @@ def _student_task_detail_payload(task, registration):
     payload["can_register"] = (
         task.status in {"published", "registration_open"}
         and registration is None
-        and bool(task.registration_deadline and task.registration_deadline > datetime.now())
+        and bool(task.registration_deadline and task.registration_deadline > business_now())
     )
     return payload
 
@@ -1702,8 +1913,8 @@ def _task_detail(task):
             "leader": leader["student"] if leader else None,
             "actions": {
                 "can_register": task.status in {"published", "registration_open"}
-                and bool(task.registration_deadline and task.registration_deadline > datetime.now()),
-                "can_select": task.status in {"published", "registration_open", "registration_closed", "selection_pending"},
+                and bool(task.registration_deadline and task.registration_deadline > business_now()),
+                "can_select": task.status == "selection_pending",
             },
         }
     )
@@ -1933,8 +2144,27 @@ def _attachment_summary(attachment):
         "mime_type": attachment.mime_type,
         "url": f"/api/v1/attachments/{attachment.id}",
         "uploaded_by": attachment.uploaded_by,
+        "status": attachment.status,
+        "voided_by": attachment.voided_by,
+        "voided_at": _iso(attachment.voided_at),
+        "void_reason": attachment.void_reason,
         "created_at": _iso(attachment.created_at),
     }
+
+
+def _attachment_bound_to_draft(attachment):
+    if not attachment.owner_id:
+        return False
+    if attachment.owner_type == "hour_application":
+        owner = db.session.get(HourApplication, attachment.owner_id)
+        return bool(owner and owner.status == "draft")
+    if attachment.owner_type == "credit_exchange":
+        owner = db.session.get(CreditExchangeApplication, attachment.owner_id)
+        return bool(owner and owner.status == "draft")
+    if attachment.owner_type == "college_task":
+        owner = db.session.get(CollegeTask, attachment.owner_id)
+        return bool(owner and owner.status == "draft")
+    return False
 
 
 def _application_reviews(application):
@@ -2048,7 +2278,7 @@ def _can_access_attachment(attachment):
 
 
 def _iso(value):
-    return value.isoformat() if value else None
+    return format_api_datetime(value)
 
 
 def _uploaded_file():
@@ -2126,6 +2356,7 @@ def _student_summary(student):
 def _teacher_summary(teacher):
     return {
         "id": teacher.id,
+        "username": teacher.user.username if teacher.user else None,
         "teacher_no": teacher.teacher_no,
         "name": teacher.name,
         "college": None,

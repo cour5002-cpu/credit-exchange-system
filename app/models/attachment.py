@@ -14,4 +14,7 @@ class Attachment(db.Model):
     mime_type = db.Column(db.String(128))
     uploaded_by = db.Column(db.BigInteger, db.ForeignKey("users.id"), nullable=False)
     status = db.Column(db.String(20), nullable=False, default="active")
+    voided_by = db.Column(db.BigInteger, db.ForeignKey("users.id"))
+    voided_at = db.Column(db.DateTime)
+    void_reason = db.Column(db.Text)
     created_at = db.Column(db.DateTime, server_default=db.func.now(), nullable=False)

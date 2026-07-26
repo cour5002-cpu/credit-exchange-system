@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 
 from app.extensions import db
 from app.models.appeal import Appeal
@@ -18,12 +18,15 @@ from app.models.student import Student
 from app.models.task_member import TaskMember
 from app.models.task_registration import TaskRegistration
 from app.models.task_result_submission import TaskResultSubmission
+from app.models.task_result_submission_version import TaskResultSubmissionVersion
 from app.models.task_type import TaskType
 from app.models.teacher import Teacher
 from app.services.week3_hour_application_service import BusinessError, current_student, current_teacher
 from app.services.week3_hour_application_service import advisor_approve, advisor_reject, assign_reviewer, reviewer_approve, reviewer_reject
 from app.services.week4_credit_exchange_service import advisor_approve_credit_exchange, advisor_reject_credit_exchange
 from app.utils.number_generator import generate_application_no
+from app.utils.pagination import finish_query
+from app.utils.time_utils import business_now, parse_api_datetime
 
 
 APPEAL_TARGET_TYPES = {"hour_application", "credit_exchange"}
@@ -69,12 +72,13 @@ def create_appeal(user, payload):
     return appeal
 
 
-def list_student_appeals(user, status=None):
+def list_student_appeals(user, status=None, page=None, page_size=None):
     student = current_student(user)
     query = Appeal.query.filter_by(applicant_student_id=student.id)
     if status:
         query = query.filter_by(status=status)
-    return query.order_by(Appeal.created_at.desc(), Appeal.id.desc()).all()
+    query = query.order_by(Appeal.created_at.desc(), Appeal.id.desc())
+    return finish_query(query, page, page_size)
 
 
 def get_student_appeal(user, appeal_id):
@@ -85,11 +89,12 @@ def get_student_appeal(user, appeal_id):
     return appeal
 
 
-def list_admin_appeals(status=None):
+def list_admin_appeals(status=None, page=None, page_size=None):
     query = Appeal.query
     if status:
         query = query.filter_by(status=status)
-    return query.order_by(Appeal.created_at.desc(), Appeal.id.desc()).all()
+    query = query.order_by(Appeal.created_at.desc(), Appeal.id.desc())
+    return finish_query(query, page, page_size)
 
 
 def get_admin_appeal(appeal_id):
@@ -106,12 +111,12 @@ def admin_approve_appeal(user, appeal_id, admin_advice):
     _require_status(appeal.status, "pending_admin_review")
     target = _get_appeal_target(appeal.target_type, appeal.target_id)
     before = appeal.status
-    appeal.status = "appeal_accepted"
+    appeal.status = "processing"
     appeal.reopen_stage = "pending_advisor_confirmation"
     appeal.admin_decision = "reopen"
     appeal.admin_advice = admin_advice
     appeal.reviewed_by = user.id
-    appeal.reviewed_at = datetime.now()
+    appeal.reviewed_at = business_now()
     target_status = "submitted"
     target.status = target_status
     if appeal.target_type == "hour_application":
@@ -124,37 +129,39 @@ def admin_approve_appeal(user, appeal_id, admin_advice):
 def get_appealable_target(user, target_type, target_id):
     student = current_student(user)
     target = _get_appeal_target(target_type, target_id)
-    _ensure_student_can_appeal(student, target_type, target)
+    try:
+        _ensure_student_can_appeal(student, target_type, target)
+    except BusinessError as exc:
+        if exc.status == 403:
+            raise
+        return target, False, str(exc)
     if Appeal.query.filter_by(target_type=target_type, target_id=target_id).first():
-        raise BusinessError("同一业务对象只能申诉一次", code=40902, status=409)
-    return target
+        return target, False, "同一业务对象只能申诉一次"
+    return target, True, None
 
 
-def list_reopened_pending_advisor(user):
+def list_reopened_pending_advisor(user, page=None, page_size=None):
     teacher = current_teacher(user, "advisor")
-    hour_ids = {
-        item.application_id
-        for item in ApplicationAdvisor.query.filter_by(
+    hour_ids = db.session.query(ApplicationAdvisor.application_id).filter_by(
             teacher_id=teacher.id,
             advisor_role="primary",
             can_operate=True,
-        ).all()
-    }
-    exchange_ids = {
-        item.id
-        for item in CreditExchangeApplication.query.filter_by(advisor_teacher_id=teacher.id).all()
-    }
-    return [
-        item
-        for item in Appeal.query.filter_by(status="appeal_accepted", reopen_stage="pending_advisor_confirmation").all()
-        if (item.target_type == "hour_application" and item.target_id in hour_ids)
-        or (item.target_type == "credit_exchange" and item.target_id in exchange_ids)
-    ]
+        )
+    exchange_ids = db.session.query(CreditExchangeApplication.id).filter_by(advisor_teacher_id=teacher.id)
+    query = Appeal.query.filter(
+        Appeal.status == "processing",
+        Appeal.reopen_stage == "pending_advisor_confirmation",
+        or_(
+            and_(Appeal.target_type == "hour_application", Appeal.target_id.in_(hour_ids)),
+            and_(Appeal.target_type == "credit_exchange", Appeal.target_id.in_(exchange_ids)),
+        ),
+    ).order_by(Appeal.id.desc())
+    return finish_query(query, page, page_size)
 
 
 def advisor_reconfirm_appeal(user, appeal_id, decision, comment=None):
     appeal = get_admin_appeal(appeal_id)
-    if appeal.status != "appeal_accepted" or appeal.reopen_stage != "pending_advisor_confirmation":
+    if appeal.status != "processing" or appeal.reopen_stage != "pending_advisor_confirmation":
         raise BusinessError("当前申诉不在指导老师再次确认环节", code=40901, status=409)
     if decision not in {"approve", "reject"}:
         raise BusinessError("decision 只能是 approve 或 reject")
@@ -166,15 +173,18 @@ def advisor_reconfirm_appeal(user, appeal_id, decision, comment=None):
     else:
         target = advisor_approve_credit_exchange(user, appeal.target_id, comment) if decision == "approve" else advisor_reject_credit_exchange(user, appeal.target_id, comment)
         appeal.reopen_stage = "pending_admin_final" if decision == "approve" else "advisor_rejected"
+    if decision == "reject":
+        appeal.status = "completed"
     appeal.reconfirmed_by = user.id
-    appeal.reconfirmed_at = datetime.now()
+    appeal.reconfirmed_at = business_now()
     _add_operation(user.id, "appeal", appeal.id, f"advisor_reconfirm_{decision}", "pending_advisor_confirmation", appeal.reopen_stage)
     db.session.commit()
     return appeal, target
 
 
-def list_reopened_pending_assignment():
-    return Appeal.query.filter_by(status="appeal_accepted", reopen_stage="pending_assignment").order_by(Appeal.id.desc()).all()
+def list_reopened_pending_assignment(page=None, page_size=None):
+    query = Appeal.query.filter_by(status="processing", reopen_stage="pending_assignment").order_by(Appeal.id.desc())
+    return finish_query(query, page, page_size)
 
 
 def assign_reopened_appeal(user, appeal_id, reviewer_teacher_id, comment=None):
@@ -188,19 +198,20 @@ def assign_reopened_appeal(user, appeal_id, reviewer_teacher_id, comment=None):
     return appeal, target
 
 
-def list_reviewer_appeals(user):
+def list_reviewer_appeals(user, page=None, page_size=None):
     teacher = current_teacher(user, "reviewer")
-    return (
+    query = (
         Appeal.query.join(HourApplication, HourApplication.id == Appeal.target_id)
         .filter(
             Appeal.target_type == "hour_application",
-            Appeal.status == "appeal_accepted",
+            Appeal.status == "processing",
             Appeal.reopen_stage == "pending_reviewer_review",
             HourApplication.assigned_teacher_id == teacher.id,
             HourApplication.status == "pending_review",
         )
-        .order_by(Appeal.id.desc()).all()
+        .order_by(Appeal.id.desc())
     )
+    return finish_query(query, page, page_size)
 
 
 def get_reviewer_appeal(user, appeal_id):
@@ -221,6 +232,8 @@ def review_reopened_appeal(user, appeal_id, decision, comment=None, suggested_ho
     else:
         raise BusinessError("复审决定不合法")
     appeal.reopen_stage = "pending_admin_final" if decision != "reject" else "reviewer_rejected"
+    if decision == "reject":
+        appeal.status = "completed"
     _add_operation(user.id, "appeal", appeal.id, f"reviewer_{decision}", "pending_reviewer_review", appeal.reopen_stage)
     db.session.commit()
     return appeal, target
@@ -232,11 +245,11 @@ def admin_reject_appeal(user, appeal_id, admin_advice):
     appeal = get_admin_appeal(appeal_id)
     _require_status(appeal.status, "pending_admin_review")
     before = appeal.status
-    appeal.status = "appeal_rejected"
+    appeal.status = "completed"
     appeal.admin_decision = "maintain"
     appeal.admin_advice = admin_advice
     appeal.reviewed_by = user.id
-    appeal.reviewed_at = datetime.now()
+    appeal.reviewed_at = business_now()
     _add_operation(user.id, "appeal", appeal.id, "reject", before, appeal.status)
     db.session.commit()
     return appeal
@@ -250,7 +263,7 @@ def create_task(user, payload, publisher_type, submit=True):
         raise BusinessError("该任务类别不允许指导老师发布任务")
     advisor = _task_advisor(user, payload, publisher_type)
     deadline = _parse_datetime(payload.get("registration_deadline"))
-    if not deadline or deadline <= datetime.now():
+    if not deadline or deadline <= business_now():
         raise BusinessError("报名截止时间必须晚于当前时间")
     status = "draft"
     if submit and publisher_type == "admin":
@@ -268,10 +281,10 @@ def create_task(user, payload, publisher_type, submit=True):
         publisher_type=publisher_type,
         publisher_user_id=user.id,
         advisor_teacher_id=advisor.id,
-        registration_start_at=datetime.now() if status == "published" else None,
+        registration_start_at=business_now() if status == "published" else None,
         registration_deadline=deadline,
         status=status,
-        published_at=datetime.now() if status == "published" else None,
+        published_at=business_now() if status == "published" else None,
     )
     db.session.add(task)
     db.session.flush()
@@ -280,21 +293,24 @@ def create_task(user, payload, publisher_type, submit=True):
     return task
 
 
-def list_student_tasks(user, keyword=None, task_type_id=None):
+def list_student_tasks(user, keyword=None, task_type_id=None, page=None, page_size=None):
+    _advance_expired_task_registrations()
     query = CollegeTask.query.filter(
         CollegeTask.status.in_(["published", "registration_open"]),
-        CollegeTask.registration_deadline > datetime.now(),
+        CollegeTask.registration_deadline > business_now(),
     )
     if keyword:
         query = query.filter(or_(CollegeTask.title.like(f"%{keyword}%"), CollegeTask.description.like(f"%{keyword}%")))
     if task_type_id:
         query = query.filter_by(task_type_id=int(task_type_id))
-    return query.order_by(CollegeTask.created_at.desc(), CollegeTask.id.desc()).all()
+    query = query.order_by(CollegeTask.created_at.desc(), CollegeTask.id.desc())
+    return finish_query(query, page, page_size)
 
 
 def get_student_task(user, task_id):
     task = _get_task(task_id)
-    if task.status not in {"published", "registration_open", "registration_closed", "selection_pending", "task_in_progress"}:
+    _advance_task_registration(task)
+    if task.status not in {"published", "registration_open", "registration_closed", "selection_pending", "leader_pending", "task_in_progress"}:
         raise BusinessError("任务不存在或不可见", code=40401, status=404)
     student = current_student(user)
     registration = TaskRegistration.query.filter_by(task_id=task.id, student_id=student.id).first()
@@ -304,7 +320,8 @@ def get_student_task(user, task_id):
 def register_task(user, task_id, payload):
     student = current_student(user)
     task = _get_task(task_id)
-    if task.status not in {"published", "registration_open"} or task.registration_deadline <= datetime.now():
+    _advance_task_registration(task)
+    if task.status not in {"published", "registration_open"} or task.registration_deadline <= business_now():
         raise BusinessError("当前任务不在报名期", code=40901, status=409)
     exists = TaskRegistration.query.filter_by(task_id=task.id, student_id=student.id).first()
     if exists:
@@ -323,6 +340,7 @@ def register_task(user, task_id, payload):
 
 def list_my_tasks(user, status=None):
     student = current_student(user)
+    _advance_expired_task_registrations()
     query = CollegeTask.query.outerjoin(TaskRegistration, TaskRegistration.task_id == CollegeTask.id).outerjoin(
         TaskMember,
         TaskMember.task_id == CollegeTask.id,
@@ -342,6 +360,7 @@ def get_student_registration(user, registration_id):
 
 def list_advisor_tasks(user, status=None):
     teacher = current_teacher(user, "advisor")
+    _advance_expired_task_registrations()
     query = CollegeTask.query.filter_by(advisor_teacher_id=teacher.id)
     if status:
         query = query.filter_by(status=status)
@@ -351,6 +370,7 @@ def list_advisor_tasks(user, status=None):
 def get_advisor_task(user, task_id):
     teacher = current_teacher(user, "advisor")
     task = _get_task(task_id)
+    _advance_task_registration(task)
     if task.advisor_teacher_id != teacher.id:
         raise BusinessError("当前教师不是该任务指导老师", code=40301, status=403)
     return task
@@ -363,7 +383,9 @@ def list_task_registrations_for_advisor(user, task_id):
 
 def select_task_registrations(user, task_id, payload):
     task = get_advisor_task(user, task_id)
-    if task.status not in {"published", "registration_open", "registration_closed", "selection_pending"}:
+    if task.status != "selection_pending":
+        if task.status in {"published", "registration_open"}:
+            raise BusinessError("报名尚未截止，暂不能筛选", code=40901, status=409)
         raise BusinessError("当前任务状态不允许筛选报名", code=40901, status=409)
     selected_ids = _normalize_id_list(payload.get("selected_registration_ids"))
     not_selected_ids = _normalize_id_list(payload.get("not_selected_registration_ids"))
@@ -376,16 +398,8 @@ def select_task_registrations(user, task_id, payload):
     by_id = {item.id: item for item in registrations}
     if not set(selected_ids + not_selected_ids).issubset(by_id):
         raise BusinessError("报名记录不存在或不属于当前任务", code=40401, status=404)
-    leader_registration_id = payload.get("leader_registration_id")
-    if len(selected_ids) == 1:
-        leader_registration_id = selected_ids[0]
-    else:
-        leader_registration_id = _required_int(payload, "leader_registration_id")
-        if leader_registration_id not in selected_ids:
-            raise BusinessError("队长必须来自被选中的报名学生")
-
     TaskMember.query.filter_by(task_id=task.id).delete()
-    now = datetime.now()
+    now = business_now()
     for registration_id in selected_ids:
         registration = by_id[registration_id]
         registration.status = "selected"
@@ -396,7 +410,7 @@ def select_task_registrations(user, task_id, payload):
                 task_id=task.id,
                 registration_id=registration.id,
                 student_id=registration.student_id,
-                is_leader=registration.id == leader_registration_id,
+                is_leader=False,
                 selected_by=user.id,
                 status="active",
             )
@@ -407,7 +421,7 @@ def select_task_registrations(user, task_id, payload):
         registration.selected_by = user.id
         registration.selected_at = now
     before = task.status
-    task.status = "task_in_progress"
+    task.status = "leader_pending"
     _add_operation(user.id, "college_task", task.id, "select_registrations", before, task.status)
     db.session.commit()
     return task
@@ -420,6 +434,8 @@ def selected_task_members(user, task_id):
 
 def assign_task_leader(user, task_id, leader_student_id):
     task = get_advisor_task(user, task_id)
+    if task.status != "leader_pending":
+        raise BusinessError("当前任务不在等待指定队长状态", code=40901, status=409)
     members = [item for item in task.members if item.status == "active"]
     try:
         leader_student_id = int(leader_student_id)
@@ -429,8 +445,9 @@ def assign_task_leader(user, task_id, leader_student_id):
         raise BusinessError("队长必须来自最终参与成员")
     for member in members:
         member.is_leader = member.student_id == leader_student_id
+    before = task.status
     task.status = "task_in_progress"
-    _add_operation(user.id, "college_task", task.id, "assign_leader", task.status, task.status)
+    _add_operation(user.id, "college_task", task.id, "assign_leader", before, task.status)
     db.session.commit()
     return task, leader_student_id
 
@@ -481,7 +498,7 @@ def submit_task_result(user, task_id, payload):
         achievement_summary=summary,
         description=task.description,
         status="material_submitted",
-        submitted_at=datetime.now(),
+        submitted_at=business_now(),
     )
     db.session.add(application)
     db.session.flush()
@@ -495,6 +512,14 @@ def submit_task_result(user, task_id, payload):
     )
     db.session.add(submission)
     db.session.flush()
+    db.session.add(TaskResultSubmissionVersion(
+        submission_id=submission.id,
+        version_no=1,
+        summary=summary,
+        requested_hours=requested_hours,
+        attachment_ids=attachment_ids,
+        submitted_by=user.id,
+    ))
     application.task_result_submission_id = submission.id
     for member in members:
         db.session.add(HourApplicationMember(
@@ -513,6 +538,68 @@ def submit_task_result(user, task_id, payload):
     _bind_attachments("task_result", submission.id, attachment_ids, user.id)
     task.status = "result_submitted"
     _add_operation(user.id, "task_result", submission.id, "submit", None, submission.status)
+    db.session.commit()
+    return submission
+
+
+def resubmit_task_result(user, submission_id, payload):
+    student = current_student(user)
+    submission = db.session.get(TaskResultSubmission, submission_id)
+    if not submission:
+        raise BusinessError("任务成果不存在", code=40401, status=404)
+    task = submission.task
+    if submission.leader_student_id != student.id:
+        raise BusinessError("只有任务队长可以重新提交成果", code=40301, status=403)
+    _require_status(submission.status, "advisor_rejected")
+    if task.status != "task_in_progress":
+        raise BusinessError("当前任务状态不允许重新提交成果", code=40901, status=409)
+
+    summary = _required_str(payload, "summary")
+    attachment_ids = _normalize_id_list(payload.get("attachment_ids"))
+    if not attachment_ids:
+        raise BusinessError("重新提交成果必须上传附件")
+    try:
+        requested_hours = Decimal(str(payload.get("requested_hours")))
+    except (InvalidOperation, TypeError, ValueError):
+        raise BusinessError("申请课时必须是数字")
+    if requested_hours <= 0:
+        raise BusinessError("申请课时必须大于 0")
+
+    application = submission.hour_application
+    if not application or application.status != "advisor_rejected":
+        raise BusinessError("关联课时申请状态不允许重新提交成果", code=40901, status=409)
+
+    _bind_attachments("task_result", submission.id, attachment_ids, user.id)
+    latest_version = max((item.version_no for item in submission.versions), default=0)
+    db.session.add(TaskResultSubmissionVersion(
+        submission_id=submission.id,
+        version_no=latest_version + 1,
+        summary=summary,
+        requested_hours=requested_hours,
+        attachment_ids=attachment_ids,
+        submitted_by=user.id,
+    ))
+
+    before = submission.status
+    submission.summary = summary
+    submission.requested_hours = requested_hours
+    submission.status = "submitted"
+    submission.advisor_comment = None
+    submission.advisor_reviewed_by = None
+    submission.advisor_reviewed_at = None
+    application.achievement_summary = summary
+    application.requested_hours = requested_hours
+    application.status = "material_submitted"
+    application.advisor_reviewed_at = None
+    primary_advisor = ApplicationAdvisor.query.filter_by(
+        application_id=application.id,
+        advisor_role="primary",
+        can_operate=True,
+    ).first()
+    if primary_advisor:
+        primary_advisor.reviewed_at = None
+    task.status = "result_submitted"
+    _add_operation(user.id, "task_result", submission.id, "resubmit", before, submission.status)
     db.session.commit()
     return submission
 
@@ -542,7 +629,7 @@ def review_task_result(user, submission_id, approve, comment=None):
         submission.task.status = "task_in_progress"
     submission.advisor_comment = (comment or "").strip() or None
     submission.advisor_reviewed_by = user.id
-    submission.advisor_reviewed_at = datetime.now()
+    submission.advisor_reviewed_at = business_now()
     _add_operation(user.id, "task_result", submission.id, "approve" if approve else "reject", before, submission.status)
     db.session.commit()
     return submission
@@ -559,11 +646,12 @@ def create_complaint(user, payload):
     return complaint
 
 
-def list_complaints(status=None):
+def list_complaints(status=None, page=None, page_size=None):
     query = Complaint.query
     if status:
         query = query.filter_by(status=status)
-    return query.order_by(Complaint.id.desc()).all()
+    query = query.order_by(Complaint.id.desc())
+    return finish_query(query, page, page_size)
 
 
 def get_complaint(complaint_id, mark_viewed=False):
@@ -572,24 +660,29 @@ def get_complaint(complaint_id, mark_viewed=False):
         raise BusinessError("投诉不存在", code=40401, status=404)
     if mark_viewed and complaint.status == "submitted":
         complaint.status = "viewed"
-        complaint.viewed_at = datetime.now()
+        complaint.viewed_at = business_now()
         db.session.commit()
     return complaint
 
 
-def list_admin_tasks(status=None):
+def list_admin_tasks(status=None, page=None, page_size=None):
+    _advance_expired_task_registrations()
     query = CollegeTask.query
     if status:
         query = query.filter_by(status=status)
-    return query.order_by(CollegeTask.created_at.desc(), CollegeTask.id.desc()).all()
+    query = query.order_by(CollegeTask.created_at.desc(), CollegeTask.id.desc())
+    return finish_query(query, page, page_size)
 
 
 def get_admin_task(task_id):
-    return _get_task(task_id)
+    task = _get_task(task_id)
+    _advance_task_registration(task)
+    return task
 
 
-def list_pending_task_publish_requests():
-    return CollegeTask.query.filter_by(status="pending_publish_review").order_by(CollegeTask.created_at.desc()).all()
+def list_pending_task_publish_requests(page=None, page_size=None):
+    query = CollegeTask.query.filter_by(status="pending_publish_review").order_by(CollegeTask.created_at.desc())
+    return finish_query(query, page, page_size)
 
 
 def admin_approve_task_publish(user, task_id, comment=None):
@@ -599,8 +692,8 @@ def admin_approve_task_publish(user, task_id, comment=None):
     task.status = "published"
     task.admin_reviewed_by = user.id
     task.admin_review_comment = (comment or "").strip() or None
-    task.registration_start_at = task.registration_start_at or datetime.now()
-    task.published_at = datetime.now()
+    task.registration_start_at = task.registration_start_at or business_now()
+    task.published_at = business_now()
     _add_operation(user.id, "college_task", task.id, "publish_approved", before, task.status)
     db.session.commit()
     return task
@@ -669,6 +762,25 @@ def _get_task(task_id):
     if not task:
         raise BusinessError("任务不存在", code=40401, status=404)
     return task
+
+
+def _advance_expired_task_registrations():
+    changed = CollegeTask.query.filter(
+        CollegeTask.status.in_(["published", "registration_open"]),
+        CollegeTask.registration_deadline <= business_now(),
+    ).update({"status": "selection_pending"}, synchronize_session="fetch")
+    if changed:
+        db.session.commit()
+
+
+def _advance_task_registration(task):
+    if (
+        task.status in {"published", "registration_open"}
+        and task.registration_deadline
+        and task.registration_deadline <= business_now()
+    ):
+        task.status = "selection_pending"
+        db.session.commit()
 
 
 def _bind_attachments(owner_type, owner_id, attachment_ids, user_id):
@@ -752,17 +864,7 @@ def _normalize_id_list(value):
 
 
 def _parse_datetime(value):
-    if not value:
-        return None
-    if isinstance(value, datetime):
-        return value
-    text = str(value).strip()
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
     try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError:
+        return parse_api_datetime(value)
+    except (TypeError, ValueError):
         raise BusinessError("时间格式必须是 ISO 8601 字符串")
-    if parsed.tzinfo:
-        parsed = parsed.replace(tzinfo=None)
-    return parsed

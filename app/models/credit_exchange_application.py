@@ -22,7 +22,7 @@ class CreditExchangeApplication(db.Model):
     exchange_no = db.Column(db.String(64), unique=True, nullable=False)
     student_id = db.Column(db.BigInteger, db.ForeignKey("students.id"), nullable=False)
     requested_hours = db.Column(db.Numeric(10, 2), nullable=False)
-    estimated_credits = db.Column(db.Numeric(10, 2), nullable=False)
+    estimated_credits = db.Column(db.Numeric(10, 2))
     description = db.Column(db.Text)
     status = db.Column(db.String(20), nullable=False, default="submitted")
     reviewed_by_admin_id = db.Column(db.BigInteger, db.ForeignKey("users.id"))

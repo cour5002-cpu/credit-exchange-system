@@ -1,12 +1,14 @@
 import os
 
 from dotenv import load_dotenv
+from sqlalchemy.engine import make_url
 
 
 load_dotenv(override=True)
 
 
 class BaseConfig:
+    BUSINESS_TIMEZONE = "Asia/Shanghai"
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key")
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "DATABASE_URL",
@@ -28,8 +30,25 @@ class ProductionConfig(BaseConfig):
     SESSION_COOKIE_SAMESITE = "Lax"
 
 
+def _testing_database_uri():
+    configured = os.getenv("TEST_DATABASE_URL")
+    if configured:
+        return configured
+    url = make_url(BaseConfig.SQLALCHEMY_DATABASE_URI)
+    if url.drivername.startswith("mysql") and url.database:
+        return url.set(database=f"{url.database}_test").render_as_string(hide_password=False)
+    return "sqlite:///test.db"
+
+
+class TestingConfig(BaseConfig):
+    TESTING = True
+    WTF_CSRF_ENABLED = False
+    SQLALCHEMY_DATABASE_URI = _testing_database_uri()
+
+
 config_by_name = {
     "default": DevelopmentConfig,
     "development": DevelopmentConfig,
     "production": ProductionConfig,
+    "testing": TestingConfig,
 }

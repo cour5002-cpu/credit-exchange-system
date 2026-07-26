@@ -24,6 +24,7 @@ from app.models.system_config import SystemConfig
 from app.models.task_member import TaskMember
 from app.models.task_registration import TaskRegistration
 from app.models.task_result_submission import TaskResultSubmission
+from app.models.task_result_submission_version import TaskResultSubmissionVersion
 from app.models.task_type import TaskType
 from app.models.teacher import Teacher
 from app.models.user import User

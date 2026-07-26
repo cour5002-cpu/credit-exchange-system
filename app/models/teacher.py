@@ -1,3 +1,5 @@
+from sqlalchemy.orm import relationship
+
 from app.extensions import db
 
 
@@ -21,6 +23,8 @@ class Teacher(db.Model):
         onupdate=db.func.now(),
         nullable=False,
     )
+
+    user = relationship("User", lazy="joined")
 
     @property
     def role_flag_list(self):
