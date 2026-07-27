@@ -1,22 +1,22 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
-import {
-  EXCHANGE_STATUS,
-  batchFinalApproveExchanges,
-  batchFinalRejectExchanges,
-  getExchangeFinalConfirmList,
-} from '../mock/exchanges.js'
+import { batchApproveExchanges, getAdminPendingExchanges } from '../api/exchangeApi.js'
+import { adaptExchangeList } from '../adapters/exchangeAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
 const keyword = ref('')
 const selectedIds = ref([])
 const batchComment = ref('')
 const batchResult = ref(null)
 const refreshKey = ref(0)
+const remoteItems = ref([])
+async function loadItems(){try{remoteItems.value=adaptExchangeList(await getAdminPendingExchanges({page_size:100}))}catch(error){window.alert(getApiErrorMessage(error,'待最终确认兑换加载失败'))}}
+onMounted(loadItems)
 const items = computed(() => {
   refreshKey.value
   const search = keyword.value.trim().toLowerCase()
-  return getExchangeFinalConfirmList().filter((item) => !search || [item.exchangeId, item.studentName, item.studentId, item.teamName, item.taskName].some((value) => String(value || '').toLowerCase().includes(search)))
+  return remoteItems.value.filter((item) => !search || [item.exchangeId, item.studentName, item.studentId, item.teamName, item.taskName].some((value) => String(value || '').toLowerCase().includes(search)))
 })
 const allSelected = computed(() => items.value.length > 0 && items.value.every((item) => selectedIds.value.includes(item.id)))
 const partiallySelected = computed(() => !allSelected.value && items.value.some((item) => selectedIds.value.includes(item.id)))
@@ -32,17 +32,17 @@ function finishBatch(result, action) {
   refreshKey.value += 1
 }
 
-function batchApprove() {
+async function batchApprove() {
   if (!selectedIds.value.length) return window.alert('请先选择要最终确认兑换的申请。')
   if (!window.confirm(`确定要批量最终确认兑换已选择的 ${selectedIds.value.length} 条申请吗？`)) return
-  finishBatch(batchFinalApproveExchanges(selectedIds.value, batchComment.value.trim() || '批量最终确认兑换通过。'), '批量最终确认兑换')
+  try{const result=await batchApproveExchanges({exchange_ids:selectedIds.value,comment:batchComment.value.trim()||null});batchResult.value={action:'批量最终确认兑换',total:selectedIds.value.length,success:(result?.items??[]).filter(item=>item.success).length,failed:(result?.items??[]).filter(item=>!item.success).length,failedItems:(result?.items??[]).filter(item=>!item.success)};selectedIds.value=[];await loadItems()}catch(error){window.alert(getApiErrorMessage(error,'批量最终确认失败'))}
 }
 
 function batchReject() {
   if (!selectedIds.value.length) return window.alert('请先选择要驳回的兑换申请。')
   if (!batchComment.value.trim()) return window.alert('批量驳回兑换必须填写处理意见。')
   if (!window.confirm(`确定要批量驳回已选择的 ${selectedIds.value.length} 条兑换申请吗？`)) return
-  finishBatch(batchFinalRejectExchanges(selectedIds.value, batchComment.value.trim()), '批量驳回兑换')
+  window.alert('后端未提供批量驳回接口，请进入详情逐条驳回。')
 }
 </script>
 

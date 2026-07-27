@@ -12,7 +12,21 @@ const keyword = ref('')
 const currentAdvisorId = 'T001'
 const pendingAppeals = computed(() => getAdvisorPendingAppealConfirmations())
 const realApplications = ref([])
-onMounted(async()=>{try{const [pendingPayload,materialPayload]=await Promise.all([getPendingApi({page_size:100}),getPendingMaterials({page_size:100})]);const pending=adaptApplicationList(pendingPayload).items.filter((item)=>item.status==='submitted');const materials=adaptApplicationList(materialPayload).items.filter((item)=>item.status==='material_submitted');realApplications.value=[...new Map([...pending,...materials].map((item)=>[item.id,item])).values()]}catch(error){window.alert(getApiErrorMessage(error,'待确认申请加载失败'))}})
+onMounted(async()=>{
+  const [pendingResult, materialResult] = await Promise.allSettled([
+    getPendingApi({ status: 'submitted', page_size: 100 }),
+    getPendingMaterials({ page_size: 100 }),
+  ])
+  const pending = pendingResult.status === 'fulfilled'
+    ? adaptApplicationList(pendingResult.value).items.filter((item) => item.status === 'submitted')
+    : []
+  const materials = materialResult.status === 'fulfilled'
+    ? adaptApplicationList(materialResult.value).items.filter((item) => item.status === 'material_submitted')
+    : []
+  console.info('[advisor hour applications pending]', pendingResult.status === 'fulfilled' ? pendingResult.value : pendingResult.reason)
+  realApplications.value = [...new Map([...pending, ...materials].map((item) => [item.id, item])).values()]
+  if (pendingResult.status === 'rejected') window.alert(getApiErrorMessage(pendingResult.reason, '待确认课时申请加载失败'))
+})
 function handleAppeal(item, decision) { const comment = window.prompt(decision === 'approve' ? '请输入再次确认意见（可选）' : '请输入驳回意见') || ''; if (decision === 'reject' && !comment.trim()) return; if (!reconfirmAppeal(item.appealId, decision, comment)) return window.alert('申诉再次确认失败。'); window.alert(decision === 'approve' ? '已确认，等待管理员分配复审老师。' : '已驳回，申诉处理完成。') }
 
 const filteredConfirmations = computed(() => {
@@ -22,8 +36,8 @@ const filteredConfirmations = computed(() => {
       || (selectedSource.value === 'task_result' && item.source === 'task')
     const matchesKeyword =
       !normalizedKeyword ||
-      item.studentName.toLowerCase().includes(normalizedKeyword) ||
-      item.title.toLowerCase().includes(normalizedKeyword)
+      String(item.studentName || '').toLowerCase().includes(normalizedKeyword) ||
+      String(item.title || '').toLowerCase().includes(normalizedKeyword)
     return matchesSource && matchesKeyword
   })
 })
@@ -44,7 +58,6 @@ const filteredConfirmations = computed(() => {
       <nav class="type-tabs" aria-label="待确认事项类型">
         <RouterLink class="active" to="/teacher/confirm">课时申请确认</RouterLink>
         <RouterLink to="/teacher/confirm/exchanges">学分兑换确认</RouterLink>
-        <RouterLink to="/teacher/confirm/results">任务成果确认</RouterLink>
         <RouterLink to="/teacher/confirm/supplements">补交成果确认</RouterLink>
         <RouterLink to="/teacher/confirm/extensions">普通延期确认</RouterLink>
       </nav>

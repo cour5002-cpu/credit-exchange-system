@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://656ecfdb.r6.cpolar.cn',
+        target: 'http://3f1e1c4a.r35.cpolar.top',
         changeOrigin: true,
       },
     },

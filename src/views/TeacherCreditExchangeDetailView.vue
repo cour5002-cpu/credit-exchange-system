@@ -1,18 +1,21 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
-import { EXCHANGE_STATUS, advisorApproveExchange, advisorRejectExchange, getExchanges } from '../mock/exchanges.js'
+import { approveExchangeByAdvisor, getAdvisorExchange, rejectExchangeByAdvisor } from '../api/exchangeApi.js'
+import { adaptExchangeEnvelope } from '../adapters/exchangeAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
-const route = useRoute(); const router = useRouter(); const currentAdvisorId = 'T001'
+const route = useRoute(); const router = useRouter()
 const opinion = ref(''); const feedback = ref('')
-const item = computed(() => getExchanges().find((exchange) => (exchange.id === route.params.id || exchange.exchangeId === route.params.id) && exchange.advisorId === currentAdvisorId))
+const item = ref(null)
+onMounted(async()=>{try{item.value=adaptExchangeEnvelope(await getAdvisorExchange(Number(route.params.id)))}catch(error){window.alert(getApiErrorMessage(error,'兑换申请详情加载失败'))}})
 const allocatedHours = computed(() => item.value?.memberDistributions?.reduce((sum, member) => sum + Number(member.allocatedHours || 0), 0) || 0)
 const allocatedCredits = computed(() => item.value?.memberDistributions?.reduce((sum, member) => sum + Number(member.allocatedCredits || 0), 0) || 0)
-const canProcess = computed(() => item.value?.status === EXCHANGE_STATUS.PENDING_CONFIRMATION)
+const canProcess = computed(() => item.value?.status === 'submitted')
 function validate() { if (!item.value?.memberDistributions?.length) return '成员分配表不能为空。'; if (Math.abs(allocatedHours.value - Number(item.value.finalHours || 0)) > .000001) return '成员分配课时总和必须等于项目最终认定课时。'; return '' }
-function approve() { const error=validate(); if(error){feedback.value=error;return window.alert(error)}; if(!advisorApproveExchange(item.value.id,opinion.value)){return window.alert('当前申请无法确认通过。')}; window.alert('确认通过，申请已进入管理员最终确认。'); goBack() }
-function reject() { if(!opinion.value.trim()){feedback.value='驳回时必须填写确认意见。';return window.alert(feedback.value)}; if(!advisorRejectExchange(item.value.id,opinion.value)){return window.alert('当前申请无法驳回。')}; window.alert('申请已驳回并退回学生端。'); goBack() }
+async function approve() { const error=validate(); if(error){feedback.value=error;return window.alert(error)};try{await approveExchangeByAdvisor(item.value.id,{comment:opinion.value.trim()});window.alert('确认通过，申请已进入管理员最终确认。');goBack()}catch(error){window.alert(getApiErrorMessage(error,'确认兑换失败'))} }
+async function reject() { if(!opinion.value.trim()){feedback.value='驳回时必须填写确认意见。';return window.alert(feedback.value)};try{await rejectExchangeByAdvisor(item.value.id,{comment:opinion.value.trim()});window.alert('申请已驳回并退回学生端。');goBack()}catch(error){window.alert(getApiErrorMessage(error,'驳回兑换失败'))} }
 function goBack(){router.push('/teacher/confirm/exchanges')}
 function fileAction(action){window.alert(action==='预览'?'当前为 Mock 附件预览，真实预览需后端文件服务支持。':'当前为 Mock 附件下载，真实下载需后端文件服务支持。')}
 </script>

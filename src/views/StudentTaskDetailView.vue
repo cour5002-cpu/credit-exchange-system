@@ -11,8 +11,9 @@ const members = computed(() => team.value?.members??[])
 const result = computed(() => task.value?.resultSubmission??(team.value?.task_result_submission_id?{id:team.value.task_result_submission_id,status:team.value.task_result_status}:null))
 const canSubmitResult = computed(() => detail.value?.isLeader && (!result.value || result.value.status === 'advisor_rejected'))
 const resultText = computed(() => ({
-  submitted: '待指导老师确认成果',
+  material_submitted: '待指导老师确认成果',
   advisor_rejected: '成果已驳回，可重新提交',
+  pending_assignment: '待管理员分配审核老师',
   converted_to_hour_application: '已转入课时认定',
 }[result.value?.status] || '未提交'))
 function back(){router.push('/student/tasks')}

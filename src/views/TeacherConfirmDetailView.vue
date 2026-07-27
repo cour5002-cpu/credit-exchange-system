@@ -119,7 +119,7 @@ function downloadAttachment(file) {
 
         <section class="detail-card">
           <h2>成果或申请说明</h2>
-          <p class="description">请确认学生提交的申请信息、团队成员与附件材料。</p>
+          <p class="description">{{ confirmation.resultDescription || confirmation.description || '请确认学生提交的申请信息、团队成员与附件材料。' }}</p>
           <AttachmentNotice title="附件材料摘要" description="以下材料来自学生课时申请。" :required="false" :accept-types="['PDF', 'Word', '图片']" />
         </section>
 

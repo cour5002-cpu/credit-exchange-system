@@ -1,4 +1,5 @@
 import { adaptStudent, adaptTeacher } from './userAdapter.js'
+import { toShanghaiIso } from '../utils/taskDateTime.js'
 
 export function adaptAttachment(item) {
   if (!item) return null
@@ -7,6 +8,8 @@ export function adaptAttachment(item) {
 
 export function adaptTask(task) {
   if (!task) return null
+  const taskType = task.task_type ?? null
+  const advisor = task.advisor ?? task.advisor_teacher ?? null
   return {
     id: task.id,
     taskId: task.id,
@@ -14,20 +17,20 @@ export function adaptTask(task) {
     title: task.title,
     publisherRole: task.publisher_role,
     publisherName: task.publisher_name,
-    taskTypeId: task.task_type_id,
-    taskType: task.task_type_name,
-    taskTypeName: task.task_type_name,
+    taskTypeId: task.task_type_id ?? taskType?.id,
+    taskType: task.task_type_name ?? taskType?.name,
+    taskTypeName: task.task_type_name ?? taskType?.name,
     description: task.description,
     resultRequirement: task.result_requirement ?? task.requirement,
     registrationDeadline: task.registration_deadline,
     resultDeadline: task.material_due_at,
-    status: task.status,
+    status: task.status ?? task.task_status,
     createdAt: task.created_at,
     submitTime: task.submitted_at ?? task.created_at,
     publishTime: task.published_at,
-    advisor: adaptTeacher(task.advisor),
-    advisorId: task.advisor?.id,
-    advisorName: task.advisor?.name ?? task.publisher_name,
+    advisor: adaptTeacher(advisor),
+    advisorId: task.advisor_teacher_id ?? advisor?.id,
+    advisorName: advisor?.name ?? task.advisor_teacher_name ?? task.publisher_name,
     attachments: (task.attachments ?? []).map(adaptAttachment),
     registrations: adaptTaskRegistrations(task.registrations),
     applicants: adaptTaskRegistrations(task.registrations),
@@ -74,7 +77,16 @@ export function adaptTaskResult(result) {
 
 export const adaptTaskEnvelope = (payload) => adaptTask(payload?.task ? { ...payload.task, my_registration: payload.my_registration ?? payload.task.my_registration, actions: payload.actions ?? payload.task.actions, can_register: payload.can_register ?? payload.task.can_register, registrations: payload.registrations ?? payload.items ?? payload.task.registrations, members: payload.members ?? payload.task.members, leader: payload.leader ?? payload.task.leader, result_submission: payload.result_submission ?? payload.task.result_submission } : payload)
 export const adaptTaskList = (payload) => (Array.isArray(payload) ? payload : payload?.items ?? payload?.tasks ?? []).map(adaptTask)
-export const adaptTaskResultEnvelope = (payload) => adaptTaskResult(payload?.result_submission ?? payload?.submission ?? payload)
+export const adaptTaskResultEnvelope = (payload) => {
+  if (!payload) return null
+  const submission = payload.result_submission ?? payload.submission ?? payload
+  return adaptTaskResult({
+    ...submission,
+    task: payload.task ?? submission.task,
+    attachments: payload.attachments ?? submission.attachments,
+    members: payload.members ?? submission.members,
+  })
+}
 export const adaptTaskResultList = (payload) => (Array.isArray(payload) ? payload : payload?.items ?? payload?.submissions ?? []).map(adaptTaskResult)
 
 export const toTaskResultPayload = (form) => ({
@@ -88,7 +100,7 @@ export const toTaskPayload = (task) => ({
   task_type_id: task.taskTypeId ?? task.task_type_id,
   description: task.description,
   result_requirement: task.resultRequirement ?? task.result_requirement,
-  registration_deadline: task.registrationDeadline,
+  registration_deadline: toShanghaiIso(task.registrationDeadline),
   advisor_teacher_id: task.advisorId,
   attachment_ids: task.attachmentIds ?? [],
 })
@@ -98,5 +110,5 @@ export const toAdvisorTaskPayload = (task) => ({
   description: task.description,
   task_type_id: Number(task.taskTypeId),
   result_requirement: task.resultRequirement,
-  registration_deadline: task.registrationDeadline,
+  registration_deadline: toShanghaiIso(task.registrationDeadline),
 })

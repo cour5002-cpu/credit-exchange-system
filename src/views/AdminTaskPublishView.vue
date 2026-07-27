@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import { ADMIN_TASK_ADVISORS, TASK_TYPE_OPTIONS, adminDirectPublishTask } from '../mock/tasks.js'
 import { uploadAttachment } from '../api/fileApi.js'
 import { loadAdvisorOptions, loadTaskTypeOptions } from '../services/commonDependencyService.js'
+import { getServerNowMs, systemTimeState } from '../services/systemTimeService.js'
+import { toShanghaiIso } from '../utils/taskDateTime.js'
 
 const router = useRouter()
 const submitting = ref(false)
@@ -40,11 +42,11 @@ function preview(file) {
 function download() { window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。') }
 function submit() {
   if (!form.title.trim() || !form.taskType || !form.description.trim() || !form.resultRequirement.trim() || !advisor.value || !form.registrationDeadline) return window.alert('请完整填写任务名称、类型、说明、成果要求、指导老师和报名截止时间。')
-  const deadline = new Date(form.registrationDeadline).getTime()
-  if (deadline <= Date.now()) return window.alert('报名截止时间必须晚于当前时间。')
+  const deadline = Date.parse(toShanghaiIso(form.registrationDeadline))
+  if (systemTimeState.initialized && deadline <= getServerNowMs()) return window.alert('报名截止时间必须晚于服务器当前时间。')
   submitting.value = true
   try {
-    const task = adminDirectPublishTask({ ...form, advisorName: advisor.value.advisorName, attachments: form.attachments.map((item) => ({ ...item })), attachmentIds: form.attachments.flatMap((item) => item.attachmentIds || (Number.isInteger(item.id) ? [item.id] : [])) })
+    const task = adminDirectPublishTask({ ...form, registrationDeadline: toShanghaiIso(form.registrationDeadline), advisorName: advisor.value.advisorName, attachments: form.attachments.map((item) => ({ ...item })), attachmentIds: form.attachments.flatMap((item) => item.attachmentIds || (Number.isInteger(item.id) ? [item.id] : [])) })
     window.alert('任务已直接发布，学生端任务广场可见。')
     router.push(`/admin/tasks/list/${task.taskId}`)
   } catch (error) { window.alert(error.message || '任务发布失败。') }

@@ -1,35 +1,39 @@
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AttachmentNotice from '../components/AttachmentNotice.vue'
 import StatusTag from '../components/StatusTag.vue'
-import { APPLICATION_STATUS } from '../mock/applications.js'
-import {
-  addExchange,
-  EXCHANGE_STATUS,
-  getAvailableExchangeApplications,
-  hasActiveExchange,
-  isHoursArrived,
-} from '../mock/exchanges.js'
+import { getAvailableHourAwards, getExchangeFormData, saveExchangeDraft, submitExchange as submitExchangeApi } from '../api/exchangeApi.js'
+import { uploadAttachment } from '../api/fileApi.js'
+import { adaptHourAwardList, toExchangePayload } from '../adapters/exchangeAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
+import { currentUser as authCurrentUser } from '../stores/authStore.js'
 
 const router = useRouter()
-const currentUser = { id: 'stu001', name: '张三', studentId: '2024001' }
+const currentUser = computed(() => authCurrentUser.value?.student ?? {})
+const currentStudentId = computed(() => Number(authCurrentUser.value?.student?.id))
 const hoursPerCredit = 8
-const form = reactive({ applicationId: '', applyReason: '', attachment: null, memberDistributions: [] })
+const form = reactive({ applicationId: '', hourAwardRecordId: '', applyReason: '', attachment: null, attachmentIds: [], memberDistributions: [] })
 const feedback = ref({ type: '', message: '' })
 const attachmentInput = ref(null)
-const availabilityVersion = ref(0)
+const remoteAwards = ref([])
+onMounted(async()=>{try{remoteAwards.value=adaptHourAwardList(await getAvailableHourAwards({page_size:100})).filter(item=>item.status==='final_approved')}catch(error){window.alert(getApiErrorMessage(error,'可兑换课时加载失败'))}})
 
 const eligibleApplications = computed(() => {
-  availabilityVersion.value
-  return getAvailableExchangeApplications(currentUser.id)
+  return remoteAwards.value
 })
 const selectedApplication = computed(() =>
   eligibleApplications.value.find((application) => application.id === form.applicationId) ?? null,
 )
+const selectedLeaderId = computed(() => Number(selectedApplication.value?.leaderStudentId))
+const isCurrentStudentLeader = computed(() => Number.isInteger(currentStudentId.value)
+  && currentStudentId.value > 0
+  && Number.isInteger(selectedLeaderId.value)
+  && selectedLeaderId.value > 0
+  && currentStudentId.value === selectedLeaderId.value)
 const finalHours = computed(() => {
   if (!selectedApplication.value) return 0
-  return Number(selectedApplication.value.recognizedHours ?? selectedApplication.value.requestedHours) || 0
+  return Number(selectedApplication.value.finalHours) || 0
 })
 const estimatedCredits = computed(() =>
   finalHours.value > 0 ? (finalHours.value / hoursPerCredit).toFixed(2) : '0.00',
@@ -38,16 +42,18 @@ const allocatedHoursTotal = computed(() => form.memberDistributions.reduce((sum,
 const remainingHours = computed(() => finalHours.value - allocatedHoursTotal.value)
 const allocatedCreditsTotal = computed(() => form.memberDistributions.reduce((sum, member) => sum + Number(member.allocatedCredits || 0), 0))
 
-watch(selectedApplication, (application) => {
-  const members = application?.members?.length ? application.members : application ? [{ ...currentUser, role: 'captain' }] : []
-  form.memberDistributions = members.map((member) => ({
-    studentName: member.name,
-    studentId: member.studentId,
-    role: member.role === 'captain' ? 'captain' : 'member',
+watch(selectedApplication, async (application) => {
+  form.hourAwardRecordId=application?.id??''
+  if(!application){form.memberDistributions=[];return}
+  try{const data=await getExchangeFormData({hour_award_record_id:application.id});const members=data?.members??[];form.memberDistributions=members.map((member) => ({
+    studentDbId: member.student?.id ?? member.id,
+    studentName: member.student?.name ?? member.name,
+    studentId: member.student?.student_no ?? member.student_no,
+    role: member.is_leader ? 'captain' : 'member',
     allocatedHours: 0,
     allocatedCredits: 0,
     remark: '',
-  }))
+  }))}catch(error){form.memberDistributions=[];window.alert(getApiErrorMessage(error,'兑换表单数据加载失败'))}
 })
 
 function updateMemberCredits(member) {
@@ -57,11 +63,11 @@ function updateMemberCredits(member) {
 
 function validateForm() {
   if (!form.applicationId) return '请选择已最终确认通过的项目'
-  if (!selectedApplication.value || selectedApplication.value.status !== APPLICATION_STATUS.FINAL_APPROVED) {
+  if (!selectedApplication.value || selectedApplication.value.status !== 'final_approved') {
     return '只有最终确认通过的项目才能申请学分兑换'
   }
-  if (!isHoursArrived(selectedApplication.value)) return '只有课时已到账的项目才能申请学分兑换'
-  if (hasActiveExchange(selectedApplication.value.id)) return '该项目已存在有效的兑换申请，请勿重复提交'
+  console.info('[credit-exchange leader check]', { currentStudentId: currentStudentId.value, leaderStudentId: selectedLeaderId.value, taskId: selectedApplication.value.taskId })
+  if (!isCurrentStudentLeader.value) return '只有项目队长可以提交学分兑换申请。'
   if (finalHours.value <= 0) return '该项目暂无可兑换课时'
   if (!form.memberDistributions.length) return '请填写成员课时 / 学分分配表'
   if (form.memberDistributions.some((member) => !Number.isFinite(Number(member.allocatedHours)) || Number(member.allocatedHours) < 0)) return '每个成员分配课时不能小于 0'
@@ -71,76 +77,31 @@ function validateForm() {
   return ''
 }
 
-function handleAttachmentChange(event) {
+async function handleAttachmentChange(event) {
   const file = event.target.files?.[0]
   if (!file) return
-  form.attachment = {
-    id: `EX-ATT-${Date.now()}`,
-    name: file.name,
-    type: file.type || '未知类型',
-    size: file.size,
-    uploadedAt: new Date().toLocaleString('zh-CN', { hour12: false }),
-  }
-  feedback.value = { type: '', message: '' }
+  try{const uploaded=await uploadAttachment(file,'credit_exchange');const id=Number(uploaded.id);if(!Number.isInteger(id)||id<=0)throw new Error('无效附件 ID');form.attachment={...uploaded.attachment,id};form.attachmentIds=[id];feedback.value={type:'',message:''}}catch(error){window.alert('认定证明上传失败，请重新上传')}
 }
 
 function removeAttachment() {
   form.attachment = null
+  form.attachmentIds = []
   if (attachmentInput.value) attachmentInput.value.value = ''
 }
 
-function createExchange(status) {
-  const application = selectedApplication.value
-  return addExchange({
-    applicationId: application?.id ?? '',
-    projectTitle: application?.title ?? '',
-    studentName: currentUser.name,
-    studentId: currentUser.studentId,
-    captainId: currentUser.id,
-    captainName: currentUser.name,
-    currentUserId: currentUser.id,
-    source: application?.source ?? '',
-    sourceText: application?.sourceText ?? '',
-    teamName: application?.taskTitle ? `${application.taskTitle}团队` : `${currentUser.name}团队`,
-    taskName: application?.taskTitle || application?.title || '',
-    hoursArrived: isHoursArrived(application),
-    exchanged: false,
-    advisorId: application?.mainAdvisor?.id || '',
-    advisorName: application?.mainAdvisor?.name || '',
-    advisorConfirmStatus: EXCHANGE_STATUS.PENDING_CONFIRMATION,
-    advisorComment: '',
-    advisorConfirmTime: '',
-    finalHours: finalHours.value,
-    exchangeHours: finalHours.value,
-    estimatedCredits: Number(estimatedCredits.value),
-    creditRule: { hoursPerCredit, text: `每 ${hoursPerCredit} 课时兑换 1 学分` },
-    proofMaterials: form.attachment ? [{ ...form.attachment }] : [],
-    memberDistributions: form.memberDistributions.map((member) => ({ ...member })),
-    applyReason: form.applyReason.trim(),
-    status,
-  })
+async function saveDraft() {
+  if(!form.hourAwardRecordId)return window.alert('请选择可兑换项目')
+  try{await saveExchangeDraft(toExchangePayload(form));feedback.value={type:'success',message:'学分兑换申请草稿已保存。'};window.alert(feedback.value.message)}catch(error){window.alert(getApiErrorMessage(error,'草稿保存失败'))}
 }
 
-function saveDraft() {
-  createExchange('draft')
-  feedback.value = { type: 'success', message: '学分兑换申请草稿已模拟保存。' }
-  window.alert(feedback.value.message)
-}
-
-function submitExchange() {
+async function submitExchange() {
   const error = validateForm()
   if (error) {
     feedback.value = { type: 'error', message: error }
     window.alert(error)
     return
   }
-  createExchange(EXCHANGE_STATUS.PENDING_CONFIRMATION)
-  availabilityVersion.value += 1
-  form.applicationId = ''
-  form.applyReason = ''
-  removeAttachment()
-  feedback.value = { type: 'success', message: '学分兑换申请提交成功，已进入确认流程。' }
-  window.alert(feedback.value.message)
+  try{await submitExchangeApi(toExchangePayload(form));feedback.value={type:'success',message:'学分兑换申请提交成功，已进入指导老师确认。'};window.alert(feedback.value.message);router.push('/student/credit-exchange-records')}catch(error){window.alert(getApiErrorMessage(error,'学分兑换申请提交失败'))}
 }
 
 function goBack() {

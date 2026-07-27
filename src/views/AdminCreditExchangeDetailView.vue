@@ -1,30 +1,26 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
-import { EXCHANGE_STATUS, finalApproveExchange, finalRejectExchange, getExchangeFinalApproveFailure, getExchanges, PENDING_CREDIT_STATUSES } from '../mock/exchanges.js'
+import { finalApproveExchange, finalRejectExchange, getAdminExchange } from '../api/exchangeApi.js'
+import { adaptExchangeEnvelope } from '../adapters/exchangeAdapter.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
 const route = useRoute()
 const router = useRouter()
 const opinion = ref('')
-const item = computed(() => getExchanges().find((exchange) => exchange.id === route.params.id || exchange.exchangeId === route.params.id))
-const canHandle = computed(() => PENDING_CREDIT_STATUSES.includes(item.value?.status))
+const item = ref(null)
+onMounted(async()=>{try{item.value=adaptExchangeEnvelope(await getAdminExchange(Number(route.params.id)))}catch(error){window.alert(getApiErrorMessage(error,'兑换最终确认详情加载失败'))}})
+const canHandle = computed(() => item.value?.status === 'advisor_approved')
 const allocatedHoursTotal = computed(() => (item.value?.memberDistributions || []).reduce((sum, member) => sum + Number(member.allocatedHours || 0), 0))
 const allocatedCreditsTotal = computed(() => (item.value?.memberDistributions || []).reduce((sum, member) => sum + Number(member.allocatedCredits || 0), 0))
 
-function approve() {
-  const failure = getExchangeFinalApproveFailure(item.value)
-  if (failure) return window.alert(failure)
-  const approved = finalApproveExchange(item.value.id, opinion.value.trim())
-  if (!approved) return window.alert('当前申请不满足最终确认兑换条件。')
-  window.alert('最终确认兑换成功，学生获得对应学分。')
-  goBack()
+async function approve() {
+  try{await finalApproveExchange(item.value.id,{comment:opinion.value.trim()});window.alert('最终确认兑换成功，学生获得对应学分。');goBack()}catch(error){window.alert(getApiErrorMessage(error,'最终确认兑换失败'))}
 }
-function reject() {
+async function reject() {
   if (!opinion.value.trim()) return window.alert('驳回兑换必须填写处理意见。')
-  if (!item.value || !finalRejectExchange(item.value.id, opinion.value.trim())) return window.alert('当前申请不可驳回。')
-  window.alert('已驳回兑换申请。')
-  goBack()
+  try{await finalRejectExchange(item.value.id,{comment:opinion.value.trim()});window.alert('已驳回兑换申请。');goBack()}catch(error){window.alert(getApiErrorMessage(error,'最终驳回兑换失败'))}
 }
 function fileAction(action) { window.alert(action === '预览' ? '当前为 Mock 附件预览，真实预览需后端文件服务支持。' : '当前为 Mock 附件下载，真实下载需后端文件服务支持。') }
 function goBack() { router.push('/admin/final-confirm/exchanges') }

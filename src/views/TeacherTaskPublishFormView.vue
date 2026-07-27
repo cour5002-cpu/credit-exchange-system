@@ -8,6 +8,8 @@ import { toAdvisorTaskPayload } from '../adapters/taskAdapter.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
 import { uploadAttachment } from '../api/fileApi.js'
 import { loadTaskTypeOptions } from '../services/commonDependencyService.js'
+import { getServerNowMs, systemTimeState } from '../services/systemTimeService.js'
+import { toShanghaiDateTimeInput, toShanghaiIso } from '../utils/taskDateTime.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -17,7 +19,7 @@ const editable = !route.params.id
 const form = reactive({
   taskId: existing?.taskId || '', title: existing?.title || '', taskType: existing?.taskType || '',
   description: existing?.description || '', resultRequirement: existing?.resultRequirement || '',
-  registrationDeadline: (existing?.registrationDeadline || '').replace(' ', 'T'),
+  registrationDeadline: toShanghaiDateTimeInput(existing?.registrationDeadline),
   attachments: (existing?.attachments || []).map((file) => ({ ...file })),
 })
 const feedback = ref('')
@@ -26,10 +28,10 @@ const pageTitle = computed(() => existing ? '编辑发布任务' : '发布新任
 function nowText() { return new Date().toLocaleString('zh-CN', { hour12: false }).replaceAll('/', '-') }
 async function selectAttachments(event) { const files = Array.from(event.target.files || []); event.target.value = ''; for (const [index, file] of files.entries()) { try { const result = await uploadAttachment(file, 'task'); form.attachments.push({ ...result.attachment, attachmentIds: result.attachmentIds }) } catch (error) { console.warn('[attachment] 任务附件上传失败，保留 Mock 文件。', error); form.attachments.push({ id: `TASK-ATT-${Date.now()}-${index}`, name: file.name, type: file.type || '未知类型', size: `${file.size} B`, uploadedAt: nowText(), mockUrl: URL.createObjectURL(file), attachmentIds: [] }) } } }
 function removeAttachment(id) { const file = form.attachments.find((item) => item.id === id); if (file?.mockUrl?.startsWith('blob:')) URL.revokeObjectURL(file.mockUrl); form.attachments = form.attachments.filter((item) => item.id !== id) }
-function payload() { return { taskId: form.taskId, title: form.title.trim(), taskType: form.taskType, description: form.description.trim(), resultRequirement: form.resultRequirement.trim(), registrationDeadline: form.registrationDeadline.replace('T', ' '), attachments: form.attachments.map((file) => ({ ...file })), attachmentIds: form.attachments.flatMap((file) => file.attachmentIds || (Number.isInteger(file.id) ? [file.id] : [])), advisorId: currentAdvisor.id, advisorName: currentAdvisor.name, source: 'advisor' } }
-function validate() { if (!form.title.trim()) return '任务名称必填。'; if (!form.taskType) return '任务类型必填。'; if (!form.description.trim()) return '任务说明必填。'; if (!form.resultRequirement.trim()) return '成果提交要求必填。'; if (!form.registrationDeadline) return '报名截止时间必填。'; if (new Date(form.registrationDeadline).getTime() <= Date.now()) return '报名截止时间必须晚于当前时间。'; return '' }
+function payload() { return { taskId: form.taskId, title: form.title.trim(), taskType: form.taskType, description: form.description.trim(), resultRequirement: form.resultRequirement.trim(), registrationDeadline: toShanghaiIso(form.registrationDeadline), attachments: form.attachments.map((file) => ({ ...file })), attachmentIds: form.attachments.flatMap((file) => file.attachmentIds || (Number.isInteger(file.id) ? [file.id] : [])), advisorId: currentAdvisor.id, advisorName: currentAdvisor.name, source: 'advisor' } }
+function validate() { if (!form.title.trim()) return '任务名称必填。'; if (!form.taskType) return '任务类型必填。'; if (!form.description.trim()) return '任务说明必填。'; if (!form.resultRequirement.trim()) return '成果提交要求必填。'; if (!form.registrationDeadline) return '报名截止时间必填。'; if (systemTimeState.initialized&&Date.parse(toShanghaiIso(form.registrationDeadline))<=getServerNowMs()) return '报名截止时间必须晚于服务器当前时间。'; return '' }
 async function save() { if (!editable) return; const error=validate();if(error)return window.alert(error);try{await saveAdvisorTaskDraft(toAdvisorTaskPayload({title:form.title.trim(),description:form.description.trim(),taskTypeId:form.taskType,resultRequirement:form.resultRequirement.trim(),registrationDeadline:form.registrationDeadline}));window.alert('草稿保存成功。');router.push('/teacher/publish-task')}catch(error){window.alert(getApiErrorMessage(error,'草稿保存失败'))} }
-async function submit() { if (!editable) return; const error = validate(); if (error) { feedback.value = error; return window.alert(error) } try{await publishAdvisorTask(toAdvisorTaskPayload({title:form.title.trim(),description:form.description.trim(),taskTypeId:form.taskType,resultRequirement:form.resultRequirement.trim(),registrationDeadline:form.registrationDeadline}));window.alert('发布申请已提交，等待管理员确认。');router.push('/teacher/publish-task')}catch(apiError){window.alert(getApiErrorMessage(apiError,'发布申请提交失败'))} }
+async function submit() { if (!editable) return; const error = validate(); if (error) { feedback.value = error; return window.alert(error) } try{const result=await publishAdvisorTask(toAdvisorTaskPayload({title:form.title.trim(),description:form.description.trim(),taskTypeId:form.taskType,resultRequirement:form.resultRequirement.trim(),registrationDeadline:form.registrationDeadline}));console.info('[advisor-task-publish]',{taskId:result?.id,status:result?.status});window.alert('发布申请已提交，等待管理员确认。');router.push('/teacher/publish-task')}catch(apiError){window.alert(getApiErrorMessage(apiError,'发布申请提交失败'))} }
 onMounted(async () => { taskTypeOptions.value = (await loadTaskTypeOptions(TASK_TYPE_OPTIONS)).filter((item) => item.allowTeacherTask !== false) })
 </script>
 

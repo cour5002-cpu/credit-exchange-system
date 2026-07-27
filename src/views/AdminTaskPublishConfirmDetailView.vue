@@ -10,7 +10,7 @@ const route=useRoute();const router=useRouter();const comment=ref('');const feed
 const task=ref(null);onMounted(loadTask);async function loadTask(){try{task.value=adaptTaskEnvelope(await getTaskPublishRequest(Number(route.params.id)))}catch(error){window.alert(getApiErrorMessage(error,'任务详情加载失败'))}}
 const canProcess=computed(()=>task.value?.status==='pending_publish_review')
 function back(){router.push('/admin/tasks/publish-confirm')}
-async function approve(){if(!canProcess.value)return;if(!window.confirm('确定正式发布该任务吗？'))return;try{const result=await approveTaskPublish(task.value.id,{comment:comment.value.trim()});task.value={...task.value,status:result?.status??'published'};window.alert('任务已确认发布，学生端任务广场可见。');back()}catch(error){window.alert(getApiErrorMessage(error,'确认发布失败'))}}
+async function approve(){if(!canProcess.value)return;if(!window.confirm('确定正式发布该任务吗？'))return;try{const result=await approveTaskPublish(task.value.id,{comment:comment.value.trim()});console.info('[task-publish-approve]',{taskId:task.value.id,status:result?.status});task.value={...task.value,status:result?.status};window.alert('任务已确认发布，学生端任务广场可见。');back()}catch(error){window.alert(getApiErrorMessage(error,'确认发布失败'))}}
 async function reject(){if(!canProcess.value)return;if(!comment.value.trim()){feedback.value='驳回发布必须填写处理意见。';return window.alert(feedback.value)};try{await rejectTaskPublish(task.value.id,{comment:comment.value.trim()});window.alert('任务已驳回，已退回指导老师端。');back()}catch(error){window.alert(getApiErrorMessage(error,'驳回发布失败'))}}
 function preview(){window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。')}
 function download(){window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。')}

@@ -34,8 +34,9 @@ function canSubmitResult(task) {
 function resultStatus(task) {
   const status = taskResult(task)?.status
   return {
-    submitted: '待指导老师确认成果',
+    material_submitted: '待指导老师确认成果',
     advisor_rejected: '成果已驳回，可重新提交',
+    pending_assignment: '待管理员分配审核老师',
     converted_to_hour_application: '已转入课时认定',
   }[status] || '未提交'
 }

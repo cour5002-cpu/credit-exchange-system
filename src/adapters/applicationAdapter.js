@@ -5,6 +5,12 @@ const applicationTypeMap = { with_result: 'with_material', without_result: 'with
 
 export function adaptApplication(item) {
   if (!item) return null
+  const taskResultSubmission = item.task_result_submission ?? null
+  const sourceTask = item.source_task ?? taskResultSubmission?.task ?? null
+  const attachments = [...new Map([
+    ...(item.attachments ?? []),
+    ...(taskResultSubmission?.attachments ?? []),
+  ].map((attachment) => [attachment.id, attachment])).values()]
   const advisorRelation = (item.advisors ?? []).find((relation) => relation.advisor_role === 'primary')
   const viewAdvisorRelations = (item.advisors ?? []).filter((relation) => relation.advisor_role !== 'primary')
   const reviewerReview = [...(item.reviews ?? [])].reverse().find((review) => String(review.review_result ?? review.result ?? '').includes('reviewer'))
@@ -21,10 +27,12 @@ export function adaptApplication(item) {
     applyType: item.application_type,
     applicationType: item.application_type,
     applyTypeText: typeTextMap[item.application_type] ?? item.application_type,
-    source: item.source_type,
-    sourceText: sourceTextMap[item.source_type] ?? item.source_type ?? '课时申请',
+    source: item.source_type ?? item.source,
+    sourceText: sourceTextMap[item.source_type ?? item.source] ?? item.source_type ?? item.source ?? '课时申请',
     taskTypeId: item.task_type_id,
     category: item.task_type_name,
+    taskId: item.source_task_id ?? sourceTask?.id ?? taskResultSubmission?.task_id,
+    taskTitle: item.task_title ?? sourceTask?.title ?? taskResultSubmission?.task_title,
     applicant: adaptStudent(item.applicant),
     studentId: item.applicant?.student_no,
     studentName: item.applicant_name ?? item.applicant?.name,
@@ -34,17 +42,18 @@ export function adaptApplication(item) {
     originalHours: item.requested_hours,
     reviewerSuggestedHours: item.reviewer_suggested_hours,
     status: item.status,
+    advisorTeacherId: item.advisor_teacher_id ?? advisorRelation?.teacher?.id ?? item.advisor?.id,
     submitTime: item.submitted_at,
     createdAt: item.created_at,
     description: item.description,
     expectedResultDate: item.material_due_at,
-    resultDescription: item.achievement_summary ?? item.result_summary ?? '',
-    resultMaterials: (item.attachments ?? []).map(adaptAttachment),
+    resultDescription: item.achievement_summary ?? item.result_summary ?? taskResultSubmission?.summary ?? taskResultSubmission?.achievement_summary ?? item.description ?? '',
+    resultMaterials: attachments.map(adaptAttachment),
     proofMaterials: [],
     supplementTime: item.material_submitted_at ?? item.updated_at,
     members: (item.members ?? []).map((member) => ({ ...adaptStudent(member.student), isLeader: member.is_leader, canView: member.can_view, joinedAt: member.joined_at })),
     advisors: (item.advisors ?? []).map((relation) => ({ teacher: adaptTeacher(relation.teacher), role: relation.advisor_role, canOperate: relation.can_operate, reviewedAt: relation.reviewed_at })),
-    attachments: (item.attachments ?? []).map(adaptAttachment),
+    attachments: attachments.map(adaptAttachment),
     reviews: item.reviews ?? [],
     assignments: item.assignments ?? [],
     actions: item.actions ?? {},
@@ -70,12 +79,21 @@ export function adaptApplication(item) {
 export function adaptApplicationEnvelope(payload) {
   if (!payload) return null
   if (!payload.application) return adaptApplication(payload)
+  const taskResultSubmission = payload.task_result_submission ?? payload.application.task_result_submission
+  const attachmentCandidates = [
+    ...(payload.attachments ?? []),
+    ...(payload.application.attachments ?? []),
+    ...(taskResultSubmission?.attachments ?? []),
+  ]
+  const attachments = [...new Map(attachmentCandidates.map((attachment) => [attachment.id, attachment])).values()]
   return adaptApplication({
     ...payload.application,
     applicant: payload.applicant ?? payload.application.applicant,
     members: payload.members ?? payload.application.members,
     advisors: payload.advisors ?? payload.application.advisors,
-    attachments: payload.attachments ?? payload.application.attachments,
+    attachments,
+    task_result_submission: taskResultSubmission,
+    source_task: payload.source_task ?? payload.task ?? payload.application.source_task,
     reviews: payload.reviews ?? payload.application.reviews,
     assignments: payload.assignments ?? payload.application.assignments,
     reviewer_result: payload.reviewer_result ?? payload.application.reviewer_result,
