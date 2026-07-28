@@ -1,9 +1,11 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
-import { getAdminPendingAppealFinalConfirm } from '../mock/appeals.js'
+import { getAdminAppeals } from '../api/appealApi.js'
+import { adaptAppealList } from '../adapters/appealAdapter.js'
 const keyword = ref(''); const result = ref('')
-const items = computed(() => { const search = keyword.value.trim().toLowerCase(); return getAdminPendingAppealFinalConfirm().filter((item) => (!result.value || item.reviewResult === result.value) && (!search || [item.studentName, item.applicationTitle, item.reviewTeacherName].some((value) => String(value || '').toLowerCase().includes(search)))) })
+const remoteItems=ref([]);onMounted(async()=>{try{remoteItems.value=adaptAppealList(await getAdminAppeals({page_size:100}))}catch(error){window.alert(error?.message||'待最终确认申诉加载失败')}})
+const items = computed(() => { const search = keyword.value.trim().toLowerCase(); return remoteItems.value.filter(item=>item.reopenStage==='pending_admin_final').filter((item) => (!result.value || item.reviewResult === result.value) && (!search || [item.studentName, item.applicationTitle, item.reviewTeacherName].some((value) => String(value || '').toLowerCase().includes(search)))) })
 </script>
 <template><main class="page"><div class="content"><header><div><p class="breadcrumb">管理端 / 最终确认 / 申诉复审最终确认</p><p class="eyebrow">A605 · APPEAL FINAL CONFIRM</p><h1>申诉复审最终确认</h1><p>确认审核老师的申诉复审结论，并在复审通过时更新原课时结果。</p></div><RouterLink class="back" to="/admin/dashboard">返回管理首页</RouterLink></header>
 <nav class="type-tabs"><RouterLink to="/admin/final-confirm">课时最终确认</RouterLink><RouterLink to="/admin/final-confirm/exchanges">学分兑换最终确认</RouterLink><RouterLink class="active" to="/admin/final-confirm/appeals">申诉复审最终确认</RouterLink></nav>

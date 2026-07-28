@@ -1,15 +1,23 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
-import { EXCHANGE_STATUS, getExchanges, PENDING_CREDIT_STATUSES } from '../mock/exchanges.js'
+import { getStudentExchange } from '../api/exchangeApi.js'
+import { adaptExchangeEnvelope } from '../adapters/exchangeAdapter.js'
+import { currentUser as authCurrentUser } from '../stores/authStore.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
+
+const EXCHANGE_STATUS={COMPLETED:'completed',FINAL_APPROVED:'final_approved',PENDING_CONFIRMATION:'submitted',FINAL_REJECTED:'final_rejected',ADVISOR_REJECTED:'advisor_rejected',REJECTED:'rejected'}
+const PENDING_CREDIT_STATUSES=['submitted','advisor_approved','pending_admin_final']
 
 const route = useRoute()
 const router = useRouter()
-const currentUser = { id: 'stu001', studentId: '2024001' }
-const item = computed(() => getExchanges().find((exchange) => (exchange.id === route.params.id || exchange.exchangeId === route.params.id) && (exchange.captainId === currentUser.id || exchange.studentId === currentUser.studentId || exchange.memberDistributions?.some((member) => member.studentId === currentUser.studentId))))
-const isCaptain = computed(() => item.value?.captainId === currentUser.id || item.value?.studentId === currentUser.studentId)
-const personalDistribution = computed(() => item.value?.memberDistributions?.find((member) => member.studentId === currentUser.studentId))
+const item=ref(null)
+const currentStudentId=computed(()=>Number(authCurrentUser.value?.student?.id))
+const currentStudentNo=computed(()=>authCurrentUser.value?.student?.student_no??authCurrentUser.value?.student?.studentId)
+const isCaptain=computed(()=>Number(item.value?.leaderStudentId)===currentStudentId.value||Number(item.value?.applicant?.id)===currentStudentId.value)
+const personalDistribution=computed(()=>item.value?.memberDistributions?.find((member)=>member.studentId===currentStudentNo.value))
+onMounted(async()=>{try{item.value=adaptExchangeEnvelope(await getStudentExchange(Number(route.params.id)))}catch(error){window.alert(getApiErrorMessage(error,'兑换详情加载失败'))}})
 const credited = computed(() => [EXCHANGE_STATUS.COMPLETED, EXCHANGE_STATUS.FINAL_APPROVED].includes(item.value?.status))
 const pending = computed(() => PENDING_CREDIT_STATUSES.includes(item.value?.status))
 const rejected = computed(() => [EXCHANGE_STATUS.FINAL_REJECTED, EXCHANGE_STATUS.ADVISOR_REJECTED, EXCHANGE_STATUS.REJECTED].includes(item.value?.status))

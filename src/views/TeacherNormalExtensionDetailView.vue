@@ -6,7 +6,7 @@ import { approveExtensionByAdvisor, getExtensionRequest, rejectExtensionByAdviso
 import { adaptExtensionRequest } from '../adapters/applicationAdapter.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
 const route=useRoute();const router=useRouter();const comment=ref('');const item=ref(null)
-const pending=computed(()=>item.value?.actions?.can_approve===true||item.value?.actions?.can_reject===true||(item.value?.canOperate===true&&item.value?.status==='submitted')||item.value?.status==='submitted')
+const pending=computed(()=>item.value?.actions?.can_approve===true||item.value?.actions?.can_reject===true||(item.value?.canOperate===true&&item.value?.status==='pending_advisor_review')||item.value?.status==='pending_advisor_review')
 async function loadItem(){try{item.value=adaptExtensionRequest(await getExtensionRequest(Number(route.params.id)))}catch(error){window.alert(getApiErrorMessage(error,'延期申请详情加载失败'))}}
 onMounted(loadItem)
 function back(){router.push('/teacher/confirm/extensions')}

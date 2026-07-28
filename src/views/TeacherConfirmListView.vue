@@ -1,44 +1,35 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
-import { getAdvisorPendingApplications } from '../mock/applications.js'
-import { getAdvisorPendingAppealConfirmations, reconfirmAppeal } from '../mock/appeals.js'
-import { getAdvisorPendingApplications as getPendingApi, getPendingMaterials } from '../api/applicationApi.js'
+import { getReopenedAppealsForAdvisor, reconfirmAppealByAdvisor } from '../api/appealApi.js'
+import { adaptAppealList } from '../adapters/appealAdapter.js'
+import { getAdvisorPendingApplications } from '../api/applicationApi.js'
 import { adaptApplicationList } from '../adapters/applicationAdapter.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
-const selectedSource = ref('')
 const keyword = ref('')
-const currentAdvisorId = 'T001'
-const pendingAppeals = computed(() => getAdvisorPendingAppealConfirmations())
+const pendingAppeals = ref([])
 const realApplications = ref([])
 onMounted(async()=>{
-  const [pendingResult, materialResult] = await Promise.allSettled([
-    getPendingApi({ status: 'submitted', page_size: 100 }),
-    getPendingMaterials({ page_size: 100 }),
-  ])
+  const pendingResult = await Promise.resolve(getAdvisorPendingApplications({ status: 'submitted', page_size: 100 }))
+    .then((value) => ({ status: 'fulfilled', value }), (reason) => ({ status: 'rejected', reason }))
+  try { pendingAppeals.value = adaptAppealList(await getReopenedAppealsForAdvisor({ page_size: 100 })) } catch (error) { console.error('[advisor appeals]', error) }
   const pending = pendingResult.status === 'fulfilled'
     ? adaptApplicationList(pendingResult.value).items.filter((item) => item.status === 'submitted')
     : []
-  const materials = materialResult.status === 'fulfilled'
-    ? adaptApplicationList(materialResult.value).items.filter((item) => item.status === 'material_submitted')
-    : []
-  console.info('[advisor hour applications pending]', pendingResult.status === 'fulfilled' ? pendingResult.value : pendingResult.reason)
-  realApplications.value = [...new Map([...pending, ...materials].map((item) => [item.id, item])).values()]
+  realApplications.value = pending
   if (pendingResult.status === 'rejected') window.alert(getApiErrorMessage(pendingResult.reason, '待确认课时申请加载失败'))
 })
-function handleAppeal(item, decision) { const comment = window.prompt(decision === 'approve' ? '请输入再次确认意见（可选）' : '请输入驳回意见') || ''; if (decision === 'reject' && !comment.trim()) return; if (!reconfirmAppeal(item.appealId, decision, comment)) return window.alert('申诉再次确认失败。'); window.alert(decision === 'approve' ? '已确认，等待管理员分配复审老师。' : '已驳回，申诉处理完成。') }
+async function handleAppeal(item, decision) { const comment = window.prompt(decision === 'approve' ? '请输入再次确认意见（可选）' : '请输入驳回意见') || ''; if (decision === 'reject' && !comment.trim()) return; try { await reconfirmAppealByAdvisor(item.id,{decision,comment:comment.trim()});pendingAppeals.value=pendingAppeals.value.filter(row=>row.id!==item.id);window.alert(decision === 'approve' ? '已确认，等待管理员分配复审老师。' : '已驳回，申诉处理完成。') } catch(error){window.alert(error?.message||'申诉再次确认失败')} }
 
 const filteredConfirmations = computed(() => {
   const normalizedKeyword = keyword.value.trim().toLowerCase()
-  return realApplications.value.filter((item) => ['submitted','material_submitted'].includes(item.status)).filter((item) => {
-    const matchesSource = !selectedSource.value || item.source === selectedSource.value
-      || (selectedSource.value === 'task_result' && item.source === 'task')
+  return realApplications.value.filter((item) => item.status === 'submitted').filter((item) => {
     const matchesKeyword =
       !normalizedKeyword ||
       String(item.studentName || '').toLowerCase().includes(normalizedKeyword) ||
       String(item.title || '').toLowerCase().includes(normalizedKeyword)
-    return matchesSource && matchesKeyword
+    return matchesKeyword
   })
 })
 </script>
@@ -63,14 +54,6 @@ const filteredConfirmations = computed(() => {
       </nav>
 
       <section class="filter-panel" aria-label="确认事项筛选">
-        <label>
-          <span>申请来源</span>
-          <select v-model="selectedSource">
-            <option value="">全部来源</option>
-            <option value="self">学生自主申请</option>
-            <option value="task_result">任务成果申请</option>
-          </select>
-        </label>
         <label>
           <span>搜索</span>
           <input v-model="keyword" type="search" placeholder="搜索学生姓名或事项标题" />
@@ -98,10 +81,10 @@ const filteredConfirmations = computed(() => {
               <tr v-for="item in filteredConfirmations" :key="item.id">
                 <td><strong>{{ item.title }}</strong><small>{{ item.id }}</small></td>
                 <td>{{ item.studentName }}</td>
-                <td>{{ item.status === 'material_submitted' ? '补交成果确认' : '课时申请确认' }}</td>
+                <td>课时申请确认</td>
                 <td>{{ item.submitTime }}</td>
                 <td><StatusTag :status="item.status" /></td>
-                <td><RouterLink class="detail-link" :to="item.status === 'material_submitted' ? { name: 'teacher-supplement-confirm-detail', params: { id: item.id } } : { name: 'teacher-confirm-detail', params: { id: item.id } }">查看详情</RouterLink></td>
+                <td><RouterLink class="detail-link" :to="{ name: 'teacher-confirm-detail', params: { id: item.id } }">查看详情</RouterLink></td>
               </tr>
               <tr v-if="!filteredConfirmations.length">
                 <td class="empty-state" colspan="6">没有找到符合条件的确认事项。</td>

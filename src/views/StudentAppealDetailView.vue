@@ -1,11 +1,12 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
-import { APPEAL_STATUS, getAppealById } from '../mock/appeals.js'
-const route = useRoute(); const router = useRouter(); const studentId = '2024001'
-const appeal = computed(() => { const item = getAppealById(route.params.id); return item?.studentId === studentId ? item : null })
-const finalStatusText = computed(() => appeal.value?.status === APPEAL_STATUS.FINAL_CONFIRMED ? (appeal.value.finalResult === 'approved' ? '申诉通过，课时结果已更新' : '申诉未通过，原课时结果保持不变') : '')
+import { getStudentAppeal } from '../api/appealApi.js'
+import { adaptAppealEnvelope } from '../adapters/appealAdapter.js'
+const route = useRoute(); const router = useRouter(); const appeal=ref(null)
+onMounted(async()=>{try{appeal.value=adaptAppealEnvelope(await getStudentAppeal(Number(route.params.id)))}catch(error){window.alert(error?.message||'申诉详情加载失败')}})
+const finalStatusText = computed(() => appeal.value?.status === 'completed' ? '申诉处理已完成' : '')
 function preview() { window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。') } function download() { window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。') } function back() { router.push('/student/appeals') }
 </script>
 <template><main class="page"><div class="content"><template v-if="appeal"><header><div><p class="eyebrow">S703 · APPEAL DETAIL</p><h1>申诉详情</h1><p>{{ appeal.appealId }}</p></div><StatusTag :status="appeal.status" :text="finalStatusText" /></header>

@@ -12,7 +12,7 @@ import { currentUser as authCurrentUser } from '../stores/authStore.js'
 const router = useRouter()
 const currentUser = computed(() => authCurrentUser.value?.student ?? {})
 const currentStudentId = computed(() => Number(authCurrentUser.value?.student?.id))
-const hoursPerCredit = 8
+const hoursPerCredit = ref(null)
 const form = reactive({ applicationId: '', hourAwardRecordId: '', applyReason: '', attachment: null, attachmentIds: [], memberDistributions: [] })
 const feedback = ref({ type: '', message: '' })
 const attachmentInput = ref(null)
@@ -36,7 +36,7 @@ const finalHours = computed(() => {
   return Number(selectedApplication.value.finalHours) || 0
 })
 const estimatedCredits = computed(() =>
-  finalHours.value > 0 ? (finalHours.value / hoursPerCredit).toFixed(2) : '0.00',
+  finalHours.value > 0 && hoursPerCredit.value > 0 ? (finalHours.value / hoursPerCredit.value).toFixed(2) : '0.00',
 )
 const allocatedHoursTotal = computed(() => form.memberDistributions.reduce((sum, member) => sum + Number(member.allocatedHours || 0), 0))
 const remainingHours = computed(() => finalHours.value - allocatedHoursTotal.value)
@@ -44,8 +44,8 @@ const allocatedCreditsTotal = computed(() => form.memberDistributions.reduce((su
 
 watch(selectedApplication, async (application) => {
   form.hourAwardRecordId=application?.id??''
-  if(!application){form.memberDistributions=[];return}
-  try{const data=await getExchangeFormData({hour_award_record_id:application.id});const members=data?.members??[];form.memberDistributions=members.map((member) => ({
+  if(!application){form.memberDistributions=[];hoursPerCredit.value=null;return}
+  try{const data=await getExchangeFormData({hour_award_record_id:application.id});hoursPerCredit.value=Number(data?.conversion_rule?.hours_per_credit)||null;const members=data?.members??[];form.memberDistributions=members.map((member) => ({
     studentDbId: member.student?.id ?? member.id,
     studentName: member.student?.name ?? member.name,
     studentId: member.student?.student_no ?? member.student_no,
@@ -53,12 +53,12 @@ watch(selectedApplication, async (application) => {
     allocatedHours: 0,
     allocatedCredits: 0,
     remark: '',
-  }))}catch(error){form.memberDistributions=[];window.alert(getApiErrorMessage(error,'兑换表单数据加载失败'))}
+  }))}catch(error){form.memberDistributions=[];hoursPerCredit.value=null;window.alert(getApiErrorMessage(error,'兑换表单数据加载失败'))}
 })
 
 function updateMemberCredits(member) {
   const hours = Number(member.allocatedHours)
-  member.allocatedCredits = Number.isFinite(hours) && hours >= 0 ? Number((hours / hoursPerCredit).toFixed(2)) : 0
+  member.allocatedCredits = Number.isFinite(hours) && hours >= 0 && hoursPerCredit.value > 0 ? Number((hours / hoursPerCredit.value).toFixed(2)) : 0
 }
 
 function validateForm() {
@@ -66,7 +66,6 @@ function validateForm() {
   if (!selectedApplication.value || selectedApplication.value.status !== 'final_approved') {
     return '只有最终确认通过的项目才能申请学分兑换'
   }
-  console.info('[credit-exchange leader check]', { currentStudentId: currentStudentId.value, leaderStudentId: selectedLeaderId.value, taskId: selectedApplication.value.taskId })
   if (!isCurrentStudentLeader.value) return '只有项目队长可以提交学分兑换申请。'
   if (finalHours.value <= 0) return '该项目暂无可兑换课时'
   if (!form.memberDistributions.length) return '请填写成员课时 / 学分分配表'

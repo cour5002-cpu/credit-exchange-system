@@ -26,9 +26,27 @@ export const getPendingMaterials = (params) => get('/advisor/hour-applications/m
 export const getApplicationMaterials = (id) => get(`/advisor/hour-applications/${id}/materials`)
 export const approveApplicationMaterials = (id, data = {}) => post(`/advisor/hour-applications/${id}/materials/approve`, data)
 export const rejectApplicationMaterials = (id, data) => post(`/advisor/hour-applications/${id}/materials/reject`, data)
-export const submitExtensionRequest = (id, data) => post(`/student/hour-applications/${id}/extension-requests`, data)
+export const submitExtensionRequest = (id, data) => {
+  const rawRequestedDueAt = String(data.requested_due_at ?? '')
+  const requestedDueAt = /(?:Z|[+-]\d{2}:\d{2})$/.test(rawRequestedDueAt)
+    ? rawRequestedDueAt.replace(/(?:Z|[+-]\d{2}:\d{2})$/, '+08:00')
+    : `${rawRequestedDueAt}+08:00`
+  return post(`/student/hour-applications/${id}/extension-requests`, {
+    requested_due_at: requestedDueAt,
+    reason: data.reason,
+    attachment_ids: data.attachment_ids ?? [],
+  })
+}
 export const getAdvisorPendingExtensions = (params) => get('/advisor/extension-requests/pending', params)
 export const getExtensionRequest = (id) => get(`/extension-requests/${id}`)
+export async function getAdminExtensionRequest(id) {
+  try {
+    return await get(`/admin/extension-requests/${id}`)
+  } catch (error) {
+    if (error?.status !== 404 && error?.code !== 40401) throw error
+    return getExtensionRequest(id)
+  }
+}
 export const approveExtensionByAdvisor = (id, data = {}) => post(`/advisor/extension-requests/${id}/approve`, data)
 export const rejectExtensionByAdvisor = (id, data) => post(`/advisor/extension-requests/${id}/reject`, data)
 export const getAdminPendingSpecialExtensions = (params) => get('/admin/extension-requests/pending-special', params)
@@ -36,4 +54,3 @@ export const approveExtensionByAdmin = (id, data = {}) => post(`/admin/extension
 export const rejectExtensionByAdmin = (id, data) => post(`/admin/extension-requests/${id}/reject`, data)
 export const getAdminExtensions = (params) => get('/admin/extension-requests', params)
 export const closeApplication = (id, data = {}) => post(`/admin/hour-applications/${id}/close`, data)
-

@@ -3,7 +3,6 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
 import { getStatusText } from '../utils/status.js'
-import { isApplicationAppealable } from '../mock/appeals.js'
 import { getStudentApplication, getStudentApplications } from '../api/applicationApi.js'
 import { adaptApplicationEnvelope, adaptApplicationList } from '../adapters/applicationAdapter.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
@@ -28,7 +27,8 @@ async function loadApplications() {
 }
 onMounted(loadApplications)
 const canSupplementResult = (application) => application?.applicationType === 'without_material' && application.status === 'pending_material'
-const canApplyExtension = (application) => application?.applicationType === 'without_material' && application.status === 'pending_material'
+const canApplyExtension = (application) => application?.applicationType === 'without_material' && application.status === 'pending_material' && !application.extensionApplied
+const isApplicationAppealable = (application) => ['reviewer_rejected','final_rejected'].includes(application?.status)
 
 const statusOptions = [
   'submitted',
@@ -115,6 +115,7 @@ const applications = computed(() => {
                   </RouterLink>
                   <RouterLink v-if="canSupplementResult(application)" class="detail-link" :to="`/student/hour-progress/${application.id}/supplement-result`">补交成果</RouterLink>
                   <RouterLink v-if="canApplyExtension(application)" class="detail-link" :to="`/student/hour-progress/${application.id}/extension`">申请延期</RouterLink>
+                  <span v-else-if="application.extensionApplied">已申请延期</span>
                   <RouterLink v-if="isApplicationAppealable(application,currentUser.studentId)" class="detail-link" :to="`/student/appeals/new?applicationId=${application.id}`">发起申诉</RouterLink>
                 </td>
               </tr>

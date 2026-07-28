@@ -1,16 +1,19 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
-import { finalConfirmAppeal, getAppealById } from '../mock/appeals.js'
-import { getApplications } from '../mock/applications.js'
+import { getAdminAppeal } from '../api/appealApi.js'
+import { finalApproveApplication } from '../api/applicationApi.js'
+import { finalApproveExchange } from '../api/exchangeApi.js'
+import { adaptAppealEnvelope } from '../adapters/appealAdapter.js'
 const route = useRoute(); const router = useRouter(); const comment = ref('')
-const appeal = computed(() => { const item = getAppealById(route.params.id); return ['re_review_approved', 're_review_rejected'].includes(item?.status) ? item : null })
-const application = computed(() => appeal.value ? getApplications().find((item) => item.id === appeal.value.applicationId) : null)
+const appeal = ref(null)
+const application = computed(() => appeal.value?.target)
+onMounted(async()=>{try{const item=adaptAppealEnvelope(await getAdminAppeal(Number(route.params.id)));appeal.value=item?.reopenStage==='pending_admin_final'?item:null}catch(error){window.alert(error?.message||'申诉最终确认详情加载失败')}})
 function back() { router.push('/admin/final-confirm/appeals') }
 function preview() { window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。') }
 function download() { window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。') }
-function confirm() { const approved = appeal.value?.reviewResult === 'approved'; if (!finalConfirmAppeal(appeal.value.appealId, comment.value)) return window.alert('最终确认失败，请检查申诉状态和复审课时。'); window.alert(approved ? '申诉最终确认完成，课时结果已更新。' : '申诉最终确认完成，原课时结果保持不变。'); back() }
+async function confirm() {try{const body={comment:comment.value.trim()};if(appeal.value.targetType==='credit_exchange')await finalApproveExchange(appeal.value.targetId,body);else await finalApproveApplication(appeal.value.targetId,body);window.alert('申诉复审最终确认完成。');back()}catch(error){window.alert(error?.message||'最终确认失败，请检查申诉状态。')}}
 </script>
 <template><main class="page"><div class="content"><template v-if="appeal"><header><div><p class="breadcrumb">管理端 / 最终确认 / 申诉复审最终确认 / 详情</p><p class="eyebrow">A606 · APPEAL FINAL CONFIRM DETAIL</p><h1>申诉复审最终确认详情</h1><p>{{ appeal.appealId }}</p></div><StatusTag :status="appeal.status" /></header>
 <section class="card"><h2>申诉与学生信息</h2><dl class="grid"><div><dt>关联申请</dt><dd>{{ appeal.applicationTitle }}</dd></div><div><dt>学生</dt><dd>{{ appeal.studentName }}（{{ appeal.studentId }}）</dd></div><div><dt>课时申请编号</dt><dd>{{ appeal.applicationId }}</dd></div><div><dt>原申请状态</dt><dd><StatusTag :status="appeal.originalStatus" /></dd></div><div><dt>原认定 / 最终课时</dt><dd>{{ appeal.originalFinalHours }} 课时</dd></div><div><dt>申诉提交时间</dt><dd>{{ appeal.submitTime }}</dd></div></dl></section>

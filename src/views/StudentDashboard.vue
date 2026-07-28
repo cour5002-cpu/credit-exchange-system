@@ -1,14 +1,34 @@
 <script setup>
-import { computed } from 'vue'
-import { EXCHANGE_STATUS, getAvailableExchangeApplications, getExchanges, PENDING_CREDIT_STATUSES } from '../mock/exchanges.js'
+import { computed, onMounted, ref } from 'vue'
+import { getAvailableHourAwards, getStudentExchanges } from '../api/exchangeApi.js'
+import { adaptExchangeList, adaptHourAwardList } from '../adapters/exchangeAdapter.js'
+import { currentUser as authCurrentUser } from '../stores/authStore.js'
 
-const currentUser = { id: 'stu001', name: '张三', studentId: '2024001' }
-const completedStatuses = [EXCHANGE_STATUS.COMPLETED, EXCHANGE_STATUS.FINAL_APPROVED]
-const studentExchanges = computed(() => getExchanges().filter((item) => item.studentId === currentUser.studentId || item.memberDistributions?.some((member) => member.studentId === currentUser.studentId)))
-function personalCredits(item) { return Number(item.memberDistributions?.find((member) => member.studentId === currentUser.studentId)?.allocatedCredits || 0) }
-const creditedCredits = computed(() => studentExchanges.value.filter((item) => completedStatuses.includes(item.status)).reduce((sum, item) => sum + personalCredits(item), 0))
-const pendingCredits = computed(() => studentExchanges.value.filter((item) => PENDING_CREDIT_STATUSES.includes(item.status)).reduce((sum, item) => sum + personalCredits(item), 0))
-const availableProjectCount = computed(() => getAvailableExchangeApplications(currentUser.id).length)
+const exchanges = ref([])
+const availableAwards = ref([])
+const currentStudentId = computed(() => Number(authCurrentUser.value?.student?.id))
+const completedStatuses = ['final_approved', 'completed']
+const pendingStatuses = ['submitted', 'advisor_approved', 'pending_admin_final']
+
+function exchangeCredits(item) {
+  const allocation = item.memberDistributions?.find((row) => Number(row.studentDbId) === currentStudentId.value)
+  return Number(allocation?.allocatedCredits ?? item.totalCredit ?? item.earnedCredit ?? item.credit ?? item.estimatedCredits ?? 0)
+}
+
+const creditedCredits = computed(() => exchanges.value.filter((item) => completedStatuses.includes(item.status)).reduce((sum, item) => sum + exchangeCredits(item), 0))
+const pendingCredits = computed(() => exchanges.value.filter((item) => pendingStatuses.includes(item.status)).reduce((sum, item) => sum + exchangeCredits(item), 0))
+const availableProjectCount = computed(() => availableAwards.value.length)
+
+onMounted(async () => {
+  const [exchangeResult, awardResult] = await Promise.allSettled([
+    getStudentExchanges({ page_size: 100 }),
+    getAvailableHourAwards({ page_size: 100 }),
+  ])
+  if (exchangeResult.status === 'fulfilled') exchanges.value = adaptExchangeList(exchangeResult.value)
+  else console.error('[student-dashboard] 学分兑换记录加载失败', exchangeResult.reason)
+  if (awardResult.status === 'fulfilled') availableAwards.value = adaptHourAwardList(awardResult.value)
+  else console.error('[student-dashboard] 可兑换课时加载失败', awardResult.reason)
+})
 
 const entries = [
   { title: '我的任务', description: '查看和管理分配给你的任务。', to: '/student/tasks' },

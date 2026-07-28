@@ -1,19 +1,20 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
-import { APPEAL_STATUS, approveAppealReview, getAppealById, rejectAppealReview } from '../mock/appeals.js'
-import { currentReviewerId, getApplications } from '../mock/applications.js'
+import { approveAppealReview, getReviewerAppeal, modifiedApproveAppealReview, rejectAppealReview } from '../api/appealApi.js'
+import { adaptAppealEnvelope } from '../adapters/appealAdapter.js'
 
 const route = useRoute(); const router = useRouter(); const hours = ref(''); const comment = ref('')
-const appeal = computed(() => { const item = getAppealById(route.params.id); return item?.reviewTeacherId === currentReviewerId.value ? item : null })
-const application = computed(() => appeal.value ? getApplications().find((item) => item.id === appeal.value.applicationId) : null)
-const pending = computed(() => appeal.value?.status === APPEAL_STATUS.PENDING_RE_REVIEW)
+const appeal = ref(null)
+const application = computed(() => appeal.value?.target)
+const pending = computed(() => appeal.value?.reopenStage === 'pending_reviewer_review' || appeal.value?.status === 'processing')
+onMounted(async()=>{try{appeal.value=adaptAppealEnvelope(await getReviewerAppeal(Number(route.params.id)))}catch(error){window.alert(error?.message||'申诉复审详情加载失败')}})
 function back() { router.push(route.query.from === 'records' ? '/reviewer/review-records' : '/reviewer/review-tasks') }
 function preview() { window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。') }
 function download() { window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。') }
-function approve() { if (!pending.value) return window.alert('该申诉已完成复审。'); if (!comment.value.trim()) return window.alert('请填写复审意见。'); if (hours.value === '' || !Number.isFinite(Number(hours.value)) || Number(hours.value) < 0) return window.alert('复审课时必填，且必须大于等于 0。'); if (!approveAppealReview(appeal.value.appealId, hours.value, comment.value)) return window.alert('复审处理失败。'); window.alert('复审已通过，等待管理员最终确认。'); back() }
-function reject() { if (!pending.value) return window.alert('该申诉已完成复审。'); if (!comment.value.trim()) return window.alert('请填写复审意见。'); if (!rejectAppealReview(appeal.value.appealId, comment.value)) return window.alert('复审处理失败。'); window.alert('复审已驳回，等待管理员最终确认。'); back() }
+async function approve() { if (!pending.value) return window.alert('该申诉已完成复审。');if(!comment.value.trim())return window.alert('请填写复审意见。');try{if(hours.value!==''&&Number(hours.value)!==Number(application.value?.final_hours??appeal.value.originalFinalHours)){await modifiedApproveAppealReview(appeal.value.id,{reviewer_suggested_hours:Number(hours.value),comment:comment.value.trim()})}else{await approveAppealReview(appeal.value.id,{comment:comment.value.trim()})}window.alert('复审已通过，等待管理员最终确认。');back()}catch(error){window.alert(error?.message||'复审处理失败')}}
+async function reject() { if (!pending.value) return window.alert('该申诉已完成复审。');if(!comment.value.trim())return window.alert('请填写复审意见。');try{await rejectAppealReview(appeal.value.id,{comment:comment.value.trim()});window.alert('复审已驳回。');back()}catch(error){window.alert(error?.message||'复审处理失败')}}
 </script>
 
 <template><main class="page"><div class="content"><template v-if="appeal">

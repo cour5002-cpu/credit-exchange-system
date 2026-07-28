@@ -1,10 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
-import {
-  adminAccept,
-  getAdminAcceptApplications,
-} from '../mock/applications.js'
 import { getPendingAssignmentApplications } from '../api/applicationApi.js'
 import { adaptApplicationList } from '../adapters/applicationAdapter.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
@@ -55,7 +51,7 @@ function batchAccept() {
       </header>
 
       <section class="filters" aria-label="待受理申请筛选">
-        <label><span>申请类型</span><select v-model="selectedType"><option value="">全部类型</option><option value="with_result">有成果申请</option><option value="without_result">无成果申请</option></select></label>
+        <label><span>申请类型</span><select v-model="selectedType"><option value="">全部类型</option><option value="with_material">有成果申请</option><option value="without_material">无成果申请</option><option value="task_result">任务成果申请</option></select></label>
         <label><span>搜索</span><input v-model="keyword" type="search" placeholder="搜索学生姓名或申请标题" /></label>
       </section>
 

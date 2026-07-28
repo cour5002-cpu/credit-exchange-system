@@ -1,11 +1,18 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
-import { EXCHANGE_STATUS, getExchanges } from '../mock/exchanges.js'
+import { getStudentExchange, getStudentExchanges } from '../api/exchangeApi.js'
+import { adaptExchangeEnvelope, adaptExchangeList } from '../adapters/exchangeAdapter.js'
+import { currentUser as authCurrentUser } from '../stores/authStore.js'
+import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
-const currentUser = { id: 'stu001', studentId: '2024001' }
-const items = computed(() => getExchanges().filter((item) => item.captainId === currentUser.id || item.studentId === currentUser.studentId || item.memberDistributions?.some((member) => member.studentId === currentUser.studentId)).sort((a, b) => String(b.submitTime).localeCompare(String(a.submitTime))))
-function personalDistribution(item) { return item.memberDistributions?.find((member) => member.studentId === currentUser.studentId) || {} }
+const EXCHANGE_STATUS={COMPLETED:'completed',FINAL_APPROVED:'final_approved',PENDING_CONFIRMATION:'submitted',PENDING_FINAL_CONFIRM:'pending_admin_final',PENDING_DISTRIBUTION_CONFIRM:'advisor_approved',FINAL_REJECTED:'final_rejected',ADVISOR_REJECTED:'advisor_rejected',REJECTED:'rejected'}
+
+const remoteItems=ref([])
+const currentStudentNo=computed(()=>authCurrentUser.value?.student?.student_no??authCurrentUser.value?.student?.studentId)
+const items=computed(()=>[...remoteItems.value].sort((a,b)=>String(b.submitTime??b.updatedAt??'').localeCompare(String(a.submitTime??a.updatedAt??''))))
+function personalDistribution(item){return item.memberDistributions?.find((member)=>member.studentId===currentStudentNo.value)||{}}
+onMounted(async()=>{try{const summaries=adaptExchangeList(await getStudentExchanges({page_size:100}));remoteItems.value=summaries;await Promise.allSettled(summaries.map(async(item)=>{const detail=adaptExchangeEnvelope(await getStudentExchange(item.id));remoteItems.value=remoteItems.value.map((current)=>current.id===item.id?detail:current)}))}catch(error){window.alert(getApiErrorMessage(error,'兑换记录加载失败'))}})
 function statusText(status) {
   if ([EXCHANGE_STATUS.COMPLETED, EXCHANGE_STATUS.FINAL_APPROVED].includes(status)) return '学分已到账'
   if (status === EXCHANGE_STATUS.PENDING_CONFIRMATION) return '待指导老师确认'

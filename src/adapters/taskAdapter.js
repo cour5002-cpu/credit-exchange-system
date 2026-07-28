@@ -3,7 +3,7 @@ import { toShanghaiIso } from '../utils/taskDateTime.js'
 
 export function adaptAttachment(item) {
   if (!item) return null
-  return { id: item.id, name: item.file_name, size: item.file_size, type: item.mime_type, url: item.url, uploadedAt: item.created_at, bizType: item.biz_type }
+  return { id: item.id, name: item.file_name ?? item.filename ?? item.name, size: item.file_size ?? item.size, type: item.mime_type ?? item.type, url: item.url, uploadedAt: item.created_at ?? item.uploaded_at, bizType: item.biz_type }
 }
 
 export function adaptTask(task) {

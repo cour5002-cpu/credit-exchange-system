@@ -3,7 +3,6 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ReviewActionBar from '../components/ReviewActionBar.vue'
 import StatusTag from '../components/StatusTag.vue'
-import { mockReviewers } from '../mock/applications.js'
 import { loadReviewerOptions } from '../services/commonDependencyService.js'
 import { assignApplicationReviewer, getAdminApplication } from '../api/applicationApi.js'
 import { adaptApplicationEnvelope } from '../adapters/applicationAdapter.js'
@@ -22,7 +21,7 @@ const canAssign = computed(() => Boolean(item.value && (
 )))
 async function loadItem(){try{item.value=adaptApplicationEnvelope(await getAdminApplication(Number(route.params.id)))}catch(error){window.alert(getApiErrorMessage(error,'申请详情加载失败'))}}
 onMounted(async () => {
-  const loadedReviewers = await loadReviewerOptions(mockReviewers)
+  const loadedReviewers = await loadReviewerOptions()
   reviewers.value = loadedReviewers.filter((reviewer) => Number.isInteger(reviewer.id) && reviewer.id > 0 && !reviewer.isMockFallback)
   await loadItem()
 })
@@ -58,6 +57,7 @@ function goBack() { router.push('/admin/review-assign') }
       <header class="page-header"><div><p class="eyebrow">REVIEW ASSIGNMENT DETAIL</p><h1>{{ item.title }}</h1><p>{{ item.applyTypeText }}</p></div><StatusTag :status="item.status" /></header>
       <section class="card"><h2>学生信息</h2><dl class="info-grid"><div><dt>姓名</dt><dd>{{ item.studentName }}</dd></div><div><dt>学号</dt><dd>{{ item.studentId }}</dd></div><div><dt>申请人身份</dt><dd>{{ item.captainId === item.currentUserId ? '队长' : '成员' }}</dd></div><div><dt>当前流程</dt><dd>管理员分配审核老师</dd></div></dl></section>
       <section class="card"><h2>申请信息</h2><dl class="info-grid"><div><dt>申请编号</dt><dd>{{ item.id }}</dd></div><div><dt>申请来源</dt><dd>{{ item.sourceText }}</dd></div><div><dt>申请类型</dt><dd>{{ item.applyTypeText }}</dd></div><div><dt>申请课时</dt><dd>{{ item.requestedHours }} 小时</dd></div><div v-if="item.taskId"><dt>关联任务</dt><dd>{{ item.taskTitle }}（{{ item.taskId }}）</dd></div><div><dt>提交时间</dt><dd>{{ item.submitTime }}</dd></div></dl></section>
+      <section v-if="item.applicationType === 'task_result'" class="card"><h2>任务成果说明</h2><p class="description">{{ item.resultDescription || '--' }}</p></section>
       <section class="card"><h2>团队成员</h2><div class="table-wrapper"><table><thead><tr><th>姓名</th><th>学号</th><th>学院</th><th>专业</th><th>角色</th></tr></thead><tbody><tr v-for="member in item.members" :key="member.id"><td>{{ member.name }}</td><td>{{ member.studentId }}</td><td>{{ member.college || '--' }}</td><td>{{ member.major || '--' }}</td><td>{{ member.role === 'captain' ? '队长' : '成员' }}</td></tr></tbody></table></div></section>
       <section class="card"><h2>指导老师确认意见</h2><dl class="info-grid"><div><dt>指导老师</dt><dd>{{ item.mainAdvisor?.name || '--' }} · {{ item.mainAdvisor?.department || '--' }}</dd></div><div><dt>确认状态</dt><dd><StatusTag :status="item.advisorStatus" text="已确认" /></dd></div><div><dt>确认时间</dt><dd>{{ item.advisorConfirmTime || '--' }}</dd></div></dl><p class="teacher-opinion">{{ item.advisorComment || '指导老师未填写确认意见。' }}</p></section>
       <section class="card"><h2>学生上传材料</h2><div v-if="item.attachments?.length" class="attachment-list"><article v-for="file in item.attachments" :key="file.id" class="attachment-item"><div class="file-icon">文</div><div><h3>{{ file.name }}</h3><p class="meta">{{ file.type }}<template v-if="file.uploadedAt"> · 上传时间：{{ file.uploadedAt }}</template></p><p>{{ file.description }}</p></div><div class="file-actions"><button type="button" @click="previewFile(file)">预览</button><button type="button" @click="downloadFile(file)">下载</button></div></article></div><p v-else class="empty">暂无上传材料</p></section>

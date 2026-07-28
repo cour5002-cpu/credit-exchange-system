@@ -243,7 +243,7 @@ const router = createRouter({
       name: 'reviewer-review-task-detail',
       component: () => import('../views/ReviewerReviewDetailView.vue'),
     },
-    { path:'/reviewer/appeal-reviews',name:'reviewer-appeal-reviews',redirect:'/reviewer/review-tasks' },
+    { path:'/reviewer/appeal-reviews',name:'reviewer-appeal-reviews',component:()=>import('../views/ReviewerAppealListView.vue') },
     { path:'/reviewer/appeal-reviews/:id',name:'reviewer-appeal-review-detail',component:()=>import('../views/ReviewerAppealDetailView.vue') },
     {
       path: '/reviewer/review-records',

@@ -1,7 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
-import { finalApprove, getAdminFinalApplications } from '../mock/applications.js'
 import { finalApproveApplication, getPendingFinalApplications } from '../api/applicationApi.js'
 import { adaptApplicationList } from '../adapters/applicationAdapter.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
@@ -17,7 +16,7 @@ onMounted(loadItems)
 const items = computed(() => {
   refreshKey.value
   const search = keyword.value.trim().toLowerCase()
-  return realItems.value.filter((item) => (!source.value || item.source === source.value || (source.value === 'task_result' && item.source === 'task')) && (!result.value || item.reviewStatus === result.value) && (!search || item.studentName.toLowerCase().includes(search) || item.title.toLowerCase().includes(search)))
+  return realItems.value.filter((item) => (!source.value || item.source === source.value || (source.value === 'task_result' && ['task', 'teacher_task', 'admin_task'].includes(item.source))) && (!result.value || item.reviewStatus === result.value) && (!search || item.studentName.toLowerCase().includes(search) || item.title.toLowerCase().includes(search)))
 })
 const allSelected = computed(() => items.value.length > 0 && items.value.every((item) => selectedIds.value.includes(item.id)))
 function toggleAll(event) { const ids = items.value.map((item) => item.id); selectedIds.value = event.target.checked ? [...new Set([...selectedIds.value, ...ids])] : selectedIds.value.filter((id) => !ids.includes(id)) }

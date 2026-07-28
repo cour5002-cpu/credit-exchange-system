@@ -1,12 +1,43 @@
 <script setup>
 import { reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { addComplaint } from '../mock/complaints.js'
+import { submitComplaint } from '../api/complaintApi.js'
+import { uploadAttachment } from '../api/fileApi.js'
+
 const router = useRouter()
-const form = reactive({ content: '', files: [] })
-function selectFiles(event) { Array.from(event.target.files || []).forEach((file, index) => form.files.push({ id: `CMP-ATT-${Date.now()}-${index}`, fileName: file.name, fileType: file.type || '未知类型', fileSize: `${file.size} B`, mockUrl: URL.createObjectURL(file) })); event.target.value = '' }
-function removeFile(id) { const index = form.files.findIndex((item) => item.id === id); if (index < 0) return; if (form.files[index].mockUrl) URL.revokeObjectURL(form.files[index].mockUrl); form.files.splice(index, 1) }
-function submit() { if (!form.content.trim()) return window.alert('请填写投诉内容。'); const complaint = addComplaint({ isAnonymous: true, complaintContent: form.content, complaintMaterials: form.files }); if (!complaint) return window.alert('投诉提交失败。'); window.alert('匿名投诉已提交。'); router.push(`/student/complaints/submitted/${complaint.complaintId}`) }
+const form = reactive({ content: '', files: [], attachmentIds: [] })
+
+async function selectFiles(event) {
+  for (const file of Array.from(event.target.files || [])) {
+    try {
+      const uploaded = await uploadAttachment(file, 'complaint')
+      form.files.push({ ...uploaded.attachment, id: uploaded.id, name: file.name })
+      form.attachmentIds.push(uploaded.id)
+    } catch (error) { window.alert(error?.message || '投诉附件上传失败') }
+  }
+  event.target.value = ''
+}
+
+function removeFile(id) {
+  form.files = form.files.filter((item) => item.id !== id)
+  form.attachmentIds = form.attachmentIds.filter((item) => item !== id)
+}
+
+async function submit() {
+  if (!form.content.trim()) return window.alert('请填写投诉内容。')
+  try {
+    const complaint = await submitComplaint({ content: form.content.trim(), attachment_ids: form.attachmentIds })
+    await router.push(`/student/complaints/submitted/${complaint.id}?status=${complaint.status || 'submitted'}`)
+  } catch (error) { window.alert(error?.message || '投诉提交失败') }
+}
 </script>
-<template><main class="page"><div class="content"><header><div><p class="eyebrow">S801 · ANONYMOUS COMPLAINT</p><h1>发起匿名投诉</h1><p>V1 基础版仅提交投诉内容和附件。</p></div><RouterLink to="/student/feedback">返回问题反馈</RouterLink></header><section class="notice"><strong>匿名提示</strong><p>管理员仅能查看投诉详情，不提供正式处理意见或“已处理”操作。</p></section><section class="card"><h2>投诉内容</h2><textarea v-model="form.content" rows="7" placeholder="请详细说明需要反馈的问题"></textarea></section><section class="card"><h2>投诉材料（可选）</h2><input type="file" multiple @change="selectFiles" /><article v-for="file in form.files" :key="file.id" class="file"><span>{{ file.fileName }}</span><button @click="removeFile(file.id)">删除</button></article></section><div class="actions"><RouterLink to="/student/feedback">返回</RouterLink><button @click="submit">提交匿名投诉</button></div></div></main></template>
+
+<template><main class="page"><div class="content">
+  <header><div><p class="eyebrow">S801 · ANONYMOUS COMPLAINT</p><h1>发起匿名投诉</h1><p>基础版仅提交投诉内容和附件。</p></div><RouterLink to="/student/feedback">返回问题反馈</RouterLink></header>
+  <section class="notice"><strong>匿名提示</strong><p>管理员仅查看投诉内容、附件和提交时间。</p></section>
+  <section class="card"><h2>投诉内容</h2><textarea v-model="form.content" rows="7" placeholder="请详细说明需要反馈的问题"></textarea></section>
+  <section class="card"><h2>投诉材料（可选）</h2><input type="file" multiple @change="selectFiles" /><article v-for="file in form.files" :key="file.id" class="file"><span>{{ file.name }}</span><button type="button" @click="removeFile(file.id)">删除</button></article></section>
+  <div class="actions"><RouterLink to="/student/feedback">返回</RouterLink><button type="button" @click="submit">提交匿名投诉</button></div>
+</div></main></template>
+
 <style scoped>.page{min-height:100vh;padding:40px 24px;background:#f3f6fb}.content{width:min(100%,900px);margin:auto}header{display:flex;justify-content:space-between}.eyebrow{color:#2563eb;font-size:12px;font-weight:800}.notice,.card{margin:18px 0;padding:22px;border:1px solid #e2e8f0;border-radius:14px;background:#fff}.notice{background:#eff6ff}textarea,input{box-sizing:border-box;width:100%;padding:11px;border:1px solid #cbd5e1;border-radius:9px}.file{display:flex;justify-content:space-between;margin-top:10px;padding:12px;background:#f8fafc}.actions{display:flex;justify-content:flex-end;gap:10px}.actions a,.actions button,.file button{padding:9px 15px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;text-decoration:none}.actions>button{color:#fff;background:#2563eb}</style>

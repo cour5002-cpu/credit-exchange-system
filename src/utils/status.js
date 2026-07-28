@@ -1,4 +1,5 @@
 const STATUS_META = {
+  pending_advisor_review: { text: '延期待指导老师确认', color: 'warning' },
   pending: { text: '待处理', color: 'warning' },
   draft: { text: '草稿', color: 'default' },
   submitted: { text: '已提交', color: 'info' },

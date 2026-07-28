@@ -47,6 +47,9 @@ export function adaptApplication(item) {
     createdAt: item.created_at,
     description: item.description,
     expectedResultDate: item.material_due_at,
+    extensionCount: Number(item.extension_count ?? 0),
+    extensionApplied: Number(item.extension_count ?? 0) > 0 || Boolean(item.extension_request ?? item.extension_applied),
+    extensionStatus: item.extension_status ?? (item.status === 'extension_requested' ? 'pending_advisor' : item.status === 'extension_admin_review' ? 'pending_admin' : Number(item.extension_count ?? 0) > 0 ? 'approved' : ''),
     resultDescription: item.achievement_summary ?? item.result_summary ?? taskResultSubmission?.summary ?? taskResultSubmission?.achievement_summary ?? item.description ?? '',
     resultMaterials: attachments.map(adaptAttachment),
     proofMaterials: [],
@@ -114,18 +117,26 @@ export function adaptExtensionRequest(payload) {
   if (!payload) return null
   const extension = payload.extension_request ?? payload
   const application = adaptApplication(payload.application ?? extension.application)
-  const applicant = adaptStudent(extension.applicant)
+  const applicant = adaptStudent(extension.applicant ?? extension.student)
+  const extensionAttachments = payload.attachments ?? extension.attachments
+    ?? (payload.attachment ? [payload.attachment] : extension.attachment ? [extension.attachment]
+      : extension.attachment_id ? [{ id: extension.attachment_id, file_name: extension.filename, url: extension.url }] : [])
+  const reviewLevel = extension.review_level === 'advisor' ? 'normal' : extension.review_level === 'admin' ? 'special' : extension.review_level
+  const status = extension.status === 'submitted'
+    ? (reviewLevel === 'special' ? 'pending_admin_review' : 'pending_advisor_review')
+    : extension.status
   return {
-    id: extension.id,
-    applicationId: extension.application_id ?? application?.id,
+    id: extension.id ?? extension.extension_request_id,
+    applicationId: extension.application_id ?? extension.hour_application_id ?? application?.id,
     applicant,
     studentName: extension.applicant_name ?? applicant?.name ?? application?.studentName,
     studentId: applicant?.studentNo ?? application?.studentId,
     oldDueAt: extension.old_due_at,
     requestedDueAt: extension.requested_due_at,
+    extensionDays: extension.extension_days,
     reason: extension.reason,
-    reviewLevel: extension.review_level,
-    status: extension.status,
+    reviewLevel,
+    status,
     reviewComment: extension.review_comment,
     createdAt: extension.created_at,
     reviewedAt: extension.reviewed_at,
@@ -140,7 +151,7 @@ export function adaptExtensionRequest(payload) {
     newExpectedResultTime: extension.requested_due_at,
     extensionReason: extension.reason,
     extensionSubmitTime: extension.created_at,
-    extensionMaterials: (extension.attachments ?? []).map(adaptAttachment),
+    extensionMaterials: extensionAttachments.map(adaptAttachment),
   }
 }
 

@@ -1,10 +1,13 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
-import { APPEAL_STATUS, getAdminPendingAppeals, getPendingReviewAssignmentAppeals } from '../mock/appeals.js'
-const keyword = ref(''); const status = ref(APPEAL_STATUS.PENDING_ADMIN)
-const items = computed(() => { const search = keyword.value.trim().toLowerCase(); return getAdminPendingAppeals().filter((item) => (!status.value || item.status === status.value) && (!search || [item.studentName, item.applicationTitle].some((value) => String(value || '').toLowerCase().includes(search)))) })
-const assignCount = computed(() => getPendingReviewAssignmentAppeals().length)
+import { getAdminAppeals, getReopenedAppealsForAssignment } from '../api/appealApi.js'
+import { adaptAppealList } from '../adapters/appealAdapter.js'
+const APPEAL_STATUS={PENDING_ADMIN:'pending_admin_review'}
+const keyword = ref(''); const status = ref(APPEAL_STATUS.PENDING_ADMIN);const remoteItems=ref([]);const assignItems=ref([])
+onMounted(async()=>{const [a,b]=await Promise.allSettled([getAdminAppeals({page_size:100}),getReopenedAppealsForAssignment({page_size:100})]);if(a.status==='fulfilled')remoteItems.value=adaptAppealList(a.value);if(b.status==='fulfilled')assignItems.value=adaptAppealList(b.value)})
+const items = computed(() => { const search = keyword.value.trim().toLowerCase(); return remoteItems.value.filter((item) => (!status.value || item.status === status.value) && (!search || [item.studentName, item.applicationTitle].some((value) => String(value || '').toLowerCase().includes(search)))) })
+const assignCount = computed(() => assignItems.value.length)
 </script>
 <template><main class="page"><div class="content"><header><div><p class="eyebrow">A601 · APPEAL MANAGEMENT</p><h1>申诉与投诉</h1><p>处理申诉受理、复审老师分配及投诉等前置事项。</p></div><RouterLink class="back" to="/admin/dashboard">返回管理首页</RouterLink></header>
 <nav class="module-nav"><RouterLink to="/admin/appeals-complaints">申诉处理（{{ items.length }}）</RouterLink><RouterLink to="/admin/appeals-complaints/assign">申诉复审分配（{{ assignCount }}）</RouterLink><RouterLink to="/admin/appeals-complaints/complaints">投诉管理</RouterLink></nav>

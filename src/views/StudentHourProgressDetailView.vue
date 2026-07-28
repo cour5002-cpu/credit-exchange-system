@@ -2,19 +2,19 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
-import { APPLICATION_STATUS } from '../mock/applications.js'
-import { isApplicationAppealable } from '../mock/appeals.js'
 import { getStudentApplication } from '../api/applicationApi.js'
+import { getAppealableTarget } from '../api/appealApi.js'
 import { adaptApplicationEnvelope } from '../adapters/applicationAdapter.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
 const route = useRoute()
 const router = useRouter()
-const currentUser = { id: 'stu001', name: '张三', studentId: '2024001' }
 const application = ref(null)
-onMounted(async () => { try { application.value = adaptApplicationEnvelope(await getStudentApplication(Number(route.params.id))) } catch (error) { window.alert(getApiErrorMessage(error, '申请详情加载失败')) } })
+const canAppeal = ref(false)
+onMounted(async () => { try { const id=Number(route.params.id);application.value = adaptApplicationEnvelope(await getStudentApplication(id));if(['reviewer_rejected','final_rejected'].includes(application.value?.status)){const result=await getAppealableTarget('hour_application',id);canAppeal.value=Boolean(result?.can_appeal)} } catch (error) { window.alert(getApiErrorMessage(error, '申请详情加载失败')) } })
 const canSupplementResult = (item) => item?.applicationType === 'without_material' && item.status === 'pending_material'
-const canApplyExtension = (item) => item?.applicationType === 'without_material' && item.status === 'pending_material'
+const canApplyExtension = (item) => item?.applicationType === 'without_material' && item.status === 'pending_material' && !item.extensionApplied
+const APPLICATION_STATUS={FINAL_APPROVED:'final_approved'}
 
 const timeline = computed(() => {
   if (!application.value) return []
@@ -211,7 +211,7 @@ function goBack() {
         </section>
 
         <section v-if="canSupplementResult(application) || canApplyExtension(application)" class="card"><h2>待补交成果</h2><p class="opinion">请在预计成果提交时间前补交成果；如无法按时提交，可申请延期。</p></section>
-        <div class="actions"><RouterLink v-if="canSupplementResult(application)" :to="`/student/hour-progress/${application.id}/supplement-result`">补交成果</RouterLink><RouterLink v-if="canApplyExtension(application)" :to="`/student/hour-progress/${application.id}/extension`">申请延期</RouterLink><RouterLink v-if="isApplicationAppealable(application,currentUser.studentId)" :to="`/student/appeals/new?applicationId=${application.id}`">发起申诉</RouterLink><button type="button" @click="goBack">返回申请列表</button></div>
+<div class="actions"><RouterLink v-if="canSupplementResult(application)" :to="`/student/hour-progress/${application.id}/supplement-result`">补交成果</RouterLink><RouterLink v-if="canApplyExtension(application)" :to="`/student/hour-progress/${application.id}/extension`">申请延期</RouterLink><RouterLink v-if="canAppeal" :to="`/student/appeals/new?applicationId=${application.id}&targetType=hour_application`">发起申诉</RouterLink><button type="button" @click="goBack">返回申请列表</button></div>
       </template>
       <section v-else class="card empty"><h1>未找到申请</h1><p>该申请不存在，或不属于当前学生。</p><button type="button" @click="goBack">返回申请列表</button></section>
     </div>
