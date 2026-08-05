@@ -5,13 +5,14 @@ import uuid
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from flask import Blueprint, Response, current_app, jsonify, request, send_file
+from flask import Blueprint, Response, current_app, request, send_file
 from flask_login import current_user, login_required, login_user, logout_user
 from openpyxl import Workbook
 from sqlalchemy.exc import IntegrityError
 
-from app.core.errors import BusinessError
 from app.core.identity import current_teacher
+from app.core.responses import fail, handle_business as _handle_business, ok
+from app.core.validation import parse_pagination_args
 from app.extensions import db
 from app.models.attachment import Attachment
 from app.models.appeal import Appeal
@@ -1448,21 +1449,11 @@ def operation_record_detail(record_id):
     return ok({"record": _operation_record_summary(record), "target": _operation_target_summary(record)})
 
 
-def ok(data=None):
-    return jsonify({"code": 0, "message": "success", "data": data or {}})
-
-
 def _pagination_args():
-    try:
-        page = int(request.args.get("page", 1))
-        page_size = int(request.args.get("page_size", 20))
-    except (TypeError, ValueError):
-        raise BusinessError("page 和 page_size 必须是整数")
-    if page < 1:
-        raise BusinessError("page 必须大于等于 1")
-    if page_size < 1 or page_size > 100:
-        raise BusinessError("page_size 必须在 1 到 100 之间")
-    return page, page_size
+    return parse_pagination_args(
+        request.args.get("page", 1),
+        request.args.get("page_size", 20),
+    )
 
 
 def _paged_response(loader, serializer):
@@ -1480,19 +1471,6 @@ def _paged_response(loader, serializer):
 def _paginate_operation_records(query, page, page_size):
     from app.utils.pagination import paginate_query
     return paginate_query(query, page, page_size)
-
-
-def fail(message, code=40001, status=400):
-    return jsonify({"code": code, "message": message, "data": None}), status
-
-
-def _handle_business(func):
-    try:
-        return func()
-    except BusinessError as exc:
-        return fail(str(exc), code=exc.code, status=exc.status)
-    except ValueError as exc:
-        return fail(str(exc))
 
 
 def _application_created_payload(application):
