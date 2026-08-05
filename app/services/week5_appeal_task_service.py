@@ -3,6 +3,8 @@ from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import and_, or_
 
+from app.core.errors import BusinessError
+from app.core.identity import current_student, current_teacher
 from app.extensions import db
 from app.models.appeal import Appeal
 from app.models.application_advisor import ApplicationAdvisor
@@ -21,7 +23,6 @@ from app.models.task_result_submission import TaskResultSubmission
 from app.models.task_result_submission_version import TaskResultSubmissionVersion
 from app.models.task_type import TaskType
 from app.models.teacher import Teacher
-from app.services.week3_hour_application_service import BusinessError, current_student, current_teacher
 from app.services.week3_hour_application_service import advisor_approve, advisor_reject, assign_reviewer, reviewer_approve, reviewer_reject
 from app.services.week4_credit_exchange_service import advisor_approve_credit_exchange, advisor_reject_credit_exchange
 from app.utils.number_generator import generate_application_no

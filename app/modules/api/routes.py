@@ -10,6 +10,8 @@ from flask_login import current_user, login_required, login_user, logout_user
 from openpyxl import Workbook
 from sqlalchemy.exc import IntegrityError
 
+from app.core.errors import BusinessError
+from app.core.identity import current_teacher
 from app.extensions import db
 from app.models.attachment import Attachment
 from app.models.appeal import Appeal
@@ -37,14 +39,12 @@ from app.services.task_type_service import (
     update_task_type,
 )
 from app.services.week3_hour_application_service import (
-    BusinessError,
     advisor_approve,
     advisor_reject,
     assign_reviewer,
     close_unfinishable_application,
     create_extension_request,
     create_student_application,
-    current_teacher,
     final_approve,
     final_reject,
     get_advisor_application,

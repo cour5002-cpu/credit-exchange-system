@@ -4,6 +4,8 @@ from math import ceil
 
 from sqlalchemy import or_
 
+from app.core.errors import BusinessError
+from app.core.identity import current_student, current_teacher
 from app.extensions import db
 from app.models.application_advisor import ApplicationAdvisor
 from app.models.attachment import Attachment
@@ -39,29 +41,6 @@ EXTENSION_PENDING_STATUSES = {
     "pending_advisor_review",
     "pending_admin_review",
 }
-
-
-class BusinessError(ValueError):
-    def __init__(self, message, code=40001, status=400):
-        super().__init__(message)
-        self.code = code
-        self.status = status
-
-
-def current_student(user):
-    student = Student.query.filter_by(user_id=user.id, status="active").first()
-    if not student:
-        raise BusinessError("当前账号没有可用学生身份", code=40301, status=403)
-    return student
-
-
-def current_teacher(user, required_flag=None):
-    teacher = Teacher.query.filter_by(user_id=user.id, status="active").first()
-    if not teacher:
-        raise BusinessError("当前账号没有可用教师身份", code=40301, status=403)
-    if required_flag and required_flag not in teacher.role_flag_list:
-        raise BusinessError("当前教师不具备该操作角色", code=40301, status=403)
-    return teacher
 
 
 def create_student_application(user, payload, submit=True):

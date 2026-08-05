@@ -3,6 +3,8 @@ from decimal import Decimal, InvalidOperation, ROUND_FLOOR, ROUND_HALF_UP
 
 from sqlalchemy import and_, or_
 
+from app.core.errors import BusinessError
+from app.core.identity import current_student, current_teacher
 from app.extensions import db
 from app.models.application_advisor import ApplicationAdvisor
 from app.models.attachment import Attachment
@@ -15,7 +17,6 @@ from app.models.hour_award_record import HourAwardRecord
 from app.models.operation_log import OperationLog
 from app.models.rule_file import RuleFile
 from app.models.student_credit_record import StudentCreditRecord
-from app.services.week3_hour_application_service import BusinessError, current_student, current_teacher
 from app.utils.number_generator import generate_application_no
 from app.utils.pagination import finish_query
 from app.utils.time_utils import business_now, format_api_datetime, parse_api_datetime
