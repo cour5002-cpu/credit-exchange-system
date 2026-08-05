@@ -36,7 +36,7 @@ export function adaptExchange(item) {
     creditRule: item.conversion_rule ? { ...item.conversion_rule, text: `每 ${item.conversion_rule.hours_per_credit} 课时兑换 1 学分` } : item.rule_snapshot ? { ...item.rule_snapshot, text: `每 ${item.rule_snapshot.hours_per_credit} 课时兑换 1 学分` } : null,
     hoursArrived: true,
     exchanged: item.status === 'final_approved',
-    memberDistributions: (item.allocations ?? []).map((row) => ({ student: adaptStudent(row.student), studentDbId: row.student_id ?? row.student?.id, studentId: row.student?.student_no, studentName: row.student?.name, role: row.is_leader ? 'captain' : 'member', allocatedHours: row.hours ?? row.allocated_hours, allocatedCredits: row.allocated_credits, memberHours: row.hours ?? row.allocated_hours, memberCredits: row.allocated_credits, creditType: row.credit_type, remark: row.remark })),
+    memberDistributions: (item.allocations ?? []).map((row) => ({ student: adaptStudent(row.student), studentDbId: row.student_id ?? row.student?.id, studentId: row.student_no ?? row.student?.student_no, studentName: row.student_name ?? row.student?.name, role: row.role ?? (row.is_leader ? 'captain' : 'member'), allocatedHours: row.hours ?? row.allocated_hours, allocatedCredits: row.allocated_credits, memberHours: row.hours ?? row.allocated_hours, memberCredits: row.allocated_credits, creditType: row.credit_type, remark: row.remark })),
     proofMaterials: (item.attachments ?? []).map(adaptAttachment),
     reviews: item.reviews ?? [],
     actions: item.actions ?? {},
@@ -80,7 +80,24 @@ export const adaptHourAwardList = (payload) => (
 
 export const toExchangePayload = (form) => ({
   hour_award_record_id: form.hourAwardRecordId,
-  allocations: (form.memberDistributions ?? []).map((row) => ({ student_id: Number(row.studentDbId ?? row.student?.id), hours: Number(row.allocatedHours) })),
+  allocations: (form.memberDistributions ?? []).filter((row) => {
+    const studentId = Number(row.studentDbId ?? row.student?.id)
+    return Number.isInteger(studentId) && studentId > 0
+  }).map((row) => {
+    const allocatedHours = [row.allocatedHours, row.allocated_hours, row.hours, row.memberHours]
+      .find((value) => value !== '' && value != null)
+    const normalizedHours = allocatedHours === undefined ? null : Number(allocatedHours)
+    const allocation = {
+      student_id: Number(row.studentDbId ?? row.student?.id),
+      hours: normalizedHours,
+    }
+    Object.defineProperty(allocation, 'allocated_hours', {
+      configurable: true,
+      enumerable: false,
+      get: () => allocation.hours,
+    })
+    return allocation
+  }),
   attachment_ids: form.attachmentIds ?? [],
   confirm_calculated_credits: true,
 })

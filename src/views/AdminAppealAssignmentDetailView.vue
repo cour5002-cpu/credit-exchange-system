@@ -4,12 +4,11 @@ import { useRoute,useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
 import { assignAppealReviewer,getAdminAppeal } from '../api/appealApi.js'
 import { adaptAppealEnvelope } from '../adapters/appealAdapter.js'
-import { getApplications,mockReviewers } from '../mock/applications.js'
 import { loadReviewerOptions } from '../services/commonDependencyService.js'
-const route=useRoute();const router=useRouter();const selectedId=ref('');const appeal=ref(null);const application=computed(()=>appeal.value?.target);const pending=computed(()=>appeal.value?.reopenStage==='pending_assignment')
-const reviewerOptions=ref(mockReviewers.map((item)=>({...item})))
+const route=useRoute();const router=useRouter();const selectedId=ref('');const appeal=ref(null);const application=computed(()=>appeal.value?.originalApplication??appeal.value?.target);const pending=computed(()=>appeal.value?.reopenStage==='pending_assignment'||appeal.value?.targetStatus==='pending_assignment')
+const reviewerOptions=ref([])
 const reviewers=computed(()=>reviewerOptions.value.map((item)=>({...item,appealPendingCount:0})))
-onMounted(async()=>{reviewerOptions.value=await loadReviewerOptions(mockReviewers);try{appeal.value=adaptAppealEnvelope(await getAdminAppeal(Number(route.params.id)))}catch(error){window.alert(error?.message||'申诉详情加载失败')}})
+onMounted(async()=>{reviewerOptions.value=await loadReviewerOptions();try{appeal.value=adaptAppealEnvelope(await getAdminAppeal(Number(route.params.id)))}catch(error){window.alert(error?.message||'申诉详情加载失败')}})
 function back(){router.push('/admin/appeals-complaints/assign')}function preview(){window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。')}function download(){window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。')}
 async function assign(){if(!pending.value)return window.alert('该申诉当前不可分配。');if(!selectedId.value)return window.alert('请选择一名复审老师。');try{await assignAppealReviewer(appeal.value.id,{reviewer_teacher_id:Number(selectedId.value)});window.alert('复审老师分配成功，等待审核老师复审。');back()}catch(error){window.alert(error?.message||'复审老师分配失败')}}
 </script>

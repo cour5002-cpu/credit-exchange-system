@@ -29,7 +29,14 @@ export function getHomePath(user = state.user) {
 }
 
 function saveUser(payload, fallbackUsername = '') {
-  const source = payload?.user || payload
+  const source = payload?.user
+    ? {
+        ...payload.user,
+        student: payload.student ?? payload.user.student,
+        teacher: payload.teacher ?? payload.user.teacher,
+        roles: payload.roles ?? payload.user.roles,
+      }
+    : payload
   const user = adaptCurrentUser(source)
   if (user && !user.username) user.username = fallbackUsername
   state.user = user
@@ -38,9 +45,9 @@ function saveUser(payload, fallbackUsername = '') {
 }
 
 export async function login(credentials) {
-  await authApi.login(credentials)
-  const payload = await authApi.getMe()
-  return saveUser(payload, credentials.username)
+  const loginPayload = await authApi.login(credentials)
+  const currentUserPayload = await authApi.getMe()
+  return saveUser(currentUserPayload ?? loginPayload, credentials.username)
 }
 
 export async function restoreSession({ force = false } = {}) {
@@ -74,4 +81,3 @@ export async function logout() {
 export const authState = readonly(state)
 export const currentUser = computed(() => state.user)
 export const isAuthenticated = computed(() => Boolean(state.user))
-

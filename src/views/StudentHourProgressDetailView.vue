@@ -16,15 +16,25 @@ const canSupplementResult = (item) => item?.applicationType === 'without_materia
 const canApplyExtension = (item) => item?.applicationType === 'without_material' && item.status === 'pending_material' && !item.extensionApplied
 const APPLICATION_STATUS={FINAL_APPROVED:'final_approved'}
 
+const TIMELINE_STAGE = Object.freeze({
+  submitted: 0,
+  material_submitted: 1,
+  advisor_confirmed: 1,
+  pending_assignment: 2,
+  pending_review: 3,
+  reviewing: 3,
+  pending_admin_final: 4,
+})
+
 const timeline = computed(() => {
   if (!application.value) return []
   const item = application.value
   const steps = [
-    { key: 'student', title: '学生提交申请', state: 'completed', time: item.submitTime, comment: '' },
-    getTimelineStep('advisor', '指导老师确认', item),
-    getTimelineStep('admin', '管理员受理并分配', item),
-    getTimelineStep('reviewer', '审核老师审核', item),
-    getTimelineStep('final', '管理员最终确认', item),
+    getTimelineStep(0, 'submitted', '学生提交申请', item, item.submitTime),
+    getTimelineStep(1, 'advisor', '指导老师确认', item, item.advisorConfirmTime, item.advisorComment),
+    getTimelineStep(2, 'assignment', '管理员分配审核老师', item, item.adminAcceptTime, item.adminAcceptComment),
+    getTimelineStep(3, 'reviewer', '审核老师审核', item, item.reviewTime, item.reviewComment),
+    getTimelineStep(4, 'final', '管理员最终确认', item, item.finalConfirmTime, item.finalComment),
   ]
   const supplement = item.timelineEvents?.findLast?.((event) => event.type === 'result_supplemented')
     || [...(item.timelineEvents || [])].reverse().find((event) => event.type === 'result_supplemented')
@@ -48,42 +58,20 @@ const result = computed(() => {
   return resultMap[item.status] ?? null
 })
 
-function getTimelineStep(key, title, item) {
-  const definitions = {
-    advisor: {
-      current: APPLICATION_STATUS.PENDING_ADVISOR,
-      rejected: APPLICATION_STATUS.ADVISOR_REJECTED,
-      completed: item.advisorStatus === 'approved',
-      time: item.advisorConfirmTime,
-      comment: item.advisorComment,
-    },
-    admin: {
-      current: APPLICATION_STATUS.PENDING_ADMIN_ACCEPT,
-      completed: item.adminAcceptStatus === 'accepted',
-      time: item.adminAcceptTime,
-      comment: item.adminAcceptComment,
-    },
-    reviewer: {
-      current: APPLICATION_STATUS.PENDING_REVIEWER,
-      rejected: APPLICATION_STATUS.REVIEWER_REJECTED,
-      completed: ['approved', 'modified_approved'].includes(item.reviewStatus),
-      time: item.reviewTime,
-      comment: item.reviewComment,
-    },
-    final: {
-      current: APPLICATION_STATUS.PENDING_ADMIN_FINAL,
-      rejected: APPLICATION_STATUS.FINAL_REJECTED,
-      completed: item.finalStatus === 'approved',
-      time: item.finalConfirmTime,
-      comment: item.finalComment,
-    },
-  }
-  const definition = definitions[key]
-  let state = 'pending'
-  if (item.status === definition.rejected) state = 'rejected'
-  else if (definition.completed) state = 'completed'
-  else if (item.status === definition.current) state = 'current'
-  return { key, title, state, time: definition.time, comment: definition.comment }
+function getTimelineStep(index, key, title, item, time = '', comment = '') {
+  const rejectedStage = {
+    advisor_rejected: 1,
+    supplement_rejected: 1,
+    reviewer_rejected: 3,
+    final_rejected: 4,
+  }[item.status]
+  const currentStage = rejectedStage ?? TIMELINE_STAGE[item.status] ?? 0
+  let state = index < currentStage ? 'completed' : index === currentStage ? 'current' : 'pending'
+
+  if (rejectedStage === index) state = 'rejected'
+  if (item.status === APPLICATION_STATUS.FINAL_APPROVED) state = 'completed'
+
+  return { key, title, state, time, comment }
 }
 
 function preview() {

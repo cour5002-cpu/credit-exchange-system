@@ -4,7 +4,7 @@ import { useRoute,useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
 import { approveAppealByAdmin,getAdminAppeal,rejectAppealByAdmin } from '../api/appealApi.js'
 import { adaptAppealEnvelope } from '../adapters/appealAdapter.js'
-const route=useRoute();const router=useRouter();const comment=ref('');const appeal=ref(null);const application=computed(()=>appeal.value?.target);const pending=computed(()=>appeal.value?.status==='pending_admin_review')
+const route=useRoute();const router=useRouter();const comment=ref('');const appeal=ref(null);const application=computed(()=>appeal.value?.originalApplication??appeal.value?.target);const pending=computed(()=>appeal.value?.status==='pending_admin_review')
 onMounted(async()=>{try{appeal.value=adaptAppealEnvelope(await getAdminAppeal(Number(route.params.id)))}catch(error){window.alert(error?.message||'申诉详情加载失败')}})
 function back(){router.push('/admin/appeals-complaints')}function preview(){window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。')}function download(){window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。')}
 async function accept(){if(!pending.value)return window.alert('该申诉已处理。');if(!comment.value.trim())return window.alert('受理申诉时必须填写处理意见。');try{await approveAppealByAdmin(appeal.value.id,{admin_advice:comment.value.trim()});window.alert('申诉已受理，等待指导老师再次确认。');back()}catch(error){window.alert(error?.message||'申诉受理失败')}}

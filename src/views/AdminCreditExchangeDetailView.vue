@@ -11,7 +11,7 @@ const router = useRouter()
 const opinion = ref('')
 const item = ref(null)
 onMounted(async()=>{try{item.value=adaptExchangeEnvelope(await getAdminExchange(Number(route.params.id)))}catch(error){window.alert(getApiErrorMessage(error,'兑换最终确认详情加载失败'))}})
-const canHandle = computed(() => item.value?.status === 'advisor_approved')
+const canHandle = computed(() => item.value?.actions?.can_admin_final === true || item.value?.status === 'pending_admin_final')
 const allocatedHoursTotal = computed(() => (item.value?.memberDistributions || []).reduce((sum, member) => sum + Number(member.allocatedHours || 0), 0))
 const allocatedCreditsTotal = computed(() => (item.value?.memberDistributions || []).reduce((sum, member) => sum + Number(member.allocatedCredits || 0), 0))
 

@@ -12,7 +12,7 @@ import { currentUser as authCurrentUser } from '../stores/authStore.js'
 const router = useRouter()
 const currentUser = computed(() => authCurrentUser.value?.student ?? {})
 const currentStudentId = computed(() => Number(authCurrentUser.value?.student?.id))
-const hoursPerCredit = ref(null)
+const HOURS_PER_CREDIT = 10
 const form = reactive({ applicationId: '', hourAwardRecordId: '', applyReason: '', attachment: null, attachmentIds: [], memberDistributions: [] })
 const feedback = ref({ type: '', message: '' })
 const attachmentInput = ref(null)
@@ -35,43 +35,81 @@ const finalHours = computed(() => {
   if (!selectedApplication.value) return 0
   return Number(selectedApplication.value.finalHours) || 0
 })
-const estimatedCredits = computed(() =>
-  finalHours.value > 0 && hoursPerCredit.value > 0 ? (finalHours.value / hoursPerCredit.value).toFixed(2) : '0.00',
-)
-const allocatedHoursTotal = computed(() => form.memberDistributions.reduce((sum, member) => sum + Number(member.allocatedHours || 0), 0))
-const remainingHours = computed(() => finalHours.value - allocatedHoursTotal.value)
-const allocatedCreditsTotal = computed(() => form.memberDistributions.reduce((sum, member) => sum + Number(member.allocatedCredits || 0), 0))
+const estimatedCredits = computed(() => (finalHours.value / HOURS_PER_CREDIT).toFixed(2))
+function getMemberAllocatedHours(member) {
+  const value = [member.allocatedHours, member.allocated_hours, member.hours, member.memberHours]
+    .find((candidate) => candidate !== '' && candidate != null)
+  return value ?? ''
+}
 
+function getRealTeamMembers(members = []) {
+  const realMembers = members.filter((member) => {
+    const studentDbId = Number(member.studentDbId ?? member.student?.id ?? member.student_id ?? member.id)
+    return Number.isInteger(studentDbId) && studentDbId > 0
+  })
+
+  return [...new Map(realMembers.map((member) => {
+    const studentDbId = Number(member.studentDbId ?? member.student?.id ?? member.student_id ?? member.id)
+    return [studentDbId, member]
+  })).values()]
+}
+
+function normalizeMemberAllocations() {
+  form.memberDistributions.forEach((member) => {
+    member.allocatedHours = getMemberAllocatedHours(member)
+    const hours = member.allocatedHours === '' ? Number.NaN : Number(member.allocatedHours)
+    member.allocatedCredits = Number.isFinite(hours) ? Number((hours / HOURS_PER_CREDIT).toFixed(2)) : 0
+  })
+}
+
+const allocatedHoursTotal = computed(() => form.memberDistributions.reduce((sum, member) => sum + Number(getMemberAllocatedHours(member) || 0), 0))
+const remainingHours = computed(() => finalHours.value - allocatedHoursTotal.value)
+const allocatedCreditsTotal = computed(() => allocatedHoursTotal.value / HOURS_PER_CREDIT)
+const availableCredits = computed(() => Number(estimatedCredits.value))
+const remainingCredits = computed(() => availableCredits.value - allocatedCreditsTotal.value)
 watch(selectedApplication, async (application) => {
   form.hourAwardRecordId=application?.id??''
-  if(!application){form.memberDistributions=[];hoursPerCredit.value=null;return}
-  try{const data=await getExchangeFormData({hour_award_record_id:application.id});hoursPerCredit.value=Number(data?.conversion_rule?.hours_per_credit)||null;const members=data?.members??[];form.memberDistributions=members.map((member) => ({
-    studentDbId: member.student?.id ?? member.id,
+  if(!application){form.memberDistributions=[];return}
+  try{const data=await getExchangeFormData({hour_award_record_id:application.id});const members=getRealTeamMembers(data?.team_members??data?.members??application.team_members??application.members??[]);form.memberDistributions=members.map((member) => ({
+    studentDbId: member.student?.id ?? member.student_id ?? member.id,
     studentName: member.student?.name ?? member.name,
     studentId: member.student?.student_no ?? member.student_no,
-    role: member.is_leader ? 'captain' : 'member',
-    allocatedHours: 0,
+    role: member.member_role ?? member.role ?? (member.is_leader ? 'captain' : 'member'),
+    allocatedHours: '',
     allocatedCredits: 0,
     remark: '',
-  }))}catch(error){form.memberDistributions=[];hoursPerCredit.value=null;window.alert(getApiErrorMessage(error,'兑换表单数据加载失败'))}
+  }))}catch(error){form.memberDistributions=[];window.alert(getApiErrorMessage(error,'兑换表单数据加载失败'))}
 })
 
 function updateMemberCredits(member) {
   const hours = Number(member.allocatedHours)
-  member.allocatedCredits = Number.isFinite(hours) && hours >= 0 && hoursPerCredit.value > 0 ? Number((hours / hoursPerCredit.value).toFixed(2)) : 0
+  member.allocatedCredits = Number.isFinite(hours) ? Number((hours / HOURS_PER_CREDIT).toFixed(2)) : 0
 }
 
-function validateForm() {
+const totalsEqual = (left, right) => Math.abs(Number(left) - Number(right)) < 0.005
+
+function validateForm(members, allocations) {
+  console.log(
+    '[validate raw allocations]',
+    JSON.stringify(allocations),
+    allocations.map((item) => ({
+      value: item.allocated_hours,
+      type: typeof item.allocated_hours,
+      isFinite: Number.isFinite(item.allocated_hours),
+    })),
+  )
+  console.log('[validate members]', members)
+  console.log('[validate allocations]', allocations)
   if (!form.applicationId) return '请选择已最终确认通过的项目'
   if (!selectedApplication.value || selectedApplication.value.status !== 'final_approved') {
     return '只有最终确认通过的项目才能申请学分兑换'
   }
   if (!isCurrentStudentLeader.value) return '只有项目队长可以提交学分兑换申请。'
   if (finalHours.value <= 0) return '该项目暂无可兑换课时'
-  if (!form.memberDistributions.length) return '请填写成员课时 / 学分分配表'
-  if (form.memberDistributions.some((member) => !Number.isFinite(Number(member.allocatedHours)) || Number(member.allocatedHours) < 0)) return '每个成员分配课时不能小于 0'
-  if (allocatedHoursTotal.value < finalHours.value) return '成员分配课时总和不足，请继续分配。'
-  if (allocatedHoursTotal.value > finalHours.value) return '成员分配课时总和超过项目最终认定课时。'
+  if (!allocations.length) return '请填写成员课时 / 学分分配表'
+  if (allocations.some((allocation) => allocation.allocated_hours == null || !Number.isFinite(allocation.allocated_hours))) return '正式提交时每名成员的课时都必须填写'
+  const submittedHoursTotal = allocations.reduce((sum, allocation) => sum + allocation.allocated_hours, 0)
+  if (!totalsEqual(submittedHoursTotal, finalHours.value)) return '所有成员分配课时总和必须等于可兑换总课时'
   if (!form.attachment) return '请上传认定证明'
   return ''
 }
@@ -94,13 +132,28 @@ async function saveDraft() {
 }
 
 async function submitExchange() {
-  const error = validateForm()
+  console.log('[submit start]')
+  form.memberDistributions = getRealTeamMembers(form.memberDistributions)
+  normalizeMemberAllocations()
+  const members = form.memberDistributions
+  const payload = toExchangePayload(form)
+  const allocations = payload.allocations
+  console.log('[real members length]', members.length)
+  console.log('[real members]', members)
+  console.log('[real allocations length]', allocations.length)
+  console.log('[real allocations]', allocations)
+  const error = validateForm(members, allocations)
   if (error) {
+    console.log('[submit blocked]', error)
     feedback.value = { type: 'error', message: error }
     window.alert(error)
     return
   }
-  try{await submitExchangeApi(toExchangePayload(form));feedback.value={type:'success',message:'学分兑换申请提交成功，已进入指导老师确认。'};window.alert(feedback.value.message);router.push('/student/credit-exchange-records')}catch(error){window.alert(getApiErrorMessage(error,'学分兑换申请提交失败'))}
+  console.log(
+    '[final exchange payload]',
+    JSON.stringify(payload, null, 2),
+  )
+  try{await submitExchangeApi(payload);feedback.value={type:'success',message:'学分兑换申请提交成功，已进入指导老师确认。'};window.alert(feedback.value.message);router.push('/student/credit-exchange-records')}catch(error){window.alert(getApiErrorMessage(error,'学分兑换申请提交失败'))}
 }
 
 function goBack() {
@@ -119,7 +172,7 @@ function goBack() {
       <section class="summary-grid" aria-label="兑换概览">
         <article><span>可兑换项目</span><strong>{{ eligibleApplications.length }}</strong><small>个最终通过项目</small></article>
         <article><span>项目最终认定课时</span><strong>{{ finalHours }}</strong><small>小时，由系统自动读取</small></article>
-        <article><span>本次预计兑换学分</span><strong>{{ estimatedCredits }}</strong><small>每 {{ hoursPerCredit }} 课时兑换 1 学分</small></article>
+        <article><span>本次预计兑换学分</span><strong>{{ estimatedCredits }}</strong><small>1 课时兑换 0.1 学分</small></article>
       </section>
 
       <form class="exchange-form" novalidate @submit.prevent="submitExchange">
@@ -159,16 +212,16 @@ function goBack() {
         </section>
 
         <section v-if="selectedApplication" class="form-card">
-          <div class="section-heading"><div><h2>成员课时 / 学分分配</h2><p>队长分配课时，系统按每 8 课时兑换 1 学分实时换算。</p></div></div>
-          <div class="distribution-table"><table><thead><tr><th>成员姓名</th><th>学号</th><th>成员角色</th><th>分配课时</th><th>自动换算学分</th><th>备注</th></tr></thead><tbody><tr v-for="member in form.memberDistributions" :key="member.studentId"><td>{{ member.studentName }}</td><td>{{ member.studentId }}</td><td>{{ member.role === 'captain' ? '队长' : '成员' }}</td><td><input v-model.number="member.allocatedHours" min="0" step="0.5" type="number" @input="updateMemberCredits(member)" /></td><td>{{ Number(member.allocatedCredits || 0).toFixed(2) }}</td><td><input v-model="member.remark" placeholder="选填" /></td></tr></tbody></table></div>
-          <div class="distribution-summary"><article><span>项目最终认定课时</span><strong>{{ finalHours }}</strong></article><article><span>已分配课时总和</span><strong>{{ allocatedHoursTotal }}</strong></article><article><span>剩余未分配课时</span><strong :class="{ danger: remainingHours < 0 }">{{ remainingHours }}</strong></article><article><span>项目预计总学分</span><strong>{{ estimatedCredits }}</strong></article><article><span>已分配学分总和</span><strong>{{ allocatedCreditsTotal.toFixed(2) }}</strong></article></div>
+          <div class="section-heading"><div><h2>成员课时 / 学分分配</h2><p>队长填写成员课时，学分按 1 课时 = 0.1 学分自动计算。</p></div></div>
+          <div class="distribution-table"><table><thead><tr><th>成员姓名</th><th>学号</th><th>成员角色</th><th>分配课时</th><th>分配学分</th><th>备注</th></tr></thead><tbody><tr v-for="member in form.memberDistributions" :key="member.studentId"><td>{{ member.studentName }}</td><td>{{ member.studentId }}</td><td>{{ ['captain','leader'].includes(member.role) ? '队长' : '成员' }}</td><td><input v-model.number="member.allocatedHours" min="0" step="0.5" type="number" @input="updateMemberCredits(member)" /></td><td><input :value="Number(member.allocatedCredits || 0).toFixed(2)" type="number" readonly disabled /></td><td><input v-model="member.remark" placeholder="选填" /></td></tr><tr v-if="!form.memberDistributions.length"><td colspan="6" class="empty-state">未加载到团队成员，请检查 team_members 接口返回。</td></tr></tbody></table></div>
+          <div class="distribution-summary"><article><span>项目最终认定课时</span><strong>{{ finalHours }}</strong></article><article><span>已分配课时总和</span><strong>{{ allocatedHoursTotal }}</strong></article><article><span>剩余未分配课时</span><strong :class="{ danger: !totalsEqual(remainingHours, 0) }">{{ remainingHours }}</strong></article><article><span>项目预计总学分</span><strong>{{ estimatedCredits }}</strong></article><article><span>已分配学分总和</span><strong>{{ allocatedCreditsTotal.toFixed(2) }}</strong></article><article><span>剩余未分配学分</span><strong :class="{ danger: !totalsEqual(remainingCredits, 0) }">{{ remainingCredits.toFixed(2) }}</strong></article></div>
         </section>
 
         <section class="form-card">
           <div class="section-heading"><div><h2>自动兑换信息</h2><p>兑换课时和预计学分由系统自动计算。</p></div></div>
           <div class="form-grid">
             <div class="form-field"><label for="exchange-hours">兑换课时数</label><input id="exchange-hours" :value="finalHours" type="number" readonly /><small>兑换课时数由已最终确认的项目课时自动生成，学生不可手动修改。</small></div>
-            <div class="form-field"><label for="estimated-credits">预计兑换学分</label><input id="estimated-credits" :value="estimatedCredits" readonly /><small>兑换规则：每 {{ hoursPerCredit }} 课时兑换 1 学分，保留 2 位小数。</small></div>
+            <div class="form-field"><label for="estimated-credits">预计兑换学分</label><input id="estimated-credits" :value="estimatedCredits" readonly /><small>兑换规则：1 课时兑换 0.1 学分，保留 2 位小数。</small></div>
             <div class="form-field form-field--wide"><label for="apply-reason">申请说明</label><textarea id="apply-reason" v-model="form.applyReason" rows="5" placeholder="可填写兑换用途或需要说明的情况。"></textarea></div>
           </div>
         </section>

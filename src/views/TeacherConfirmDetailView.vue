@@ -108,7 +108,8 @@ function downloadAttachment(file) {
 
         <section class="detail-card">
           <h2>团队成员</h2>
-          <div class="table-wrapper"><table><thead><tr><th>姓名</th><th>学号</th><th>学院</th><th>专业</th><th>角色</th></tr></thead><tbody><tr v-for="member in confirmation.members" :key="member.id"><td>{{ member.name }}</td><td>{{ member.studentId }}</td><td>{{ member.college || '--' }}</td><td>{{ member.major || '--' }}</td><td>{{ member.role === 'captain' ? '队长' : '成员' }}</td></tr></tbody></table></div>
+          <dl class="info-grid team-summary"><div><dt>团队名称</dt><dd>{{ confirmation.team?.name || confirmation.teamName || '--' }}</dd></div><div><dt>队长</dt><dd>{{ confirmation.team?.leader?.name || confirmation.leader?.name || '--' }}</dd></div></dl>
+          <div class="table-wrapper"><table><thead><tr><th>姓名</th><th>学号</th><th>学院</th><th>专业</th><th>角色</th></tr></thead><tbody><tr v-for="member in confirmation.members" :key="member.id"><td>{{ member.name }}</td><td>{{ member.studentId }}</td><td>{{ member.college || '--' }}</td><td>{{ member.major || '--' }}</td><td>{{ member.role === 'captain' ? '队长' : '成员' }}</td></tr><tr v-if="!confirmation.members.length"><td colspan="5" class="attachment-empty">详情接口未返回团队成员</td></tr></tbody></table></div>
         </section>
 
         <section class="detail-card">

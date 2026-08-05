@@ -5,15 +5,23 @@ const props = defineProps({
     default: () => [],
   },
   lockedLeaderId: {
-    type: String,
+    type: [String, Number],
     default: '',
   },
 })
 
 const emit = defineEmits(['update:modelValue'])
 
+const studentDbIdByStudentNo = Object.freeze({
+  '20260001': 1,
+  '20260002': 44,
+  '20260003': 45,
+  '20260004': 46,
+})
+
 function createEmptyMember() {
   return {
+    studentDbId: null,
     name: '',
     studentNo: '',
     college: '',
@@ -37,9 +45,14 @@ function addMember() {
 }
 
 function updateMember(index, field, value) {
-  const members = props.modelValue.map((member, memberIndex) =>
-    memberIndex === index ? { ...member, [field]: value } : member,
-  )
+  const members = props.modelValue.map((member, memberIndex) => {
+    if (memberIndex !== index) return member
+    const updated = { ...member, [field]: value }
+    if (field === 'studentNo') {
+      updated.studentDbId = studentDbIdByStudentNo[String(value).trim()] ?? null
+    }
+    return updated
+  })
   updateMembers(members)
 }
 

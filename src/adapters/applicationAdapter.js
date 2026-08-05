@@ -7,6 +7,21 @@ export function adaptApplication(item) {
   if (!item) return null
   const taskResultSubmission = item.task_result_submission ?? null
   const sourceTask = item.source_task ?? taskResultSubmission?.task ?? null
+  const team = item.team ?? taskResultSubmission?.team ?? sourceTask?.team ?? null
+  const rawMembers = item.members ?? team?.members ?? taskResultSubmission?.members ?? sourceTask?.members ?? []
+  const members = rawMembers.map((relation) => {
+    const rawStudent = relation.student ?? relation
+    const student = adaptStudent({ ...rawStudent, student_no: rawStudent.student_no ?? rawStudent.studentNo })
+    const isLeader = relation.is_leader ?? ['leader', 'captain'].includes(relation.role ?? relation.member_role)
+    return student && {
+      ...student,
+      isLeader: Boolean(isLeader),
+      role: isLeader ? 'captain' : 'member',
+      canView: relation.can_view,
+      joinedAt: relation.joined_at,
+    }
+  }).filter(Boolean)
+  const leader = adaptStudent(team?.leader ?? item.leader ?? rawMembers.find((relation) => relation.is_leader)?.student)
   const attachments = [...new Map([
     ...(item.attachments ?? []),
     ...(taskResultSubmission?.attachments ?? []),
@@ -33,6 +48,16 @@ export function adaptApplication(item) {
     category: item.task_type_name,
     taskId: item.source_task_id ?? sourceTask?.id ?? taskResultSubmission?.task_id,
     taskTitle: item.task_title ?? sourceTask?.title ?? taskResultSubmission?.task_title,
+    team: team ? {
+      id: team.id,
+      name: team.name ?? team.team_name ?? sourceTask?.team_name,
+      leader,
+      members,
+    } : (members.length ? { id: item.team_id, name: item.team_name, leader, members } : null),
+    teamId: item.team_id ?? team?.id ?? taskResultSubmission?.team_id ?? sourceTask?.team_id,
+    teamName: item.team_name ?? team?.name ?? team?.team_name ?? sourceTask?.team_name,
+    leader,
+    captainId: leader?.id,
     applicant: adaptStudent(item.applicant),
     studentId: item.applicant?.student_no,
     studentName: item.applicant_name ?? item.applicant?.name,
@@ -54,7 +79,7 @@ export function adaptApplication(item) {
     resultMaterials: attachments.map(adaptAttachment),
     proofMaterials: [],
     supplementTime: item.material_submitted_at ?? item.updated_at,
-    members: (item.members ?? []).map((member) => ({ ...adaptStudent(member.student), isLeader: member.is_leader, canView: member.can_view, joinedAt: member.joined_at })),
+    members,
     advisors: (item.advisors ?? []).map((relation) => ({ teacher: adaptTeacher(relation.teacher), role: relation.advisor_role, canOperate: relation.can_operate, reviewedAt: relation.reviewed_at })),
     attachments: attachments.map(adaptAttachment),
     reviews: item.reviews ?? [],
@@ -97,6 +122,9 @@ export function adaptApplicationEnvelope(payload) {
     attachments,
     task_result_submission: taskResultSubmission,
     source_task: payload.source_task ?? payload.task ?? payload.application.source_task,
+    team: payload.team ?? payload.application.team,
+    team_id: payload.team_id ?? payload.application.team_id,
+    team_name: payload.team_name ?? payload.application.team_name,
     reviews: payload.reviews ?? payload.application.reviews,
     assignments: payload.assignments ?? payload.application.assignments,
     reviewer_result: payload.reviewer_result ?? payload.application.reviewer_result,
@@ -160,14 +188,22 @@ export const adaptExtensionList = (payload) => ({
   items: (Array.isArray(payload) ? payload : payload?.items ?? []).map(adaptExtensionRequest),
 })
 
-export const toApplicationPayload = (form) => ({
-  title: form.title,
-  application_type: applicationTypeMap[form.applyType] ?? form.applicationType ?? form.applyType,
-  task_type_id: form.taskTypeId,
-  requested_hours: Number(form.requestedHours),
-  description: form.description || null,
-  advisor_teacher_id: Number(form.advisorTeacherId ?? form.mainAdvisor?.id ?? form.mainAdvisor),
-  view_teacher_ids: (form.viewTeacherIds ?? form.viewAdvisors ?? []).map((teacher) => Number(teacher.id ?? teacher)),
-  attachment_ids: form.attachmentIds ?? [],
-  ...(form.expectedResultDate ? { material_due_at: form.expectedResultDate } : {}),
-})
+export function toApplicationPayload(form) {
+  const members = form.members ?? []
+  const memberStudentIds = members.map((member) => Number(member.studentDbId))
+  const leader = members.find((member) => member.isLeader)
+  return {
+    title: form.title,
+    application_type: applicationTypeMap[form.applyType] ?? form.applicationType ?? form.applyType,
+    task_type_id: form.taskTypeId,
+    requested_hours: Number(form.requestedHours),
+    description: form.description || null,
+    advisor_teacher_id: Number(form.advisorTeacherId ?? form.mainAdvisor?.id ?? form.mainAdvisor),
+    view_teacher_ids: (form.viewTeacherIds ?? form.viewAdvisors ?? []).map((teacher) => Number(teacher.id ?? teacher)),
+    attachment_ids: form.attachmentIds ?? [],
+    member_count: members.length,
+    member_student_ids: memberStudentIds,
+    leader_student_id: Number(leader?.studentDbId),
+    ...(form.expectedResultDate ? { material_due_at: form.expectedResultDate } : {}),
+  }
+}

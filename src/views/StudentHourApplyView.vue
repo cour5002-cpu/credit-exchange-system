@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AttachmentNotice from '../components/AttachmentNotice.vue'
 import MemberInputTable from '../components/MemberInputTable.vue'
@@ -12,17 +12,18 @@ import { getStudentApplication, submitApplication as submitApplicationApi } from
 import { uploadAttachment } from '../api/fileApi.js'
 import { toApplicationPayload } from '../adapters/applicationAdapter.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
+import { currentUser as authCurrentUser } from '../stores/authStore.js'
 
 const router = useRouter()
 
-// Mock 当前登录学生信息，接入登录接口后替换此处即可。
-const currentUser = {
-  id: 'stu001',
-  name: '张三',
-  studentId: '2024001',
-  college: '计算机学院',
-  major: '数据科学与大数据技术',
-}
+const getLoggedInStudent = () => ({
+  id: authCurrentUser.value?.student?.id,
+  name: authCurrentUser.value?.student?.name ?? '',
+  studentId: authCurrentUser.value?.student?.studentId ?? authCurrentUser.value?.student?.studentNo ?? '',
+  college: authCurrentUser.value?.student?.college ?? '',
+  major: authCurrentUser.value?.student?.major ?? '',
+})
+const currentUser = reactive(getLoggedInStudent())
 
 const mockTeachers = [
   { id: 'T001', name: '张明', department: '计算机学院' },
@@ -38,6 +39,7 @@ const dependenciesLoaded = ref(false)
 function createCurrentUserMember() {
   return {
     id: currentUser.id,
+    studentDbId: Number(currentUser.id) || null,
     name: currentUser.name,
     studentNo: currentUser.studentId,
     college: currentUser.college,
@@ -61,6 +63,14 @@ const form = reactive({
   attachmentIds: [],
   attachments: [],
 })
+
+watch(() => authCurrentUser.value?.student, () => {
+  const previousLeaderId = currentUser.id
+  Object.assign(currentUser, getLoggedInStudent())
+  const leaderIndex = form.members.findIndex((member) => member.isLeader || member.id === previousLeaderId)
+  if (leaderIndex >= 0) form.members.splice(leaderIndex, 1, createCurrentUserMember())
+  else if (form.source === 'student') form.members.unshift(createCurrentUserMember())
+}, { immediate: true })
 
 const feedback = ref({ type: '', message: '' })
 const observerPanelExpanded = ref(false)
@@ -169,6 +179,9 @@ function validateForm() {
   if (form.source === 'student') {
     if (!form.members.length) return '请至少填写 1 名团队成员。'
     if (!isSelfApplicationLeader.value) return '学生自主申请必须由当前登录学生作为队长提交。'
+    if (form.members.some((member) => !Number.isInteger(Number(member.studentDbId)) || Number(member.studentDbId) <= 0)) {
+      return '参与成员必须是系统内有效学生'
+    }
   }
   return ''
 }
@@ -228,13 +241,14 @@ async function submitApplication() {
       return window.alert('当前任务类型、指导老师或附件不是后端真实数据，请刷新后重试')
     }
     try {
-      const submitted = await submitApplicationApi(toApplicationPayload({
+      const payload = toApplicationPayload({
         ...form,
         applyType: form.applicationType,
         taskTypeId: form.taskType,
         advisorTeacherId: form.primaryTeacherId,
         viewTeacherIds: form.observerTeacherIds,
-      }))
+      })
+      const submitted = await submitApplicationApi(payload)
       const saved = submitted?.application ?? submitted
       const applicationId = Number(saved?.id)
       window.alert(`课时申请提交成功\nid: ${saved?.id ?? '--'}\napplication_no: ${saved?.application_no ?? '--'}\nstatus: ${saved?.status ?? '--'}`)
