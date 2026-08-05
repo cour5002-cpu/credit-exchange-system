@@ -1,8 +1,7 @@
-import os
 from datetime import datetime
 from decimal import Decimal
 
-from flask import current_app, request, send_file
+from flask import request
 from flask_login import current_user, login_required
 
 from app.core.identity import current_teacher
@@ -21,8 +20,10 @@ from app.models.task_result_submission import TaskResultSubmission
 from app.modules.api.blueprint import api_bp
 from app.modules.api.serializers import (
     attachment_summary as _attachment_summary,
+    conversion_rule_summary as _conversion_rule_summary,
     operation_record_summary as _operation_record_summary,
     owner_attachments as _owner_attachments,
+    rule_file_summary as _rule_file_summary,
     student_summary as _student_summary,
     teacher_summary as _teacher_summary,
 )
@@ -62,23 +63,15 @@ from app.services.week4_credit_exchange_service import (
     admin_final_reject_credit_exchange,
     advisor_approve_credit_exchange,
     advisor_reject_credit_exchange,
-    create_conversion_rule,
-    create_rule_file,
-    current_conversion_rule,
     get_admin_credit_exchange,
     get_advisor_credit_exchange,
     get_exchange_form_data,
-    get_rule_file,
     get_student_credit_exchange,
     list_admin_pending_final_credit_exchanges,
     list_advisor_pending_credit_exchanges,
     list_available_hour_awards,
-    list_conversion_rules,
-    list_rule_files,
     list_student_credit_exchanges,
-    set_conversion_rule_status,
     submit_credit_exchange,
-    update_conversion_rule,
 )
 from app.services.week5_appeal_task_service import (
     admin_approve_appeal,
@@ -125,77 +118,6 @@ from app.services.week5_appeal_task_service import (
 )
 from app.utils.permissions import role_required
 from app.utils.time_utils import business_now, format_api_datetime, parse_api_datetime
-
-
-@api_bp.route("/admin/rule-files", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_create_rule_file():
-    data = request.get_json(silent=True) or {}
-    return _handle_business(lambda: ok(_rule_file_summary(create_rule_file(current_user, data))))
-
-
-@api_bp.route("/rule-files", methods=["GET"])
-@login_required
-def api_rule_files():
-    keyword = (request.args.get("keyword") or "").strip() or None
-    rule_type = (request.args.get("rule_type") or "").strip() or None
-    usage_type = (request.args.get("usage_type") or "").strip() or None
-    return _handle_business(lambda: ok({"items": [_rule_file_summary(item) for item in list_rule_files(keyword, rule_type, usage_type)]}))
-
-
-@api_bp.route("/rule-files/<int:rule_file_id>/download", methods=["GET"])
-@login_required
-def api_download_rule_file(rule_file_id):
-    rule_file = get_rule_file(rule_file_id)
-    attachment = rule_file.attachment
-    path = os.path.join(current_app.root_path, attachment.file_path)
-    return send_file(path, as_attachment=True, download_name=attachment.file_name)
-
-
-@api_bp.route("/admin/credit-conversion-rules", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_create_conversion_rule():
-    data = request.get_json(silent=True) or {}
-    return _handle_business(lambda: ok({"rule": _conversion_rule_summary(create_conversion_rule(current_user, data))}))
-
-
-@api_bp.route("/admin/credit-conversion-rules", methods=["GET"])
-@login_required
-@role_required("admin")
-def admin_conversion_rules():
-    status = (request.args.get("status") or "").strip() or None
-    keyword = (request.args.get("keyword") or "").strip() or None
-    return _handle_business(lambda: ok({"items": [_conversion_rule_summary(item) for item in list_conversion_rules(status, keyword)]}))
-
-
-@api_bp.route("/credit-conversion-rules/current", methods=["GET"])
-@login_required
-def api_current_conversion_rule():
-    return _handle_business(lambda: ok({"rule": _conversion_rule_summary(current_conversion_rule())}))
-
-
-@api_bp.route("/admin/credit-conversion-rules/<int:rule_id>", methods=["PATCH"])
-@login_required
-@role_required("admin")
-def admin_update_conversion_rule(rule_id):
-    data = request.get_json(silent=True) or {}
-    return _handle_business(lambda: ok({"rule": _conversion_rule_summary(update_conversion_rule(current_user, rule_id, data))}))
-
-
-@api_bp.route("/admin/credit-conversion-rules/<int:rule_id>/enable", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_enable_conversion_rule(rule_id):
-    return _handle_business(lambda: ok({"rule": _conversion_rule_summary(set_conversion_rule_status(current_user, rule_id, "active"))}))
-
-
-@api_bp.route("/admin/credit-conversion-rules/<int:rule_id>/disable", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_disable_conversion_rule(rule_id):
-    return _handle_business(lambda: ok({"rule": _conversion_rule_summary(set_conversion_rule_status(current_user, rule_id, "inactive"))}))
 
 
 @api_bp.route("/student/hour-applications", methods=["POST"])
@@ -1196,44 +1118,6 @@ def _task_created_payload(task):
 
 def _task_registration_created_payload(registration):
     return {"registration_id": registration.id, "status": registration.status}
-
-
-def _rule_file_summary(rule_file):
-    if not rule_file:
-        return None
-    return {
-        "id": rule_file.id,
-        "title": rule_file.title,
-        "description": rule_file.description,
-        "rule_type": rule_file.rule_type,
-        "usage_type": rule_file.usage_type,
-        "attachment_id": rule_file.attachment_id,
-        "attachment": _attachment_summary(rule_file.attachment) if rule_file.attachment else None,
-        "version_no": rule_file.version_no,
-        "status": rule_file.status,
-        "created_at": _iso(rule_file.created_at),
-        "updated_at": _iso(rule_file.updated_at),
-    }
-
-
-def _conversion_rule_summary(rule):
-    if not rule:
-        return None
-    return {
-        "id": rule.id,
-        "rule_id": rule.id,
-        "rule_name": rule.rule_name,
-        "hours_per_credit": _number(rule.hours_per_credit),
-        "max_single_exchange_hours": _number(rule.max_single_exchange_hours),
-        "rounding_mode": rule.rounding_mode,
-        "effective_at": _iso(rule.effective_at),
-        "expires_at": _iso(rule.expires_at),
-        "rule_file_id": rule.rule_file_id,
-        "rule_file": _rule_file_summary(rule.rule_file) if rule.rule_file else None,
-        "status": rule.status,
-        "created_at": _iso(rule.created_at),
-        "updated_at": _iso(rule.updated_at),
-    }
 
 
 def _hour_award_summary(award):

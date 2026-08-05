@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from app.models.attachment import Attachment
 from app.utils.time_utils import format_api_datetime
 
@@ -54,6 +56,44 @@ def owner_attachments(owner_type, owner_id):
     ]
 
 
+def rule_file_summary(rule_file):
+    if not rule_file:
+        return None
+    return {
+        "id": rule_file.id,
+        "title": rule_file.title,
+        "description": rule_file.description,
+        "rule_type": rule_file.rule_type,
+        "usage_type": rule_file.usage_type,
+        "attachment_id": rule_file.attachment_id,
+        "attachment": attachment_summary(rule_file.attachment) if rule_file.attachment else None,
+        "version_no": rule_file.version_no,
+        "status": rule_file.status,
+        "created_at": format_api_datetime(rule_file.created_at),
+        "updated_at": format_api_datetime(rule_file.updated_at),
+    }
+
+
+def conversion_rule_summary(rule):
+    if not rule:
+        return None
+    return {
+        "id": rule.id,
+        "rule_id": rule.id,
+        "rule_name": rule.rule_name,
+        "hours_per_credit": _number(rule.hours_per_credit),
+        "max_single_exchange_hours": _number(rule.max_single_exchange_hours),
+        "rounding_mode": rule.rounding_mode,
+        "effective_at": format_api_datetime(rule.effective_at),
+        "expires_at": format_api_datetime(rule.expires_at),
+        "rule_file_id": rule.rule_file_id,
+        "rule_file": rule_file_summary(rule.rule_file) if rule.rule_file else None,
+        "status": rule.status,
+        "created_at": format_api_datetime(rule.created_at),
+        "updated_at": format_api_datetime(rule.updated_at),
+    }
+
+
 def operation_record_summary(record):
     return {
         "id": record.id,
@@ -64,3 +104,11 @@ def operation_record_summary(record):
         "detail": record.detail,
         "created_at": format_api_datetime(record.created_at),
     }
+
+
+def _number(value):
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return float(value)
+    return float(value)
