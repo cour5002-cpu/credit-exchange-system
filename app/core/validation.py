@@ -14,3 +14,11 @@ def parse_pagination_args(page=1, page_size=20):
     if page_size < 1 or page_size > 100:
         raise BusinessError("page_size 必须在 1 到 100 之间")
     return page, page_size
+
+
+def parse_bool_query(value):
+    """Parse the existing optional boolean query convention."""
+
+    if value is None or value == "":
+        return None
+    return value.lower() in {"1", "true", "yes", "on"}

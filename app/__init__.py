@@ -36,7 +36,7 @@ from app.models import (
 )
 from app.modules.admin.routes import admin_bp
 from app.modules.advisor.routes import advisor_bp
-from app.modules.api.routes import api_bp
+from app.modules.api import api_bp
 from app.modules.auth.routes import auth_bp
 from app.modules.credit_exchange.routes import credit_exchange_bp
 from app.modules.main.routes import main_bp

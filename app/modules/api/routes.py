@@ -5,14 +5,14 @@ import uuid
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from flask import Blueprint, Response, current_app, request, send_file
-from flask_login import current_user, login_required, login_user, logout_user
+from flask import Response, current_app, request, send_file
+from flask_login import current_user, login_required
 from openpyxl import Workbook
 from sqlalchemy.exc import IntegrityError
 
 from app.core.identity import current_teacher
 from app.core.responses import fail, handle_business as _handle_business, ok
-from app.core.validation import parse_pagination_args
+from app.core.validation import parse_bool_query, parse_pagination_args
 from app.extensions import db
 from app.models.attachment import Attachment
 from app.models.appeal import Appeal
@@ -30,11 +30,14 @@ from app.models.task_member import TaskMember
 from app.models.task_result_submission import TaskResultSubmission
 from app.models.task_type import TaskType
 from app.models.teacher import Teacher
-from app.services.auth_service import authenticate_user
+from app.modules.api.blueprint import api_bp
+from app.modules.api.serializers import (
+    student_summary as _student_summary,
+    teacher_summary as _teacher_summary,
+)
 from app.services.import_service import import_admins, import_students, import_teachers
 from app.services.task_type_service import (
     create_task_type,
-    list_task_types,
     set_task_type_status,
     task_type_to_dict,
     update_task_type,
@@ -137,88 +140,7 @@ from app.services.week5_appeal_task_service import (
     submit_task_result,
 )
 from app.utils.permissions import role_required
-from app.utils.time_utils import business_now, format_api_datetime, parse_api_datetime, system_time_payload
-
-
-api_bp = Blueprint("api", __name__, url_prefix="/api/v1")
-
-
-@api_bp.route("/system/time")
-def get_system_time():
-    return ok(system_time_payload())
-
-
-@api_bp.route("/auth/login", methods=["POST"])
-def api_login():
-    data = request.get_json(silent=True) or {}
-    username = (data.get("username") or "").strip()
-    password = data.get("password") or ""
-    remember = bool(data.get("remember"))
-    if not username or not password:
-        return fail("账号和密码不能为空")
-
-    user = authenticate_user(username, password)
-    if not user:
-        return fail("账号或密码错误，或账号已被禁用", code=40101, status=401)
-
-    login_user(user, remember=remember)
-    user.last_login_at = db.func.now()
-    db.session.commit()
-    return ok(_current_user_payload())
-
-
-@api_bp.route("/auth/logout", methods=["POST"])
-@login_required
-def api_logout():
-    logout_user()
-    return ok()
-
-
-@api_bp.route("/me")
-@login_required
-def me():
-    return ok(_current_user_payload())
-
-
-def _current_user_payload():
-    student = Student.query.filter_by(user_id=current_user.id).first()
-    teacher = Teacher.query.filter_by(user_id=current_user.id).first()
-    return {
-        "id": current_user.id,
-        "username": current_user.username,
-        "role": current_user.effective_role,
-        "roles": current_user.roles,
-        "student": _student_summary(student) if student else None,
-        "teacher": _teacher_summary(teacher) if teacher else None,
-    }
-
-
-@api_bp.route("/task-types")
-@login_required
-def get_task_types():
-    enabled = _parse_bool_query(request.args.get("enabled"))
-    return ok({"items": [task_type_to_dict(item) for item in list_task_types(enabled=enabled)]})
-
-
-@api_bp.route("/teachers/advisors")
-@login_required
-def get_advisors():
-    return ok({"items": [_teacher_summary(item) for item in _list_teachers_by_flag("advisor")]})
-
-
-@api_bp.route("/admin/reviewers")
-@login_required
-@role_required("admin")
-def admin_get_reviewers():
-    return ok({"items": [_teacher_summary(item) for item in _list_teachers_by_flag("reviewer")]})
-
-
-@api_bp.route("/admin/task-types", methods=["GET"])
-@login_required
-@role_required("admin")
-def admin_get_task_types():
-    enabled = _parse_bool_query(request.args.get("enabled"))
-    return ok({"items": [task_type_to_dict(item) for item in list_task_types(enabled=enabled)]})
+from app.utils.time_utils import business_now, format_api_datetime, parse_api_datetime
 
 
 @api_bp.route("/admin/task-types", methods=["POST"])
@@ -370,7 +292,7 @@ def get_attachment(attachment_id):
         return fail("附件不存在", code=40401, status=404)
     if not _can_access_attachment(attachment):
         return fail("无权访问该附件", code=40301, status=403)
-    if _parse_bool_query(request.args.get("download")):
+    if parse_bool_query(request.args.get("download")):
         path = os.path.join(current_app.root_path, attachment.file_path)
         return send_file(path, as_attachment=True, download_name=attachment.file_name)
     return ok(_attachment_summary(attachment))
@@ -1745,7 +1667,6 @@ def _appeal_target_summary(appeal):
         return _credit_exchange_summary(target)
     return None
 
-
 def _task_summary(task):
     return {
         "id": task.id,
@@ -2448,38 +2369,6 @@ def _handle_import(import_func):
         return fail(str(exc))
 
 
-def _build_excel_template(headers):
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "template"
-    sheet.append(headers)
-    output = BytesIO()
-    workbook.save(output)
-    return output.getvalue()
-
-
-def _parse_bool_query(value):
-    if value is None or value == "":
-        return None
-    return value.lower() in {"1", "true", "yes", "on"}
-
-
-def _list_teachers_by_flag(flag):
-    query = Teacher.query.filter_by(status="active")
-    keyword = (request.args.get("keyword") or "").strip()
-    major = (request.args.get("major") or "").strip()
-    if keyword:
-        like = f"%{keyword}%"
-        query = query.filter((Teacher.name.like(like)) | (Teacher.teacher_no.like(like)))
-    if major:
-        query = query.filter(Teacher.major_name == major)
-    return [
-        item
-        for item in query.order_by(Teacher.id.asc()).all()
-        if flag in item.role_flag_list
-    ]
-
-
 def _validate_task_type_payload(data, creating):
     if creating and not data.get("type_code"):
         return "任务类别编码不能为空"
@@ -2490,25 +2379,12 @@ def _validate_task_type_payload(data, creating):
     return None
 
 
-def _student_summary(student):
-    return {
-        "id": student.id,
-        "student_no": student.student_no,
-        "name": student.name,
-        "college": student.college,
-        "major": student.major,
-        "class_name": student.class_name,
-        "grade": student.grade,
-    }
+def _build_excel_template(headers):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "template"
+    sheet.append(headers)
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
 
-
-def _teacher_summary(teacher):
-    return {
-        "id": teacher.id,
-        "username": teacher.user.username if teacher.user else None,
-        "teacher_no": teacher.teacher_no,
-        "name": teacher.name,
-        "college": None,
-        "major": teacher.major_name,
-        "role_flags": teacher.role_flag_list,
-    }

@@ -4,7 +4,7 @@ from app import create_app
 from app.commands.seed_data import seed_default_users
 from app.core.errors import BusinessError
 from app.core.responses import fail, handle_business, ok
-from app.core.validation import parse_pagination_args
+from app.core.validation import parse_bool_query, parse_pagination_args
 from app.extensions import db
 from tests.test_support import create_isolated_test_app
 
@@ -69,6 +69,16 @@ class ResponseContractTest(unittest.TestCase):
 
 
 class PaginationContractTest(unittest.TestCase):
+    def test_optional_boolean_query_preserves_existing_convention(self):
+        self.assertIsNone(parse_bool_query(None))
+        self.assertIsNone(parse_bool_query(""))
+        for value in ("1", "true", "TRUE", "yes", "on"):
+            with self.subTest(value=value):
+                self.assertIs(parse_bool_query(value), True)
+        for value in ("0", "false", "no", "off", "unexpected"):
+            with self.subTest(value=value):
+                self.assertIs(parse_bool_query(value), False)
+
     def test_defaults_and_numeric_strings(self):
         self.assertEqual(parse_pagination_args(), (1, 20))
         self.assertEqual(parse_pagination_args("2", "100"), (2, 100))
