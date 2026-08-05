@@ -1,14 +1,10 @@
-from io import BytesIO
-
 import os
 import uuid
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from flask import Response, current_app, request, send_file
+from flask import current_app, request, send_file
 from flask_login import current_user, login_required
-from openpyxl import Workbook
-from sqlalchemy.exc import IntegrityError
 
 from app.core.identity import current_teacher
 from app.core.responses import fail, handle_business as _handle_business, ok
@@ -28,19 +24,11 @@ from app.models.operation_log import OperationLog
 from app.models.student import Student
 from app.models.task_member import TaskMember
 from app.models.task_result_submission import TaskResultSubmission
-from app.models.task_type import TaskType
 from app.models.teacher import Teacher
 from app.modules.api.blueprint import api_bp
 from app.modules.api.serializers import (
     student_summary as _student_summary,
     teacher_summary as _teacher_summary,
-)
-from app.services.import_service import import_admins, import_students, import_teachers
-from app.services.task_type_service import (
-    create_task_type,
-    set_task_type_status,
-    task_type_to_dict,
-    update_task_type,
 )
 from app.services.week3_hour_application_service import (
     advisor_approve,
@@ -141,105 +129,6 @@ from app.services.week5_appeal_task_service import (
 )
 from app.utils.permissions import role_required
 from app.utils.time_utils import business_now, format_api_datetime, parse_api_datetime
-
-
-@api_bp.route("/admin/task-types", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_create_task_type():
-    data = request.get_json(silent=True) or {}
-    error = _validate_task_type_payload(data, creating=True)
-    if error:
-        return fail(error)
-    try:
-        item = create_task_type(data)
-    except IntegrityError:
-        db.session.rollback()
-        return fail("任务类别编码已存在", code=40902, status=409)
-    return ok(task_type_to_dict(item))
-
-
-@api_bp.route("/admin/task-types/<int:task_type_id>", methods=["PUT", "PATCH"])
-@login_required
-@role_required("admin")
-def admin_update_task_type(task_type_id):
-    item = db.get_or_404(TaskType, task_type_id)
-    data = request.get_json(silent=True) or {}
-    error = _validate_task_type_payload(data, creating=False)
-    if error:
-        return fail(error)
-    try:
-        item = update_task_type(item, data)
-    except IntegrityError:
-        db.session.rollback()
-        return fail("任务类别编码已存在", code=40902, status=409)
-    return ok(task_type_to_dict(item))
-
-
-@api_bp.route("/admin/task-types/<int:task_type_id>/enable", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_enable_task_type(task_type_id):
-    item = db.get_or_404(TaskType, task_type_id)
-    return ok(task_type_to_dict(set_task_type_status(item, "enabled")))
-
-
-@api_bp.route("/admin/task-types/<int:task_type_id>/disable", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_disable_task_type(task_type_id):
-    item = db.get_or_404(TaskType, task_type_id)
-    return ok(task_type_to_dict(set_task_type_status(item, "disabled")))
-
-
-@api_bp.route("/admin/import-templates/<target>")
-@login_required
-@role_required("admin")
-def admin_import_template(target):
-    templates = {
-        "students": ["student_no", "name", "username", "password", "phone", "email", "college", "major", "grade", "class_name", "status"],
-        "teachers": ["teacher_no", "name", "username", "password", "phone", "email", "major_name", "course_name", "role_flags", "status"],
-        "admins": ["username", "name", "password", "phone", "email", "status"],
-    }
-    headers = templates.get(target)
-    if not headers:
-        return fail("未知导入模板", code=40401, status=404)
-    output = _build_excel_template(headers)
-    return Response(
-        output,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={target}_template.xlsx"},
-    )
-
-
-@api_bp.route("/admin/imports/students", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_import_students():
-    file_storage = _uploaded_file()
-    if not file_storage:
-        return fail("请上传 Excel 或 CSV 文件")
-    return _handle_import(lambda: import_students(file_storage, _import_mode(), current_user.id, request.remote_addr))
-
-
-@api_bp.route("/admin/imports/teachers", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_import_teachers():
-    file_storage = _uploaded_file()
-    if not file_storage:
-        return fail("请上传 Excel 或 CSV 文件")
-    return _handle_import(lambda: import_teachers(file_storage, _import_mode(), current_user.id, request.remote_addr))
-
-
-@api_bp.route("/admin/imports/admins", methods=["POST"])
-@login_required
-@role_required("admin")
-def admin_import_admins():
-    file_storage = _uploaded_file()
-    if not file_storage:
-        return fail("请上传 Excel 或 CSV 文件")
-    return _handle_import(lambda: import_admins(file_storage, _import_mode(), current_user.id, request.remote_addr))
 
 
 @api_bp.route("/attachments", methods=["POST"])
@@ -361,48 +250,6 @@ def admin_attachment_operation_records(attachment_id):
             "pages": result.pages,
         })
     return _handle_business(payload)
-
-
-@api_bp.route("/admin/exports/hour-applications", methods=["GET"])
-@login_required
-@role_required("admin")
-def admin_export_hour_applications():
-    query = HourApplication.query
-    status = (request.args.get("status") or "").strip()
-    if status:
-        query = query.filter_by(status=status)
-    try:
-        date_from = parse_api_datetime(request.args["date_from"]) if request.args.get("date_from") else None
-        date_to = parse_api_datetime(request.args["date_to"]) if request.args.get("date_to") else None
-    except (TypeError, ValueError):
-        return fail("日期格式必须为 YYYY-MM-DD")
-    if date_from:
-        query = query.filter(HourApplication.created_at >= date_from)
-    if date_to:
-        query = query.filter(HourApplication.created_at < date_to.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1))
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "课时申请"
-    sheet.append(["申请编号", "标题", "申请类型", "来源", "申请课时", "状态", "创建时间"])
-    for item in query.order_by(HourApplication.id.asc()).all():
-        sheet.append([
-            item.application_no,
-            item.title,
-            item.application_type,
-            item.source_type,
-            float(item.requested_hours),
-            item.status,
-            item.created_at.strftime("%Y-%m-%d %H:%M:%S") if item.created_at else "",
-        ])
-    stream = BytesIO()
-    workbook.save(stream)
-    stream.seek(0)
-    return send_file(
-        stream,
-        as_attachment=True,
-        download_name="hour-applications.xlsx",
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
 
 
 @api_bp.route("/admin/rule-files", methods=["POST"])
@@ -2349,42 +2196,4 @@ def _can_access_attachment(attachment):
 
 def _iso(value):
     return format_api_datetime(value)
-
-
-def _uploaded_file():
-    return request.files.get("file") or request.files.get("csv")
-
-
-def _import_mode():
-    mode = request.form.get("mode") or "upsert"
-    if mode not in {"append", "upsert"}:
-        raise ValueError("导入模式只能是 append 或 upsert")
-    return mode
-
-
-def _handle_import(import_func):
-    try:
-        return ok(import_func())
-    except ValueError as exc:
-        return fail(str(exc))
-
-
-def _validate_task_type_payload(data, creating):
-    if creating and not data.get("type_code"):
-        return "任务类别编码不能为空"
-    if creating and not data.get("type_name"):
-        return "任务类别名称不能为空"
-    if "status" in data and data["status"] not in {"enabled", "disabled"}:
-        return "任务类别状态只能是 enabled 或 disabled"
-    return None
-
-
-def _build_excel_template(headers):
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "template"
-    sheet.append(headers)
-    output = BytesIO()
-    workbook.save(output)
-    return output.getvalue()
 

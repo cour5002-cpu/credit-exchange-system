@@ -2,21 +2,10 @@ from flask import request
 from flask_login import login_required
 
 from app.core.responses import ok
-from app.core.validation import parse_bool_query
 from app.models.teacher import Teacher
 from app.modules.api.blueprint import api_bp
 from app.modules.api.serializers import teacher_summary
-from app.services.task_type_service import list_task_types, task_type_to_dict
 from app.utils.permissions import role_required
-
-
-@api_bp.route("/task-types")
-@login_required
-def get_task_types():
-    enabled = parse_bool_query(request.args.get("enabled"))
-    return ok(
-        {"items": [task_type_to_dict(item) for item in list_task_types(enabled=enabled)]}
-    )
 
 
 @api_bp.route("/teachers/advisors")
@@ -42,16 +31,6 @@ def admin_get_reviewers():
                 for item in _list_teachers_by_flag("reviewer")
             ]
         }
-    )
-
-
-@api_bp.route("/admin/task-types", methods=["GET"])
-@login_required
-@role_required("admin")
-def admin_get_task_types():
-    enabled = parse_bool_query(request.args.get("enabled"))
-    return ok(
-        {"items": [task_type_to_dict(item) for item in list_task_types(enabled=enabled)]}
     )
 
 
