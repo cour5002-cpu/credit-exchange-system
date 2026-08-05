@@ -75,7 +75,7 @@ def seed_system_configs() -> None:
         ("credit_exchange_ratio", "10:1", "10课时兑换1学分"),
         ("max_single_exchange_hours", "100", "单次最大兑换课时数"),
         ("allow_student_resubmit", "0", "是否允许驳回后重新提交"),
-        ("extension_special_threshold_days", "183", "延期超过该天数时转管理员审核"),
+        ("extension_special_threshold_days", "30", "延期超过30天时转管理员审核（V1固定口径）"),
     ]
     for key, value, description in items:
         exists = SystemConfig.query.filter_by(config_key=key).first()
@@ -219,39 +219,53 @@ def ensure_teacher_users() -> None:
 
 
 def ensure_student_user() -> None:
-    exists = User.query.filter_by(username="student1").first()
-    if exists:
-        return
+    student_items = [
+        ("student1", "student123", "测试学生1", "20260001"),
+        ("student2", "student123", "测试学生2", "20260002"),
+        ("student3", "student123", "测试学生3", "20260003"),
+        ("student4", "student123", "测试学生4", "20260004"),
+    ]
+    for username, password, real_name, student_no in student_items:
+        user = User.query.filter_by(username=username).first()
+        if not user:
+            user = User(
+                username=username,
+                role="student",
+                real_name=real_name,
+                status="active",
+            )
+            user.set_password(password)
+            db.session.add(user)
+            db.session.flush()
+        else:
+            user.role = "student"
+            user.real_name = real_name
+            user.status = "active"
 
-    user = User(
-        username="student1",
-        role="student",
-        real_name="测试学生",
-        status="active",
-    )
-    user.set_password("student123")
-    db.session.add(user)
-    db.session.flush()
+        student = Student.query.filter_by(user_id=user.id).first()
+        if not student:
+            student = Student.query.filter_by(student_no=student_no).first()
+        if not student:
+            student = Student(user_id=user.id, student_no=student_no)
+            db.session.add(student)
 
-    student = Student(
-        user_id=user.id,
-        student_no="20260001",
-        name=user.real_name,
-        gender="未知",
-        college="示例学院",
-        major="软件工程",
-        grade="2026",
-        class_name="1班",
-        status="active",
-    )
-    db.session.add(student)
-    db.session.flush()
+        student.user_id = user.id
+        student.student_no = student_no
+        student.name = real_name
+        student.gender = student.gender or "未知"
+        student.college = student.college or "示例学院"
+        student.major = student.major or "软件工程"
+        student.grade = student.grade or "2026"
+        student.class_name = student.class_name or "1班"
+        student.status = "active"
+        db.session.flush()
 
-    db.session.add(
-        StudentHourAccount(
-            student_id=student.id,
-            total_earned_hours=0,
-            total_exchanged_hours=0,
-            available_hours=0,
-        )
-    )
+        if not StudentHourAccount.query.filter_by(student_id=student.id).first():
+            db.session.add(
+                StudentHourAccount(
+                    student_id=student.id,
+                    total_earned_hours=0,
+                    total_exchanged_hours=0,
+                    available_hours=0,
+                )
+            )

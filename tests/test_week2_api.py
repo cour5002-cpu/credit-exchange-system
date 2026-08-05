@@ -4,9 +4,9 @@ from uuid import uuid4
 
 from openpyxl import Workbook
 
-from app import create_app
 from app.commands.seed_data import seed_default_users, seed_system_configs, seed_task_types
 from app.extensions import db
+from tests.test_support import create_isolated_test_app
 
 
 def make_xlsx(headers, rows):
@@ -24,7 +24,7 @@ def make_xlsx(headers, rows):
 class Week2ApiRegressionTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = create_app("default")
+        cls.app = create_isolated_test_app()
         cls.app.config["WTF_CSRF_ENABLED"] = False
         with cls.app.app_context():
             seed_task_types()

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
+from math import ceil
 
 from sqlalchemy import or_
 
@@ -16,9 +17,9 @@ from app.models.operation_log import OperationLog
 from app.models.review_assignment import ReviewAssignment
 from app.models.student import Student
 from app.models.task_type import TaskType
+from app.models.task_result_submission import TaskResultSubmission
 from app.models.teacher import Teacher
 from app.services.hour_account_service import add_hours
-from app.services.config_service import get_config_value
 from app.utils.number_generator import generate_application_no
 from app.utils.pagination import finish_query
 from app.utils.time_utils import business_now, parse_api_datetime
@@ -32,6 +33,11 @@ EXTENSION_CLOSABLE_STATUSES = {
     "extension_admin_review",
     "extension_rejected",
     "material_overdue",
+}
+EXTENSION_SPECIAL_THRESHOLD_DAYS = 30
+EXTENSION_PENDING_STATUSES = {
+    "pending_advisor_review",
+    "pending_admin_review",
 }
 
 
@@ -241,21 +247,22 @@ def create_extension_request(user, application_id, payload):
     if application.extension_count >= 1 or ExtensionRequest.query.filter_by(application_id=application.id).first():
         raise BusinessError("每个课时申请最多延期一次", code=40902, status=409)
 
+    attachment_ids = _normalize_id_list(payload.get("attachment_ids"))
     requested_due_at = _parse_datetime(payload.get("requested_due_at"))
     if not requested_due_at:
         raise BusinessError("requested_due_at 不能为空")
+    requested_due_at = requested_due_at.replace(microsecond=0)
     if requested_due_at <= business_now():
         raise BusinessError("延期后的成果提交时间必须晚于当前时间")
     if not application.material_due_at or requested_due_at <= application.material_due_at:
         raise BusinessError("延期后的成果提交时间必须晚于原截止时间")
     reason = _required_str(payload, "reason")
 
-    try:
-        special_threshold_days = int(get_config_value("extension_special_threshold_days", "183"))
-    except (TypeError, ValueError):
-        special_threshold_days = 183
-    is_special = requested_due_at - application.material_due_at > timedelta(days=special_threshold_days)
+    extension_delta = requested_due_at - application.material_due_at
+    extension_days = ceil(extension_delta.total_seconds() / timedelta(days=1).total_seconds())
+    is_special = extension_delta > timedelta(days=EXTENSION_SPECIAL_THRESHOLD_DAYS)
     review_level = "admin" if is_special else "advisor"
+    request_status = "pending_admin_review" if is_special else "pending_advisor_review"
     before = application.status
     application.status = "extension_admin_review" if is_special else "extension_requested"
     application.extension_count += 1
@@ -263,11 +270,14 @@ def create_extension_request(user, application_id, payload):
         application_id=application.id,
         old_due_at=application.material_due_at,
         requested_due_at=requested_due_at,
+        extension_days=extension_days,
         reason=reason,
         review_level=review_level,
-        status="submitted",
+        status=request_status,
     )
     db.session.add(extension)
+    db.session.flush()
+    _bind_extension_attachments(extension.id, attachment_ids, user.id)
     _add_operation(user.id, "extension_request", application.id, "request_extension", before, application.status)
     db.session.commit()
     return extension
@@ -280,7 +290,7 @@ def list_advisor_pending_extensions(user, page=None, page_size=None):
         .join(ApplicationAdvisor, ApplicationAdvisor.application_id == HourApplication.id)
         .filter(
             ExtensionRequest.review_level == "advisor",
-            ExtensionRequest.status == "submitted",
+            ExtensionRequest.status == "pending_advisor_review",
             ApplicationAdvisor.teacher_id == teacher.id,
             ApplicationAdvisor.advisor_role == "primary",
             ApplicationAdvisor.can_operate.is_(True),
@@ -293,7 +303,7 @@ def list_advisor_pending_extensions(user, page=None, page_size=None):
 def list_admin_extensions(pending_special=False, page=None, page_size=None):
     query = ExtensionRequest.query
     if pending_special:
-        query = query.filter_by(review_level="admin", status="submitted")
+        query = query.filter_by(review_level="admin", status="pending_admin_review")
     query = query.order_by(ExtensionRequest.created_at.desc(), ExtensionRequest.id.desc())
     return finish_query(query, page, page_size)
 
@@ -315,21 +325,23 @@ def review_extension_request(user, extension_request_id, approve, comment=None, 
     extension = db.session.get(ExtensionRequest, extension_request_id)
     if not extension:
         raise BusinessError("延期申请不存在", code=40401, status=404)
-    if extension.status != "submitted":
-        raise BusinessError("该延期申请已经处理", code=40901, status=409)
     application = extension.application
 
     if reviewer_role == "advisor":
         teacher = current_teacher(user, "advisor")
         if extension.review_level != "advisor" or not _is_primary_advisor(application.id, teacher.id):
             raise BusinessError("当前指导老师无权处理该延期申请", code=40301, status=403)
+        expected_request_status = "pending_advisor_review"
         expected_status = "extension_requested"
         teacher_id = teacher.id
     else:
         if not user.has_role("admin") or extension.review_level != "admin":
             raise BusinessError("当前管理员无权处理该延期申请", code=40301, status=403)
+        expected_request_status = "pending_admin_review"
         expected_status = "extension_admin_review"
         teacher_id = None
+    if extension.status != expected_request_status:
+        raise BusinessError("该延期申请已经处理", code=40901, status=409)
     _require_status(application, expected_status)
     if not approve and not (comment or "").strip():
         raise BusinessError("驳回原因不能为空")
@@ -362,7 +374,7 @@ def close_unfinishable_application(user, application_id, reason):
     before = application.status
     application.status = "closed"
     for extension in application.extension_requests:
-        if extension.status == "submitted":
+        if extension.status in EXTENSION_PENDING_STATUSES:
             extension.status = "closed"
             extension.reviewed_by = user.id
             extension.review_comment = reason
@@ -381,7 +393,9 @@ def list_advisor_pending(user, status="submitted", page=None, page_size=None):
 
 def list_advisor_material_pending(user, page=None, page_size=None):
     teacher = current_teacher(user, "advisor")
-    query = _advisor_query(teacher, "material_submitted").order_by(HourApplication.created_at.desc(), HourApplication.id.desc())
+    query = _advisor_query(teacher, "material_submitted").filter(
+        HourApplication.application_type == "without_material"
+    ).order_by(HourApplication.created_at.desc(), HourApplication.id.desc())
     return finish_query(query, page, page_size)
 
 
@@ -400,11 +414,28 @@ def get_advisor_application(user, application_id):
     return application
 
 
+def get_advisor_material_application(user, application_id):
+    application = get_advisor_application(user, application_id)
+    if application.application_type != "without_material":
+        raise BusinessError(
+            "该记录不是无成果补交申请，请使用任务成果确认接口",
+            code=40901,
+            status=409,
+        )
+    return application
+
+
 def advisor_approve(user, application_id, comment=None, material=False):
     teacher = current_teacher(user, "advisor")
     application = get_application(application_id)
     if not _is_primary_advisor(application.id, teacher.id):
         raise BusinessError("当前教师不是该申请的主指导老师", code=40301, status=403)
+    if material and application.application_type != "without_material":
+        raise BusinessError(
+            "任务成果不能通过补交成果接口确认，请使用任务成果确认接口",
+            code=40901,
+            status=409,
+        )
     expected_status = "material_submitted" if material else "submitted"
     _require_status(application, expected_status)
     before = application.status
@@ -417,6 +448,7 @@ def advisor_approve(user, application_id, comment=None, material=False):
     application.advisor_reviewed_at = business_now()
     _mark_advisor_reviewed(application.id, teacher.id)
     _add_review(application, user.id, teacher.id, "advisor", "approved", before, application.status, comment)
+    _sync_task_result_advisor_decision(application, user.id, approved=True, comment=comment)
     db.session.commit()
     return application
 
@@ -428,6 +460,12 @@ def advisor_reject(user, application_id, comment, material=False):
     application = get_application(application_id)
     if not _is_primary_advisor(application.id, teacher.id):
         raise BusinessError("当前教师不是该申请的主指导老师", code=40301, status=403)
+    if material and application.application_type != "without_material":
+        raise BusinessError(
+            "任务成果不能通过补交成果接口驳回，请使用任务成果确认接口",
+            code=40901,
+            status=409,
+        )
     expected_status = "material_submitted" if material else "submitted"
     _require_status(application, expected_status)
     before = application.status
@@ -435,6 +473,7 @@ def advisor_reject(user, application_id, comment, material=False):
     application.advisor_reviewed_at = business_now()
     _mark_advisor_reviewed(application.id, teacher.id)
     _add_review(application, user.id, teacher.id, "advisor", "rejected", before, application.status, comment)
+    _sync_task_result_advisor_decision(application, user.id, approved=False, comment=comment)
     db.session.commit()
     return application
 
@@ -667,6 +706,33 @@ def _mark_advisor_reviewed(application_id, teacher_id):
         link.reviewed_at = business_now()
 
 
+def _sync_task_result_advisor_decision(application, user_id, approved, comment=None):
+    if application.application_type != "task_result":
+        return
+    submission = TaskResultSubmission.query.filter_by(hour_application_id=application.id).first()
+    if not submission:
+        raise BusinessError("任务成果关联记录不存在，无法同步确认状态", code=40902, status=409)
+    if submission.status != "submitted":
+        raise BusinessError("任务成果当前状态不允许指导老师确认", code=40901, status=409)
+
+    before = submission.status
+    submission.status = "converted_to_hour_application" if approved else "advisor_rejected"
+    submission.advisor_comment = (comment or "").strip() or None
+    submission.advisor_reviewed_by = user_id
+    submission.advisor_reviewed_at = application.advisor_reviewed_at
+    submission.task.status = "result_approved" if approved else "task_in_progress"
+    db.session.add(
+        OperationLog(
+            user_id=user_id,
+            module="week5",
+            biz_type="task_result",
+            biz_id=submission.id,
+            action="approve" if approved else "reject",
+            detail=f"{before}->{submission.status}",
+        )
+    )
+
+
 def _bind_legacy_attachments(application_id, attachment_ids, user_id):
     if not attachment_ids:
         return
@@ -680,6 +746,27 @@ def _bind_legacy_attachments(application_id, attachment_ids, user_id):
             raise BusinessError("附件已绑定其他业务", code=40902, status=409)
         attachment.owner_type = "hour_application"
         attachment.owner_id = application_id
+
+
+def _bind_extension_attachments(extension_request_id, attachment_ids, user_id):
+    if not attachment_ids:
+        return
+    attachments = Attachment.query.filter(
+        Attachment.id.in_(attachment_ids),
+        Attachment.status == "active",
+    ).all()
+    if len(attachments) != len(set(attachment_ids)):
+        raise BusinessError("延期附件不存在或无权使用", code=40301, status=403)
+    for attachment in attachments:
+        if (
+            attachment.uploaded_by != user_id
+            or attachment.biz_type not in {"extension_request", "hour_application"}
+        ):
+            raise BusinessError("延期附件不存在或无权使用", code=40301, status=403)
+        if attachment.owner_id:
+            raise BusinessError("延期附件已绑定其他业务", code=40902, status=409)
+        attachment.owner_type = "extension_request"
+        attachment.owner_id = extension_request_id
 
 
 def _add_review(application, user_id, teacher_id, stage, decision, before_status, after_status, comment=None, approved_hours=None):

@@ -118,6 +118,12 @@ def admin_approve_appeal(user, appeal_id, admin_advice):
     appeal.reviewed_by = user.id
     appeal.reviewed_at = business_now()
     target_status = "submitted"
+    if (
+        appeal.target_type == "hour_application"
+        and target.application_type == "without_material"
+        and appeal.original_status != "material_overdue"
+    ):
+        target_status = "material_submitted"
     target.status = target_status
     if appeal.target_type == "hour_application":
         target.appeal_advice = admin_advice
@@ -168,7 +174,26 @@ def advisor_reconfirm_appeal(user, appeal_id, decision, comment=None):
     if decision == "reject" and not (comment or "").strip():
         raise BusinessError("再次确认驳回原因不能为空")
     if appeal.target_type == "hour_application":
-        target = advisor_approve(user, appeal.target_id, comment) if decision == "approve" else advisor_reject(user, appeal.target_id, comment)
+        target_application = _get_appeal_target("hour_application", appeal.target_id)
+        reuse_submitted_material = (
+            target_application.application_type == "without_material"
+            and target_application.status == "material_submitted"
+        )
+        target = (
+            advisor_approve(
+                user,
+                appeal.target_id,
+                comment,
+                material=reuse_submitted_material,
+            )
+            if decision == "approve"
+            else advisor_reject(
+                user,
+                appeal.target_id,
+                comment,
+                material=reuse_submitted_material,
+            )
+        )
         appeal.reopen_stage = "pending_assignment" if decision == "approve" else "advisor_rejected"
     else:
         target = advisor_approve_credit_exchange(user, appeal.target_id, comment) if decision == "approve" else advisor_reject_credit_exchange(user, appeal.target_id, comment)
@@ -497,7 +522,7 @@ def submit_task_result(user, task_id, payload):
         requested_hours=requested_hours,
         achievement_summary=summary,
         description=task.description,
-        status="material_submitted",
+        status="submitted",
         submitted_at=business_now(),
     )
     db.session.add(application)
@@ -589,7 +614,7 @@ def resubmit_task_result(user, submission_id, payload):
     submission.advisor_reviewed_at = None
     application.achievement_summary = summary
     application.requested_hours = requested_hours
-    application.status = "material_submitted"
+    application.status = "submitted"
     application.advisor_reviewed_at = None
     primary_advisor = ApplicationAdvisor.query.filter_by(
         application_id=application.id,
@@ -612,26 +637,28 @@ def get_advisor_task_result(user, submission_id):
     return submission
 
 
+def list_advisor_task_results(user, status="submitted", page=None, page_size=None):
+    teacher = current_teacher(user, "advisor")
+    query = TaskResultSubmission.query.join(
+        CollegeTask,
+        TaskResultSubmission.task_id == CollegeTask.id,
+    ).filter(CollegeTask.advisor_teacher_id == teacher.id)
+    if status:
+        query = query.filter(TaskResultSubmission.status == status)
+    query = query.order_by(TaskResultSubmission.created_at.desc(), TaskResultSubmission.id.desc())
+    return finish_query(query, page, page_size)
+
+
 def review_task_result(user, submission_id, approve, comment=None):
     submission = get_advisor_task_result(user, submission_id)
     _require_status(submission.status, "submitted")
     if not approve and not (comment or "").strip():
         raise BusinessError("驳回原因不能为空")
     application = submission.hour_application
-    before = submission.status
     if approve:
-        advisor_approve(user, application.id, comment, material=True)
-        submission.status = "converted_to_hour_application"
-        submission.task.status = "result_approved"
+        advisor_approve(user, application.id, comment)
     else:
-        advisor_reject(user, application.id, comment, material=True)
-        submission.status = "advisor_rejected"
-        submission.task.status = "task_in_progress"
-    submission.advisor_comment = (comment or "").strip() or None
-    submission.advisor_reviewed_by = user.id
-    submission.advisor_reviewed_at = business_now()
-    _add_operation(user.id, "task_result", submission.id, "approve" if approve else "reject", before, submission.status)
-    db.session.commit()
+        advisor_reject(user, application.id, comment)
     return submission
 
 

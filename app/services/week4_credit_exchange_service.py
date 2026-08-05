@@ -167,10 +167,10 @@ def list_available_hour_awards(user, page=None, page_size=None):
 
 def get_exchange_form_data(user, hour_award_record_id):
     award = _get_available_award_for_student(user, hour_award_record_id)
+    members = _active_members_for_award(award)
     rule = current_conversion_rule()
     if not rule:
-        return award, [], None, None, False
-    members = _active_members_for_award(award)
+        return award, members, None, None, False
     return award, members, rule, calculate_credits(award.total_hours, rule), True
 
 

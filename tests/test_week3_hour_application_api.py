@@ -2,15 +2,17 @@ import unittest
 from datetime import datetime, timedelta
 from io import BytesIO
 
-from app import create_app
 from app.commands.seed_data import seed_default_users, seed_system_configs, seed_task_types
 from app.extensions import db
+from app.models.attachment import Attachment
+from app.models.extension_request import ExtensionRequest
+from tests.test_support import create_isolated_test_app
 
 
 class Week3HourApplicationApiTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = create_app("default")
+        cls.app = create_isolated_test_app()
         cls.app.config["WTF_CSRF_ENABLED"] = False
         with cls.app.app_context():
             seed_task_types()
@@ -127,6 +129,17 @@ class Week3HourApplicationApiTest(unittest.TestCase):
         self.assertEqual(response.json["data"]["status"], "final_approved")
         self.assertIsInstance(response.json["data"]["hour_award_record_id"], int)
 
+        detail = student_client.get(f"/api/v1/student/hour-applications/{application_id}")
+        self.assertEqual(detail.status_code, 200, detail.get_data(as_text=True))
+        self.assertIsNotNone(detail.json["data"]["advisor_reviewed_at"])
+        self.assertIsNotNone(detail.json["data"]["assigned_at"])
+        self.assertIsNotNone(detail.json["data"]["reviewer_reviewed_at"])
+        self.assertIsNotNone(detail.json["data"]["final_reviewed_at"])
+        self.assertTrue(all(
+            step["completed"]
+            for step in detail.json["data"]["workflow_progress"].values()
+        ))
+
         response = admin_client.post(
             f"/api/v1/admin/hour-applications/{application_id}/final-approve",
             json={"comment": "重复确认"},
@@ -223,9 +236,16 @@ class Week3HourApplicationApiTest(unittest.TestCase):
             json={"requested_due_at": requested_due_at.isoformat(), "reason": "项目设备延期到货"},
         )
         self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
-        self.assertEqual(response.json["data"]["status"], "extension_requested")
+        self.assertEqual(response.json["data"]["status"], "pending_advisor_review")
+        self.assertEqual(response.json["data"]["application_status"], "extension_requested")
+        self.assertEqual(response.json["data"]["extension_days"], 30)
         self.assertEqual(response.json["data"]["review_level"], "advisor")
         extension_id = response.json["data"]["extension_request_id"]
+        with self.app.app_context():
+            extension = db.session.get(ExtensionRequest, extension_id)
+            self.assertEqual(extension.extension_days, 30)
+            self.assertEqual(extension.review_level, "advisor")
+            self.assertEqual(extension.status, "pending_advisor_review")
 
         response = admin_client.post(
             f"/api/v1/admin/extension-requests/{extension_id}/approve",
@@ -267,17 +287,60 @@ class Week3HourApplicationApiTest(unittest.TestCase):
     def test_special_extension_can_be_closed_by_admin(self):
         student_client, _, application_id, due_at = self.create_pending_material_application("第3周特殊延期关闭回归")
         admin_client, _ = self.client_login("admin", "admin123")
+        upload = student_client.post("/api/v1/attachments", data={
+            "biz_type": "extension_request",
+            "file": (BytesIO(b"extension proof"), "extension-proof.txt"),
+        }, content_type="multipart/form-data")
+        self.assertEqual(upload.status_code, 200, upload.get_data(as_text=True))
+        attachment_id = upload.json["data"]["id"]
         response = student_client.post(
             f"/api/v1/student/hour-applications/{application_id}/extension-requests",
-            json={"requested_due_at": (due_at + timedelta(days=200)).isoformat(), "reason": "延期跨度超过一个学期"},
+            json={
+                "requested_due_at": (due_at + timedelta(days=31)).isoformat(),
+                "reason": "延期跨度超过30天",
+                "attachment_ids": [attachment_id],
+            },
         )
         self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
-        self.assertEqual(response.json["data"]["status"], "extension_admin_review")
+        self.assertEqual(response.json["data"]["status"], "pending_admin_review")
+        self.assertEqual(response.json["data"]["application_status"], "extension_admin_review")
+        self.assertEqual(response.json["data"]["extension_days"], 31)
         self.assertEqual(response.json["data"]["review_level"], "admin")
         extension_id = response.json["data"]["extension_request_id"]
 
         response = admin_client.get("/api/v1/admin/extension-requests/pending-special")
-        self.assertIn(extension_id, [item["id"] for item in response.json["data"]["items"]])
+        special_item = next(
+            item for item in response.json["data"]["items"]
+            if item["id"] == extension_id
+        )
+        self.assertEqual(special_item["extension_days"], 31)
+        self.assertEqual(special_item["review_level"], "admin")
+        self.assertEqual(special_item["status"], "pending_admin_review")
+
+        detail = admin_client.get(f"/api/v1/admin/extension-requests/{extension_id}")
+        self.assertEqual(detail.status_code, 200, detail.get_data(as_text=True))
+        self.assertEqual(detail.json["data"]["extension_request_id"], extension_id)
+        self.assertEqual(detail.json["data"]["hour_application_id"], application_id)
+        self.assertEqual(detail.json["data"]["extension_days"], 31)
+        self.assertEqual(detail.json["data"]["review_level"], "admin")
+        self.assertEqual(detail.json["data"]["status"], "pending_admin_review")
+        self.assertEqual(detail.json["data"]["reason"], "延期跨度超过30天")
+        self.assertEqual(
+            set(detail.json["data"]["student"]),
+            {"id", "student_no", "name"},
+        )
+        self.assertEqual(detail.json["data"]["attachments"], [{
+            "id": attachment_id,
+            "filename": "extension-proof.txt",
+            "url": f"/api/v1/attachments/{attachment_id}",
+        }])
+        with self.app.app_context():
+            attachment = db.session.get(Attachment, attachment_id)
+            self.assertEqual(attachment.owner_type, "extension_request")
+            self.assertEqual(attachment.owner_id, extension_id)
+        download = admin_client.get(f"/api/v1/attachments/{attachment_id}?download=true")
+        self.assertEqual(download.status_code, 200, download.get_data(as_text=True))
+        download.close()
         response = admin_client.post(
             f"/api/v1/admin/hour-applications/{application_id}/close",
             json={},

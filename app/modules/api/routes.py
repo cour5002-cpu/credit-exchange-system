@@ -18,6 +18,7 @@ from app.models.credit_exchange_allocation import CreditExchangeAllocation
 from app.models.credit_exchange_application import CreditExchangeApplication
 from app.models.college_task import CollegeTask
 from app.models.complaint import Complaint
+from app.models.extension_request import ExtensionRequest
 from app.models.hour_application import HourApplication
 from app.models.hour_application_member import HourApplicationMember
 from app.models.operation_log import OperationLog
@@ -47,6 +48,7 @@ from app.services.week3_hour_application_service import (
     final_approve,
     final_reject,
     get_advisor_application,
+    get_advisor_material_application,
     get_application,
     get_visible_extension_request,
     get_reviewer_application,
@@ -115,6 +117,7 @@ from app.services.week5_appeal_task_service import (
     list_reopened_pending_assignment,
     list_reviewer_appeals,
     list_advisor_tasks,
+    list_advisor_task_results,
     list_my_tasks,
     list_pending_task_publish_requests,
     list_student_appeals,
@@ -323,7 +326,15 @@ def upload_attachment():
     biz_type = (request.form.get("biz_type") or "").strip()
     if not file_storage or not file_storage.filename:
         return fail("请上传文件")
-    if biz_type not in {"hour_application", "task_result", "credit_exchange", "appeal", "complaint", "rule_file"}:
+    if biz_type not in {
+        "hour_application",
+        "extension_request",
+        "task_result",
+        "credit_exchange",
+        "appeal",
+        "complaint",
+        "rule_file",
+    }:
         return fail("附件业务类型不合法")
     allowed_extensions = {".pdf", ".png", ".jpg", ".jpeg", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt"}
     extension = os.path.splitext(file_storage.filename)[1].lower()
@@ -673,7 +684,9 @@ def advisor_reject_hour_application(application_id):
 @login_required
 @role_required("advisor")
 def advisor_material_detail(application_id):
-    return _handle_business(lambda: ok(_advisor_detail_payload(get_advisor_application(current_user, application_id))))
+    return _handle_business(lambda: ok(_advisor_detail_payload(
+        get_advisor_material_application(current_user, application_id)
+    )))
 
 
 @api_bp.route("/advisor/hour-applications/<int:application_id>/materials/approve", methods=["POST"])
@@ -720,6 +733,15 @@ def admin_pending_special_extension_requests():
         lambda page, page_size: list_admin_extensions(pending_special=True, page=page, page_size=page_size),
         _extension_request_payload,
     ))
+
+
+@api_bp.route("/admin/extension-requests/<int:extension_request_id>", methods=["GET"])
+@login_required
+@role_required("admin")
+def admin_extension_request_detail(extension_request_id):
+    return _handle_business(lambda: ok(_admin_extension_detail_payload(
+        get_visible_extension_request(current_user, extension_request_id)
+    )))
 
 
 @api_bp.route("/admin/extension-requests/<int:extension_request_id>/approve", methods=["POST"])
@@ -1244,6 +1266,18 @@ def advisor_task_result_detail(submission_id):
     return _handle_business(lambda: ok(_task_result_detail_payload(get_advisor_task_result(current_user, submission_id))))
 
 
+@api_bp.route("/advisor/task-result-submissions", methods=["GET"])
+@login_required
+@role_required("advisor")
+def advisor_task_results():
+    raw_status = request.args.get("status")
+    status = "submitted" if raw_status is None else raw_status.strip() or None
+    return _handle_business(lambda: _paged_response(
+        lambda page, page_size: list_advisor_task_results(current_user, status, page, page_size),
+        _task_result_summary,
+    ))
+
+
 @api_bp.route("/advisor/task-result-submissions/<int:submission_id>/approve", methods=["POST"])
 @login_required
 @role_required("advisor")
@@ -1476,7 +1510,9 @@ def _extension_created_payload(extension):
         "extension_request_id": extension.id,
         "applicant": _student_summary(applicant),
         "applicant_name": applicant.name,
-        "status": application.status,
+        "status": extension.status,
+        "application_status": application.status,
+        "extension_days": extension.extension_days,
         "review_level": extension.review_level,
     }
 
@@ -1788,6 +1824,33 @@ def _task_result_created_payload(submission):
     }
 
 
+def _task_result_summary(submission):
+    latest_version = submission.versions[-1] if submission.versions else None
+    current_attachment_ids = set(latest_version.attachment_ids or []) if latest_version else set()
+    attachment_query = Attachment.query.filter_by(
+        owner_type="task_result",
+        owner_id=submission.id,
+        status="active",
+    )
+    if current_attachment_ids:
+        attachment_query = attachment_query.filter(Attachment.id.in_(current_attachment_ids))
+    active_attachment_count = attachment_query.count()
+    return {
+        "id": submission.id,
+        "task_id": submission.task_id,
+        "task_no": submission.task.task_no,
+        "task_title": submission.task.title,
+        "leader": _student_summary(submission.leader),
+        "summary": submission.summary,
+        "requested_hours": _number(submission.requested_hours),
+        "status": submission.status,
+        "hour_application_id": submission.hour_application_id,
+        "attachment_count": active_attachment_count,
+        "submitted_at": _iso(submission.created_at),
+        "updated_at": _iso(submission.updated_at),
+    }
+
+
 def _task_result_detail_payload(submission):
     latest_version = submission.versions[-1] if submission.versions else None
     current_attachment_ids = set(latest_version.attachment_ids or []) if latest_version else set()
@@ -1958,6 +2021,10 @@ def _owner_attachments(owner_type, owner_id):
 
 def _hour_application_summary(application):
     applicant = application.applicant or application.student
+    primary_advisor = next(
+        (link for link in application.advisor_links if link.advisor_role == "primary"),
+        None,
+    )
     return {
         "id": application.id,
         "application_no": application.application_no,
@@ -1969,6 +2036,7 @@ def _hour_application_summary(application):
         "applicant": _student_summary(applicant) if applicant else None,
         "applicant_name": applicant.name if applicant else None,
         "leader": _student_summary(application.leader) if application.leader else None,
+        "advisor_teacher_id": primary_advisor.teacher_id if primary_advisor else None,
         "requested_hours": _number(application.requested_hours),
         "reviewer_suggested_hours": _number(application.reviewer_suggested_hours),
         "final_hours": _number(application.final_hours),
@@ -1989,6 +2057,7 @@ def _extension_request_payload(extension):
         "applicant_name": applicant.name,
         "old_due_at": _iso(extension.old_due_at),
         "requested_due_at": _iso(extension.requested_due_at),
+        "extension_days": extension.extension_days,
         "reason": extension.reason,
         "review_level": extension.review_level,
         "status": extension.status,
@@ -2019,6 +2088,7 @@ def _pending_final_summary(application):
 
 
 def _hour_application_detail_payload(application):
+    workflow_progress = _hour_application_workflow_progress(application)
     return {
         "id": application.id,
         "application_no": application.application_no,
@@ -2029,7 +2099,44 @@ def _hour_application_detail_payload(application):
         "advisors": _application_advisors(application),
         "attachments": _application_attachments(application),
         "reviews": _application_reviews(application),
+        "advisor_reviewed_at": _iso(application.advisor_reviewed_at),
+        "assigned_at": workflow_progress["admin_assignment"]["completed_at"],
+        "reviewer_reviewed_at": _iso(application.reviewer_reviewed_at),
+        "final_reviewed_at": _iso(application.final_reviewed_at),
+        "workflow_progress": workflow_progress,
         "actions": _action_flags(application),
+    }
+
+
+def _admin_extension_detail_payload(extension):
+    application = extension.application
+    student = application.applicant or application.student
+    return {
+        "extension_request_id": extension.id,
+        "hour_application_id": application.id,
+        "old_due_at": _iso(extension.old_due_at),
+        "requested_due_at": _iso(extension.requested_due_at),
+        "extension_days": extension.extension_days,
+        "review_level": extension.review_level,
+        "status": extension.status,
+        "reason": extension.reason,
+        "student": {
+            "id": student.id,
+            "student_no": student.student_no,
+            "name": student.name,
+        },
+        "attachments": [
+            {
+                "id": item.id,
+                "filename": item.file_name,
+                "url": f"/api/v1/attachments/{item.id}",
+            }
+            for item in Attachment.query.filter_by(
+                owner_type="extension_request",
+                owner_id=extension.id,
+                status="active",
+            ).order_by(Attachment.id.asc()).all()
+        ],
     }
 
 
@@ -2062,6 +2169,7 @@ def _final_review_payload(application):
 
 def _hour_application_detail(application):
     item = _hour_application_summary(application)
+    workflow_progress = _hour_application_workflow_progress(application)
     item.update(
         {
             "description": application.description,
@@ -2079,10 +2187,45 @@ def _hour_application_detail(application):
             "attachments": _application_attachments(application),
             "reviews": _application_reviews(application),
             "assignments": _review_assignments(application),
+            "advisor_reviewed_at": _iso(application.advisor_reviewed_at),
+            "assigned_at": workflow_progress["admin_assignment"]["completed_at"],
+            "reviewer_reviewed_at": _iso(application.reviewer_reviewed_at),
+            "final_reviewed_at": _iso(application.final_reviewed_at),
+            "workflow_progress": workflow_progress,
             "actions": _action_flags(application),
         }
     )
     return item
+
+
+def _hour_application_workflow_progress(application):
+    assignments = sorted(
+        getattr(application, "review_assignments", []),
+        key=lambda item: (item.assigned_at, item.id),
+    )
+    latest_assignment = assignments[-1] if assignments else None
+    return {
+        "student_submission": {
+            "completed": bool(application.submitted_at),
+            "completed_at": _iso(application.submitted_at),
+        },
+        "advisor_confirmation": {
+            "completed": bool(application.advisor_reviewed_at),
+            "completed_at": _iso(application.advisor_reviewed_at),
+        },
+        "admin_assignment": {
+            "completed": latest_assignment is not None,
+            "completed_at": _iso(latest_assignment.assigned_at) if latest_assignment else None,
+        },
+        "reviewer_review": {
+            "completed": bool(application.reviewer_reviewed_at),
+            "completed_at": _iso(application.reviewer_reviewed_at),
+        },
+        "admin_final_confirmation": {
+            "completed": bool(application.final_reviewed_at),
+            "completed_at": _iso(application.final_reviewed_at),
+        },
+    }
 
 
 def _application_members(application):
@@ -2119,6 +2262,19 @@ def _application_attachments(application):
         status="active",
     ).order_by(Attachment.id.asc()).all()
     summaries = [_attachment_summary(item) for item in generic_items]
+    if application.application_type == "task_result" and application.task_result_submission_id:
+        submission = db.session.get(TaskResultSubmission, application.task_result_submission_id)
+        latest_version = submission.versions[-1] if submission and submission.versions else None
+        current_attachment_ids = set(latest_version.attachment_ids or []) if latest_version else set()
+        task_result_query = Attachment.query.filter_by(
+            owner_type="task_result",
+            owner_id=application.task_result_submission_id,
+            status="active",
+        )
+        if current_attachment_ids:
+            task_result_query = task_result_query.filter(Attachment.id.in_(current_attachment_ids))
+        task_result_items = task_result_query.order_by(Attachment.id.asc()).all()
+        summaries.extend(_attachment_summary(item) for item in task_result_items)
     legacy_summaries = [
         {
             "id": item.id,
@@ -2247,6 +2403,21 @@ def _can_access_attachment(attachment):
             application.assigned_teacher_id == teacher.id
             or ApplicationAdvisor.query.filter_by(application_id=application.id, teacher_id=teacher.id).first()
         ))
+    if attachment.owner_type == "extension_request":
+        extension = db.session.get(ExtensionRequest, attachment.owner_id)
+        if not extension:
+            return False
+        application = extension.application
+        if student and student.id in {
+            application.student_id,
+            application.applicant_student_id,
+            application.leader_student_id,
+        }:
+            return True
+        return bool(teacher and ApplicationAdvisor.query.filter_by(
+            application_id=application.id,
+            teacher_id=teacher.id,
+        ).first())
     if attachment.owner_type == "task_result":
         submission = db.session.get(TaskResultSubmission, attachment.owner_id)
         if not submission:
