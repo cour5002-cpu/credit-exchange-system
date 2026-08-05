@@ -4,6 +4,7 @@ from app.modules.api.blueprint import api_bp
 # register endpoints without making business modules depend on one another.
 from app.modules.api import (  # noqa: F401,E402
     auth_routes,
+    attachment_routes,
     import_export_routes,
     lookup_routes,
     routes,

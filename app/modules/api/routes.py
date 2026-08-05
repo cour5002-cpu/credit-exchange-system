@@ -1,6 +1,5 @@
 import os
-import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
 
 from flask import current_app, request, send_file
@@ -8,25 +7,22 @@ from flask_login import current_user, login_required
 
 from app.core.identity import current_teacher
 from app.core.responses import fail, handle_business as _handle_business, ok
-from app.core.validation import parse_bool_query, parse_pagination_args
+from app.core.validation import parse_pagination_args
 from app.extensions import db
 from app.models.attachment import Attachment
 from app.models.appeal import Appeal
-from app.models.application_advisor import ApplicationAdvisor
-from app.models.credit_exchange_allocation import CreditExchangeAllocation
 from app.models.credit_exchange_application import CreditExchangeApplication
 from app.models.college_task import CollegeTask
 from app.models.complaint import Complaint
-from app.models.extension_request import ExtensionRequest
 from app.models.hour_application import HourApplication
-from app.models.hour_application_member import HourApplicationMember
 from app.models.operation_log import OperationLog
-from app.models.student import Student
 from app.models.task_member import TaskMember
 from app.models.task_result_submission import TaskResultSubmission
-from app.models.teacher import Teacher
 from app.modules.api.blueprint import api_bp
 from app.modules.api.serializers import (
+    attachment_summary as _attachment_summary,
+    operation_record_summary as _operation_record_summary,
+    owner_attachments as _owner_attachments,
     student_summary as _student_summary,
     teacher_summary as _teacher_summary,
 )
@@ -129,127 +125,6 @@ from app.services.week5_appeal_task_service import (
 )
 from app.utils.permissions import role_required
 from app.utils.time_utils import business_now, format_api_datetime, parse_api_datetime
-
-
-@api_bp.route("/attachments", methods=["POST"])
-@login_required
-def upload_attachment():
-    file_storage = request.files.get("file")
-    biz_type = (request.form.get("biz_type") or "").strip()
-    if not file_storage or not file_storage.filename:
-        return fail("请上传文件")
-    if biz_type not in {
-        "hour_application",
-        "extension_request",
-        "task_result",
-        "credit_exchange",
-        "appeal",
-        "complaint",
-        "rule_file",
-    }:
-        return fail("附件业务类型不合法")
-    allowed_extensions = {".pdf", ".png", ".jpg", ".jpeg", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt"}
-    extension = os.path.splitext(file_storage.filename)[1].lower()
-    if extension not in allowed_extensions:
-        return fail("附件类型不支持")
-    upload_root = current_app.config["UPLOAD_FOLDER"]
-    attachment_dir = os.path.join(upload_root, "attachments", biz_type)
-    os.makedirs(attachment_dir, exist_ok=True)
-    stored_name = f"{uuid.uuid4().hex}{extension}"
-    stored_path = os.path.join(attachment_dir, stored_name)
-    file_storage.save(stored_path)
-    relative_path = os.path.relpath(stored_path, current_app.root_path).replace("\\", "/")
-    size = os.path.getsize(stored_path)
-    attachment = Attachment(
-        biz_type=biz_type,
-        file_name=file_storage.filename,
-        file_path=relative_path,
-        file_size=size,
-        mime_type=file_storage.mimetype,
-        uploaded_by=current_user.id,
-    )
-    db.session.add(attachment)
-    db.session.commit()
-    return ok(_attachment_summary(attachment))
-
-
-@api_bp.route("/attachments/<int:attachment_id>", methods=["GET"])
-@login_required
-def get_attachment(attachment_id):
-    attachment = Attachment.query.filter_by(id=attachment_id, status="active").first()
-    if not attachment:
-        return fail("附件不存在", code=40401, status=404)
-    if not _can_access_attachment(attachment):
-        return fail("无权访问该附件", code=40301, status=403)
-    if parse_bool_query(request.args.get("download")):
-        path = os.path.join(current_app.root_path, attachment.file_path)
-        return send_file(path, as_attachment=True, download_name=attachment.file_name)
-    return ok(_attachment_summary(attachment))
-
-
-@api_bp.route("/attachments/<int:attachment_id>", methods=["DELETE"])
-@login_required
-def delete_attachment(attachment_id):
-    attachment = db.session.get(Attachment, attachment_id)
-    if not attachment or attachment.status != "active":
-        return fail("附件不存在", code=40401, status=404)
-    data = request.get_json(silent=True) or {}
-    bound_to_draft = _attachment_bound_to_draft(attachment)
-    uploader_can_delete = attachment.uploaded_by == current_user.id and (
-        not attachment.owner_id or bound_to_draft
-    )
-    if uploader_can_delete:
-        action = "delete"
-        attachment.status = "deleted"
-        reason = (data.get("reason") or "上传者删除未绑定或草稿附件").strip()
-    elif current_user.has_role("admin"):
-        reason = (data.get("reason") or "").strip()
-        if not reason:
-            return fail("管理员作废已提交附件时必须填写原因")
-        action = "void"
-        attachment.status = "voided"
-    elif attachment.uploaded_by == current_user.id:
-        return fail("正式提交后的附件不能由上传者删除", code=40901, status=409)
-    else:
-        return fail("无权作废该附件", code=40301, status=403)
-    attachment.voided_by = current_user.id
-    attachment.voided_at = business_now()
-    attachment.void_reason = reason
-    db.session.add(OperationLog(
-        user_id=current_user.id,
-        module="attachment",
-        biz_type="attachment",
-        biz_id=attachment.id,
-        action=action,
-        detail=reason,
-    ))
-    db.session.commit()
-    return ok(_attachment_summary(attachment))
-
-
-@api_bp.route("/admin/attachments/<int:attachment_id>/operation-records", methods=["GET"])
-@login_required
-@role_required("admin")
-def admin_attachment_operation_records(attachment_id):
-    attachment = db.session.get(Attachment, attachment_id)
-    if not attachment:
-        return fail("附件不存在", code=40401, status=404)
-    def payload():
-        page, page_size = _pagination_args()
-        result = _paginate_operation_records(
-            OperationLog.query.filter_by(biz_type="attachment", biz_id=attachment.id).order_by(OperationLog.id.desc()),
-            page,
-            page_size,
-        )
-        return ok({
-            "attachment": _attachment_summary(attachment),
-            "items": [_operation_record_summary(item) for item in result.items],
-            "page": result.page,
-            "page_size": result.page_size,
-            "total": result.total,
-            "pages": result.pages,
-        })
-    return _handle_business(payload)
 
 
 @api_bp.route("/admin/rule-files", methods=["POST"])
@@ -1651,18 +1526,6 @@ def _complaint_detail_payload(complaint):
     }
 
 
-def _operation_record_summary(record):
-    return {
-        "id": record.id,
-        "module": record.module,
-        "biz_type": record.biz_type,
-        "biz_id": record.biz_id,
-        "action": record.action,
-        "detail": record.detail,
-        "created_at": _iso(record.created_at),
-    }
-
-
 def _operation_target_summary(record):
     if not record.biz_id:
         return None
@@ -1756,13 +1619,6 @@ def _task_member_summary(member):
         "is_leader": bool(member.is_leader),
         "selected_at": _iso(member.created_at),
     }
-
-
-def _owner_attachments(owner_type, owner_id):
-    return [
-        _attachment_summary(item)
-        for item in Attachment.query.filter_by(owner_type=owner_type, owner_id=owner_id, status="active").order_by(Attachment.id.asc()).all()
-    ]
 
 
 def _hour_application_summary(application):
@@ -2037,38 +1893,6 @@ def _application_attachments(application):
     return summaries + legacy_summaries
 
 
-def _attachment_summary(attachment):
-    return {
-        "id": attachment.id,
-        "biz_type": attachment.biz_type,
-        "file_name": attachment.file_name,
-        "file_size": attachment.file_size,
-        "mime_type": attachment.mime_type,
-        "url": f"/api/v1/attachments/{attachment.id}",
-        "uploaded_by": attachment.uploaded_by,
-        "status": attachment.status,
-        "voided_by": attachment.voided_by,
-        "voided_at": _iso(attachment.voided_at),
-        "void_reason": attachment.void_reason,
-        "created_at": _iso(attachment.created_at),
-    }
-
-
-def _attachment_bound_to_draft(attachment):
-    if not attachment.owner_id:
-        return False
-    if attachment.owner_type == "hour_application":
-        owner = db.session.get(HourApplication, attachment.owner_id)
-        return bool(owner and owner.status == "draft")
-    if attachment.owner_type == "credit_exchange":
-        owner = db.session.get(CreditExchangeApplication, attachment.owner_id)
-        return bool(owner and owner.status == "draft")
-    if attachment.owner_type == "college_task":
-        owner = db.session.get(CollegeTask, attachment.owner_id)
-        return bool(owner and owner.status == "draft")
-    return False
-
-
 def _application_reviews(application):
     reviews = sorted(getattr(application, "reviews", []), key=lambda item: (item.created_at, item.id))
     return [_review_record(item) for item in reviews]
@@ -2125,73 +1949,6 @@ def _number(value):
     if isinstance(value, Decimal):
         return float(value)
     return float(value)
-
-
-def _can_access_attachment(attachment):
-    if attachment.uploaded_by == current_user.id or current_user.has_role("admin"):
-        return True
-    if not attachment.owner_type or not attachment.owner_id:
-        return False
-    if attachment.owner_type == "rule_file":
-        return True
-    student = Student.query.filter_by(user_id=current_user.id).first()
-    teacher = Teacher.query.filter_by(user_id=current_user.id).first()
-    if attachment.owner_type == "hour_application":
-        application = db.session.get(HourApplication, attachment.owner_id)
-        if not application:
-            return False
-        if student and (
-            student.id in {application.student_id, application.applicant_student_id, application.leader_student_id}
-            or HourApplicationMember.query.filter_by(application_id=application.id, student_id=student.id, status="active").first()
-        ):
-            return True
-        return bool(teacher and (
-            application.assigned_teacher_id == teacher.id
-            or ApplicationAdvisor.query.filter_by(application_id=application.id, teacher_id=teacher.id).first()
-        ))
-    if attachment.owner_type == "extension_request":
-        extension = db.session.get(ExtensionRequest, attachment.owner_id)
-        if not extension:
-            return False
-        application = extension.application
-        if student and student.id in {
-            application.student_id,
-            application.applicant_student_id,
-            application.leader_student_id,
-        }:
-            return True
-        return bool(teacher and ApplicationAdvisor.query.filter_by(
-            application_id=application.id,
-            teacher_id=teacher.id,
-        ).first())
-    if attachment.owner_type == "task_result":
-        submission = db.session.get(TaskResultSubmission, attachment.owner_id)
-        if not submission:
-            return False
-        if student and TaskMember.query.filter_by(task_id=submission.task_id, student_id=student.id, status="active").first():
-            return True
-        return bool(teacher and submission.task.advisor_teacher_id == teacher.id)
-    if attachment.owner_type == "credit_exchange":
-        exchange = db.session.get(CreditExchangeApplication, attachment.owner_id)
-        if not exchange:
-            return False
-        if student and (
-            student.id in {exchange.student_id, exchange.applicant_student_id}
-            or CreditExchangeAllocation.query.filter_by(exchange_application_id=exchange.id, student_id=student.id).first()
-        ):
-            return True
-        return bool(teacher and exchange.advisor_teacher_id == teacher.id)
-    if attachment.owner_type == "appeal":
-        appeal = db.session.get(Appeal, attachment.owner_id)
-        if student and appeal and appeal.applicant_student_id == student.id:
-            return True
-        if teacher and appeal and appeal.target_type == "hour_application":
-            target = db.session.get(HourApplication, appeal.target_id)
-            return bool(target and (
-                target.assigned_teacher_id == teacher.id
-                or ApplicationAdvisor.query.filter_by(application_id=target.id, teacher_id=teacher.id).first()
-            ))
-    return False
 
 
 def _iso(value):
