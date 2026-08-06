@@ -1,11 +1,8 @@
-from datetime import datetime
 from decimal import Decimal
 
 from flask import request
-from flask_login import current_user, login_required
 
-from app.core.identity import current_teacher
-from app.core.responses import fail, handle_business as _handle_business, ok
+from app.core.responses import ok
 from app.core.validation import parse_pagination_args
 from app.extensions import db
 from app.models.attachment import Attachment
@@ -14,9 +11,7 @@ from app.models.credit_exchange_application import CreditExchangeApplication
 from app.models.college_task import CollegeTask
 from app.models.complaint import Complaint
 from app.models.hour_application import HourApplication
-from app.models.operation_log import OperationLog
 from app.models.task_result_submission import TaskResultSubmission
-from app.modules.api.blueprint import api_bp
 from app.modules.api.serializers import (
     attachment_summary as _attachment_summary,
     conversion_rule_summary as _conversion_rule_summary,
@@ -32,66 +27,7 @@ from app.services.week3_hour_application_service import (
 from app.services.week4_credit_exchange_service import (
     get_admin_credit_exchange,
 )
-from app.services.week5_appeal_task_service import (
-    create_complaint,
-    get_complaint,
-    list_complaints,
-)
-from app.utils.permissions import role_required
-from app.utils.time_utils import business_now, format_api_datetime, parse_api_datetime
-
-
-@api_bp.route("/student/complaints", methods=["POST"])
-@login_required
-@role_required("student")
-def student_create_complaint():
-    data = request.get_json(silent=True) or {}
-    return _handle_business(lambda: ok(_complaint_summary(create_complaint(current_user, data))))
-
-
-@api_bp.route("/admin/complaints", methods=["GET"])
-@login_required
-@role_required("admin")
-def admin_complaints():
-    status = (request.args.get("status") or "").strip() or None
-    return _handle_business(lambda: _paged_response(
-        lambda page, page_size: list_complaints(status, page, page_size),
-        _complaint_summary,
-    ))
-
-
-@api_bp.route("/admin/complaints/<int:complaint_id>", methods=["GET"])
-@login_required
-@role_required("admin")
-def admin_complaint_detail(complaint_id):
-    return _handle_business(lambda: ok(_complaint_detail_payload(get_complaint(complaint_id, mark_viewed=True))))
-
-
-@api_bp.route("/operation-records", methods=["GET"])
-@login_required
-@role_required("advisor", "reviewer", "admin")
-def operation_records():
-    role_scope = (request.args.get("role_scope") or "").strip()
-    if role_scope not in {"advisor", "reviewer", "admin"} or not current_user.has_role(role_scope):
-        return fail("role_scope 与当前用户角色不匹配", code=40301, status=403)
-    query = OperationLog.query.filter_by(user_id=current_user.id)
-    biz_type = (request.args.get("biz_type") or "").strip()
-    if biz_type:
-        query = query.filter_by(biz_type=biz_type)
-    return _handle_business(lambda: _paged_response(
-        lambda page, page_size: _paginate_operation_records(query.order_by(OperationLog.id.desc()), page, page_size),
-        _operation_record_summary,
-    ))
-
-
-@api_bp.route("/operation-records/<int:record_id>", methods=["GET"])
-@login_required
-@role_required("advisor", "reviewer", "admin")
-def operation_record_detail(record_id):
-    record = OperationLog.query.filter_by(id=record_id, user_id=current_user.id).first()
-    if not record:
-        return fail("处理记录不存在或无权查看", code=40401, status=404)
-    return ok({"record": _operation_record_summary(record), "target": _operation_target_summary(record)})
+from app.utils.time_utils import business_now, format_api_datetime
 
 
 def _pagination_args():
@@ -916,4 +852,5 @@ def _number(value):
 
 def _iso(value):
     return format_api_datetime(value)
+
 

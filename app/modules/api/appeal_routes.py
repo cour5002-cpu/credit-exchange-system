@@ -3,7 +3,7 @@ from flask_login import current_user, login_required
 
 from app.core.responses import handle_business as _handle_business, ok
 from app.modules.api.blueprint import api_bp
-from app.modules.api.routes import (
+from app.modules.api.payloads import (
     _appeal_created_payload,
     _appeal_detail_payload,
     _appeal_review_payload,
