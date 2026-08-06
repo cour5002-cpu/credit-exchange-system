@@ -8,6 +8,7 @@ from app.modules.api import (  # noqa: F401,E402
     import_export_routes,
     lookup_routes,
     routes,
+    hour_application_routes,
     rule_routes,
     system_routes,
     task_type_routes,
