@@ -13,6 +13,7 @@ from app.modules.api import (  # noqa: F401,E402
     hour_application_routes,
     rule_routes,
     system_routes,
+    task_routes,
     task_type_routes,
 )
 
