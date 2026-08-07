@@ -334,6 +334,86 @@ class Week5AppealTaskApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
         self.assertEqual(response.json["data"]["registrations"][0]["status"], "selected")
 
+    def test_admin_and_advisor_task_publish_attachments(self):
+        admin_client, _ = self.client_login("admin", "admin123")
+        advisor_client, advisor_me = self.client_login("teacher1", "teacher123")
+        student_client, _ = self.client_login("student1", "student123")
+        task_type_id = admin_client.get(
+            "/api/v1/task-types?enabled=true"
+        ).json["data"]["items"][0]["id"]
+
+        admin_upload = admin_client.post(
+            "/api/v1/attachments",
+            data={
+                "biz_type": "task",
+                "file": (BytesIO(b"admin task attachment"), "admin-task.pdf"),
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(admin_upload.status_code, 200, admin_upload.get_data(as_text=True))
+        self.assertEqual(admin_upload.json["code"], 0)
+        admin_attachment_id = admin_upload.json["data"]["id"]
+
+        admin_task = admin_client.post("/api/v1/admin/tasks", json={
+            "title": "管理员附件任务",
+            "description": "验证管理员发布任务附件",
+            "task_type_id": task_type_id,
+            "advisor_teacher_id": advisor_me["teacher"]["id"],
+            "result_requirement": "按要求提交成果",
+            "registration_deadline": (datetime.now() + timedelta(days=7)).isoformat(),
+            "attachment_ids": [admin_attachment_id],
+        })
+        self.assertEqual(admin_task.status_code, 200, admin_task.get_data(as_text=True))
+        admin_task_id = admin_task.json["data"]["id"]
+        admin_detail = admin_client.get(f"/api/v1/admin/tasks/{admin_task_id}")
+        self.assertEqual(admin_detail.status_code, 200, admin_detail.get_data(as_text=True))
+        self.assertEqual(
+            [item["id"] for item in admin_detail.json["data"]["attachments"]],
+            [admin_attachment_id],
+        )
+        student_download = student_client.get(f"/api/v1/attachments/{admin_attachment_id}")
+        self.assertEqual(student_download.status_code, 200, student_download.get_data(as_text=True))
+
+        advisor_upload = advisor_client.post(
+            "/api/v1/attachments",
+            data={
+                "biz_type": "task",
+                "file": (BytesIO(b"advisor task attachment"), "advisor-task.pdf"),
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(advisor_upload.status_code, 200, advisor_upload.get_data(as_text=True))
+        advisor_attachment_id = advisor_upload.json["data"]["id"]
+
+        advisor_task = advisor_client.post("/api/v1/advisor/tasks", json={
+            "title": "指导老师附件任务",
+            "description": "验证指导老师发布任务附件",
+            "task_type_id": task_type_id,
+            "result_requirement": "按要求提交成果",
+            "registration_deadline": (datetime.now() + timedelta(days=7)).isoformat(),
+            "attachment_ids": [advisor_attachment_id],
+        })
+        self.assertEqual(advisor_task.status_code, 200, advisor_task.get_data(as_text=True))
+        advisor_task_id = advisor_task.json["data"]["id"]
+        advisor_detail = advisor_client.get(f"/api/v1/advisor/tasks/{advisor_task_id}")
+        self.assertEqual(advisor_detail.status_code, 200, advisor_detail.get_data(as_text=True))
+        self.assertEqual(
+            [item["id"] for item in advisor_detail.json["data"]["attachments"]],
+            [advisor_attachment_id],
+        )
+        admin_review_detail = admin_client.get(
+            f"/api/v1/admin/task-publish-requests/{advisor_task_id}"
+        )
+        self.assertEqual(
+            admin_review_detail.status_code,
+            200,
+            admin_review_detail.get_data(as_text=True),
+        )
+        self.assertEqual(
+            [item["id"] for item in admin_review_detail.json["data"]["attachments"]],
+            [advisor_attachment_id],
+        )
+
     def test_task_result_to_hour_award_mainline(self):
         admin_client, _ = self.client_login("admin", "admin123")
         student_client, student_me = self.client_login("student1", "student123")

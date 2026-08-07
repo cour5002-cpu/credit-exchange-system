@@ -38,6 +38,7 @@ def upload_attachment():
     if biz_type not in {
         "hour_application",
         "extension_request",
+        "task",
         "task_result",
         "credit_exchange",
         "appeal",
@@ -209,6 +210,20 @@ def _can_access_attachment(attachment):
             application_id=application.id,
             teacher_id=teacher.id,
         ).first())
+    if attachment.owner_type == "college_task":
+        task = db.session.get(CollegeTask, attachment.owner_id)
+        if not task:
+            return False
+        if student:
+            return task.status in {
+                "published",
+                "registration_open",
+                "registration_closed",
+                "selection_pending",
+                "leader_pending",
+                "task_in_progress",
+            }
+        return bool(teacher and task.advisor_teacher_id == teacher.id)
     if attachment.owner_type == "task_result":
         submission = db.session.get(TaskResultSubmission, attachment.owner_id)
         if not submission:

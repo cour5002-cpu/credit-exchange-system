@@ -453,6 +453,7 @@ def _operation_target_summary(record):
 def _task_detail_payload(task):
     return {
         "task": _task_detail(task),
+        "attachments": _owner_attachments("college_task", task.id),
         "registrations": [_task_registration_summary(item) for item in sorted(task.registrations, key=lambda item: (item.created_at, item.id))],
         "members": [_task_member_summary(item) for item in sorted(task.members, key=lambda item: (not item.is_leader, item.id)) if item.status == "active"],
     }
@@ -853,4 +854,3 @@ def _number(value):
 
 def _iso(value):
     return format_api_datetime(value)
-

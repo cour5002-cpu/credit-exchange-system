@@ -314,6 +314,13 @@ def create_task(user, payload, publisher_type, submit=True):
     )
     db.session.add(task)
     db.session.flush()
+    _bind_attachments(
+        "college_task",
+        task.id,
+        payload.get("attachment_ids"),
+        user.id,
+        expected_biz_type="task",
+    )
     _add_operation(user.id, "college_task", task.id, "submit" if submit else "draft", None, task.status)
     db.session.commit()
     return task
@@ -811,15 +818,22 @@ def _advance_task_registration(task):
         db.session.commit()
 
 
-def _bind_attachments(owner_type, owner_id, attachment_ids, user_id):
+def _bind_attachments(
+    owner_type,
+    owner_id,
+    attachment_ids,
+    user_id,
+    expected_biz_type=None,
+):
     ids = _normalize_id_list(attachment_ids)
     if not ids:
         return
+    expected_biz_type = expected_biz_type or owner_type
     attachments = Attachment.query.filter(Attachment.id.in_(ids), Attachment.status == "active").all()
     if len(attachments) != len(set(ids)):
         raise BusinessError("附件不存在或无权使用", code=40301, status=403)
     for attachment in attachments:
-        if attachment.uploaded_by != user_id or attachment.biz_type != owner_type:
+        if attachment.uploaded_by != user_id or attachment.biz_type != expected_biz_type:
             raise BusinessError("附件不存在或无权使用", code=40301, status=403)
         if attachment.owner_id and attachment.owner_id != owner_id:
             raise BusinessError("附件已绑定其他业务", code=40902, status=409)
