@@ -4,7 +4,7 @@ from flask_login import login_required
 from app.core.responses import ok
 from app.models.teacher import Teacher
 from app.modules.api.blueprint import api_bp
-from app.modules.api.serializers import teacher_summary
+from app.schemas.base import teacher_summary
 from app.utils.permissions import role_required
 
 

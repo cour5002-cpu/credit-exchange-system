@@ -231,9 +231,20 @@ class Week3HourApplicationApiTest(unittest.TestCase):
         admin_client, _ = self.client_login("admin", "admin123")
         requested_due_at = due_at + timedelta(days=30)
 
+        upload = student_client.post("/api/v1/attachments", data={
+            "biz_type": "extension_request",
+            "file": (BytesIO(b"normal extension proof"), "normal-extension-proof.pdf"),
+        }, content_type="multipart/form-data")
+        self.assertEqual(upload.status_code, 200, upload.get_data(as_text=True))
+        attachment_id = upload.json["data"]["id"]
+
         response = student_client.post(
             f"/api/v1/student/hour-applications/{application_id}/extension-requests",
-            json={"requested_due_at": requested_due_at.isoformat(), "reason": "项目设备延期到货"},
+            json={
+                "requested_due_at": requested_due_at.isoformat(),
+                "reason": "项目设备延期到货",
+                "attachment_ids": [attachment_id],
+            },
         )
         self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
         self.assertEqual(response.json["data"]["status"], "pending_advisor_review")
@@ -255,6 +266,15 @@ class Week3HourApplicationApiTest(unittest.TestCase):
 
         response = advisor_client.get("/api/v1/advisor/extension-requests/pending")
         self.assertIn(extension_id, [item["id"] for item in response.json["data"]["items"]])
+        detail = advisor_client.get(f"/api/v1/extension-requests/{extension_id}")
+        self.assertEqual(detail.status_code, 200, detail.get_data(as_text=True))
+        self.assertEqual(
+            [item["id"] for item in detail.json["data"]["attachments"]],
+            [attachment_id],
+        )
+        download = advisor_client.get(f"/api/v1/attachments/{attachment_id}?download=true")
+        self.assertEqual(download.status_code, 200, download.get_data(as_text=True))
+        download.close()
         response = advisor_client.post(
             f"/api/v1/advisor/extension-requests/{extension_id}/approve",
             json={"comment": "同意普通延期"},

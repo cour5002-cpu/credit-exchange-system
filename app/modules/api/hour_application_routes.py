@@ -3,26 +3,26 @@ from flask_login import current_user, login_required
 
 from app.core.responses import handle_business as _handle_business, ok
 from app.modules.api.blueprint import api_bp
-from app.modules.api.payloads import (
-    _admin_detail_payload,
-    _admin_extension_detail_payload,
-    _admin_hour_application_summary,
-    _advisor_detail_payload,
-    _application_created_payload,
-    _assign_payload,
-    _extension_created_payload,
-    _extension_detail_payload,
-    _extension_request_payload,
-    _extension_review_payload,
-    _final_approve_payload,
-    _final_review_payload,
-    _hour_application_detail_payload,
-    _hour_application_summary,
-    _id_status_payload,
-    _paged_response,
-    _pending_final_summary,
-    _reviewer_action_payload,
-    _reviewer_detail_payload,
+from app.modules.api.route_helpers import paged_response as _paged_response
+from app.schemas.hour_application import (
+    admin_detail_payload as _admin_detail_payload,
+    admin_extension_detail_payload as _admin_extension_detail_payload,
+    admin_hour_application_summary as _admin_hour_application_summary,
+    advisor_detail_payload as _advisor_detail_payload,
+    application_created_payload as _application_created_payload,
+    assign_payload as _assign_payload,
+    extension_created_payload as _extension_created_payload,
+    extension_detail_payload as _extension_detail_payload,
+    extension_request_payload as _extension_request_payload,
+    extension_review_payload as _extension_review_payload,
+    final_approve_payload as _final_approve_payload,
+    final_review_payload as _final_review_payload,
+    hour_application_detail_payload as _hour_application_detail_payload,
+    hour_application_summary as _hour_application_summary,
+    id_status_payload as _id_status_payload,
+    pending_final_summary as _pending_final_summary,
+    reviewer_action_payload as _reviewer_action_payload,
+    reviewer_detail_payload as _reviewer_detail_payload,
 )
 from app.services.week3_hour_application_service import (
     advisor_approve,

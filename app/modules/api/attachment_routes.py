@@ -22,7 +22,7 @@ from app.models.task_member import TaskMember
 from app.models.task_result_submission import TaskResultSubmission
 from app.models.teacher import Teacher
 from app.modules.api.blueprint import api_bp
-from app.modules.api.serializers import attachment_summary, operation_record_summary
+from app.schemas.base import attachment_summary, operation_record_summary
 from app.utils.pagination import paginate_query
 from app.utils.permissions import role_required
 from app.utils.time_utils import business_now

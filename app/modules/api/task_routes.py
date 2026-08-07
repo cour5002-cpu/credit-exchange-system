@@ -4,22 +4,22 @@ from flask_login import current_user, login_required
 from app.core.responses import handle_business as _handle_business, ok
 from app.models.task_member import TaskMember
 from app.modules.api.blueprint import api_bp
-from app.modules.api.payloads import (
-    _paged_response,
-    _student_task_detail_payload,
-    _student_team_payload,
-    _task_created_payload,
-    _task_detail_payload,
-    _task_leader_payload,
-    _task_member_summary,
-    _task_registration_created_payload,
-    _task_registration_summary,
-    _task_result_created_payload,
-    _task_result_detail_payload,
-    _task_result_summary,
-    _task_summary,
+from app.schemas.college_task import (
+    student_task_detail_payload as _student_task_detail_payload,
+    student_team_payload as _student_team_payload,
+    task_created_payload as _task_created_payload,
+    task_detail_payload as _task_detail_payload,
+    task_leader_payload as _task_leader_payload,
+    task_member_summary as _task_member_summary,
+    task_registration_created_payload as _task_registration_created_payload,
+    task_registration_summary as _task_registration_summary,
+    task_result_created_payload as _task_result_created_payload,
+    task_result_detail_payload as _task_result_detail_payload,
+    task_result_summary as _task_result_summary,
+    task_summary as _task_summary,
 )
-from app.services.week5_appeal_task_service import (
+from app.modules.api.route_helpers import paged_response as _paged_response
+from app.services.college_task_service import (
     admin_approve_task_publish,
     admin_reject_task_publish,
     assign_task_leader,

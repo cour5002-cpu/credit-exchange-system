@@ -3,23 +3,24 @@ from flask_login import current_user, login_required
 
 from app.core.responses import handle_business as _handle_business, ok
 from app.modules.api.blueprint import api_bp
-from app.modules.api.payloads import (
-    _appeal_created_payload,
-    _appeal_detail_payload,
-    _appeal_review_payload,
-    _appeal_summary,
-    _credit_exchange_summary,
-    _hour_application_summary,
-    _paged_response,
-    _reopened_appeal_payload,
+from app.schemas.appeal import (
+    appeal_created_payload as _appeal_created_payload,
+    appeal_detail_payload as _appeal_detail_payload,
+    appeal_review_payload as _appeal_review_payload,
+    appeal_summary as _appeal_summary,
+    reopened_appeal_payload as _reopened_appeal_payload,
 )
-from app.services.week5_appeal_task_service import (
+from app.modules.api.route_helpers import paged_response as _paged_response
+from app.schemas.credit_exchange import credit_exchange_summary as _credit_exchange_summary
+from app.schemas.hour_application import hour_application_summary as _hour_application_summary
+from app.services.appeal_service import (
     admin_approve_appeal,
     admin_reject_appeal,
     advisor_reconfirm_appeal,
     assign_reopened_appeal,
     create_appeal,
     get_admin_appeal,
+    get_appeal_target,
     get_appealable_target,
     get_reviewer_appeal,
     get_student_appeal,
@@ -68,7 +69,11 @@ def student_appeals():
 @login_required
 @role_required("student")
 def student_appeal_detail(appeal_id):
-    return _handle_business(lambda: ok(_appeal_detail_payload(get_student_appeal(current_user, appeal_id))))
+    def payload():
+        appeal = get_student_appeal(current_user, appeal_id)
+        return ok(_appeal_detail_payload(appeal, get_appeal_target(appeal)))
+
+    return _handle_business(payload)
 
 
 @api_bp.route("/admin/appeals", methods=["GET"])
@@ -86,7 +91,11 @@ def admin_appeals():
 @login_required
 @role_required("admin")
 def admin_appeal_detail(appeal_id):
-    return _handle_business(lambda: ok(_appeal_detail_payload(get_admin_appeal(appeal_id))))
+    def payload():
+        appeal = get_admin_appeal(appeal_id)
+        return ok(_appeal_detail_payload(appeal, get_appeal_target(appeal)))
+
+    return _handle_business(payload)
 
 
 @api_bp.route("/admin/appeals/<int:appeal_id>/approve", methods=["POST"])

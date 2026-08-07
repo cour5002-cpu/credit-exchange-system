@@ -6,7 +6,7 @@ from app.extensions import db
 from app.models.student import Student
 from app.models.teacher import Teacher
 from app.modules.api.blueprint import api_bp
-from app.modules.api.serializers import student_summary, teacher_summary
+from app.schemas.base import student_summary, teacher_summary
 from app.services.auth_service import authenticate_user
 
 

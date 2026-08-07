@@ -4,12 +4,12 @@ from flask_login import current_user, login_required
 from app.core.responses import fail, handle_business as _handle_business, ok
 from app.models.operation_log import OperationLog
 from app.modules.api.blueprint import api_bp
-from app.modules.api.payloads import (
-    _operation_record_summary,
-    _operation_target_summary,
-    _paged_response,
-    _paginate_operation_records,
+from app.schemas.base import operation_record_summary as _operation_record_summary
+from app.modules.api.route_helpers import (
+    paged_response as _paged_response,
+    paginate_operation_records as _paginate_operation_records,
 )
+from app.schemas.operation_record import operation_target_summary as _operation_target_summary
 from app.utils.permissions import role_required
 
 

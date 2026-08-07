@@ -5,7 +5,7 @@ from flask_login import current_user, login_required
 
 from app.core.responses import handle_business, ok
 from app.modules.api.blueprint import api_bp
-from app.modules.api.serializers import conversion_rule_summary, rule_file_summary
+from app.schemas.base import conversion_rule_summary, rule_file_summary
 from app.services.week4_credit_exchange_service import (
     create_conversion_rule,
     create_rule_file,

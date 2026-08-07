@@ -3,16 +3,16 @@ from flask_login import current_user, login_required
 
 from app.core.responses import handle_business as _handle_business, ok
 from app.modules.api.blueprint import api_bp
-from app.modules.api.payloads import (
-    _credit_exchange_created_payload,
-    _credit_exchange_detail_payload,
-    _credit_exchange_final_payload,
-    _credit_exchange_form_payload,
-    _credit_exchange_summary,
-    _hour_award_summary,
-    _id_status_payload,
-    _paged_response,
+from app.modules.api.route_helpers import paged_response as _paged_response
+from app.schemas.credit_exchange import (
+    credit_exchange_created_payload as _credit_exchange_created_payload,
+    credit_exchange_detail_payload as _credit_exchange_detail_payload,
+    credit_exchange_final_payload as _credit_exchange_final_payload,
+    credit_exchange_form_payload as _credit_exchange_form_payload,
+    credit_exchange_summary as _credit_exchange_summary,
+    hour_award_summary as _hour_award_summary,
 )
+from app.schemas.hour_application import id_status_payload as _id_status_payload
 from app.services.week4_credit_exchange_service import (
     admin_batch_final_approve_credit_exchanges,
     admin_final_approve_credit_exchange,

@@ -3,8 +3,12 @@ from flask_login import current_user, login_required
 
 from app.core.responses import handle_business as _handle_business, ok
 from app.modules.api.blueprint import api_bp
-from app.modules.api.payloads import _complaint_detail_payload, _complaint_summary, _paged_response
-from app.services.week5_appeal_task_service import create_complaint, get_complaint, list_complaints
+from app.modules.api.route_helpers import paged_response as _paged_response
+from app.schemas.complaint import (
+    complaint_detail_payload as _complaint_detail_payload,
+    complaint_summary as _complaint_summary,
+)
+from app.services.complaint_service import create_complaint, get_complaint, list_complaints
 from app.utils.permissions import role_required
 
 
