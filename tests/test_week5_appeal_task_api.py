@@ -139,6 +139,19 @@ class Week5AppealTaskApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(appeal_id, [item["id"] for item in response.json["data"]["items"]])
 
+        response = admin_client.get(f"/api/v1/admin/appeals/{appeal_id}")
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        detail = response.json["data"]
+        self.assertEqual(set(detail), {"appeal", "target", "attachments"})
+        self.assertEqual(detail["appeal"]["id"], appeal_id)
+        self.assertEqual(detail["appeal"]["target_type"], "hour_application")
+        self.assertEqual(detail["target"]["id"], application_id)
+        self.assertEqual(detail["target"]["status"], "final_rejected")
+        self.assertEqual(
+            [item["id"] for item in detail["attachments"]],
+            [upload.json["data"]["id"]],
+        )
+
         response = admin_client.post(
             f"/api/v1/admin/appeals/{appeal_id}/approve",
             json={"admin_advice": "申诉理由成立，退回指导老师重新确认"},

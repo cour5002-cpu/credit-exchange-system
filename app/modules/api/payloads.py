@@ -22,6 +22,7 @@ from app.modules.api.serializers import (
     teacher_summary as _teacher_summary,
 )
 from app.services.week3_hour_application_service import (
+    get_application,
     latest_reviewer_result,
 )
 from app.services.week4_credit_exchange_service import (
@@ -852,5 +853,4 @@ def _number(value):
 
 def _iso(value):
     return format_api_datetime(value)
-
 
