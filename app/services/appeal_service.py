@@ -8,6 +8,7 @@ from app.models.application_advisor import ApplicationAdvisor
 from app.models.credit_exchange_application import CreditExchangeApplication
 from app.models.hour_application import HourApplication
 from app.models.rule_file import RuleFile
+from app.services.appeal_workflow import reconcile_reopened_hour_appeals
 from app.services.service_helpers import (
     add_operation as _add_operation,
     bind_attachments as _bind_attachments,
@@ -105,6 +106,7 @@ def get_student_appeal(user, appeal_id):
 
 
 def list_admin_appeals(status=None, page=None, page_size=None):
+    reconcile_reopened_hour_appeals()
     query = Appeal.query
     if status:
         query = query.filter_by(status=status)
@@ -170,6 +172,7 @@ def get_appealable_target(user, target_type, target_id):
 
 
 def list_reopened_pending_advisor(user, page=None, page_size=None):
+    reconcile_reopened_hour_appeals()
     teacher = current_teacher(user, "advisor")
     hour_ids = db.session.query(ApplicationAdvisor.application_id).filter_by(
         teacher_id=teacher.id,
@@ -211,6 +214,7 @@ def advisor_reconfirm_appeal(user, appeal_id, decision, comment=None):
                 appeal.target_id,
                 comment,
                 material=reuse_submitted_material,
+                appeal_id=appeal.id,
             )
             if decision == "approve"
             else advisor_reject(
@@ -218,6 +222,7 @@ def advisor_reconfirm_appeal(user, appeal_id, decision, comment=None):
                 appeal.target_id,
                 comment,
                 material=reuse_submitted_material,
+                appeal_id=appeal.id,
             )
         )
         appeal.reopen_stage = "pending_assignment" if decision == "approve" else "advisor_rejected"
@@ -245,6 +250,7 @@ def advisor_reconfirm_appeal(user, appeal_id, decision, comment=None):
 
 
 def list_reopened_pending_assignment(page=None, page_size=None):
+    reconcile_reopened_hour_appeals()
     query = Appeal.query.filter_by(
         status="processing",
         reopen_stage="pending_assignment",
@@ -256,7 +262,13 @@ def assign_reopened_appeal(user, appeal_id, reviewer_teacher_id, comment=None):
     appeal = get_admin_appeal(appeal_id)
     if appeal.target_type != "hour_application" or appeal.reopen_stage != "pending_assignment":
         raise BusinessError("当前申诉不允许分配审核老师", code=40901, status=409)
-    target = assign_reviewer(user, appeal.target_id, reviewer_teacher_id, comment)
+    target = assign_reviewer(
+        user,
+        appeal.target_id,
+        reviewer_teacher_id,
+        comment,
+        appeal_id=appeal.id,
+    )
     appeal.reopen_stage = "pending_reviewer_review"
     _add_operation(
         user.id, "appeal", appeal.id, "assign_reviewer", "pending_assignment", appeal.reopen_stage
@@ -266,6 +278,7 @@ def assign_reopened_appeal(user, appeal_id, reviewer_teacher_id, comment=None):
 
 
 def list_reviewer_appeals(user, page=None, page_size=None):
+    reconcile_reopened_hour_appeals()
     teacher = current_teacher(user, "reviewer")
     query = (
         Appeal.query.join(HourApplication, HourApplication.id == Appeal.target_id)
@@ -297,13 +310,28 @@ def review_reopened_appeal(
 ):
     appeal = get_reviewer_appeal(user, appeal_id)
     if decision == "approve":
-        target, _ = reviewer_approve(user, appeal.target_id, comment)
+        target, _ = reviewer_approve(
+            user,
+            appeal.target_id,
+            comment,
+            appeal_id=appeal.id,
+        )
     elif decision == "modified_approve":
         target, _ = reviewer_approve(
-            user, appeal.target_id, comment, suggested_hours, modified=True
+            user,
+            appeal.target_id,
+            comment,
+            suggested_hours,
+            modified=True,
+            appeal_id=appeal.id,
         )
     elif decision == "reject":
-        target = reviewer_reject(user, appeal.target_id, comment)
+        target = reviewer_reject(
+            user,
+            appeal.target_id,
+            comment,
+            appeal_id=appeal.id,
+        )
     else:
         raise BusinessError("复审决定不合法")
     appeal.reopen_stage = "pending_admin_final" if decision != "reject" else "reviewer_rejected"

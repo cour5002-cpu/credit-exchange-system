@@ -21,6 +21,10 @@ from app.models.student import Student
 from app.models.task_type import TaskType
 from app.models.task_result_submission import TaskResultSubmission
 from app.models.teacher import Teacher
+from app.services.appeal_workflow import (
+    exclude_active_reopened_appeals,
+    require_hour_application_workflow,
+)
 from app.services.hour_account_service import add_hours
 from app.utils.number_generator import generate_application_no
 from app.utils.pagination import finish_query
@@ -366,13 +370,14 @@ def close_unfinishable_application(user, application_id, reason):
 
 def list_advisor_pending(user, status="submitted", page=None, page_size=None):
     teacher = current_teacher(user, "advisor")
-    query = _advisor_query(teacher, status).order_by(HourApplication.created_at.desc(), HourApplication.id.desc())
+    query = exclude_active_reopened_appeals(_advisor_query(teacher, status))
+    query = query.order_by(HourApplication.created_at.desc(), HourApplication.id.desc())
     return finish_query(query, page, page_size)
 
 
 def list_advisor_material_pending(user, page=None, page_size=None):
     teacher = current_teacher(user, "advisor")
-    query = _advisor_query(teacher, "material_submitted").filter(
+    query = exclude_active_reopened_appeals(_advisor_query(teacher, "material_submitted")).filter(
         HourApplication.application_type == "without_material"
     ).order_by(HourApplication.created_at.desc(), HourApplication.id.desc())
     return finish_query(query, page, page_size)
@@ -404,11 +409,12 @@ def get_advisor_material_application(user, application_id):
     return application
 
 
-def advisor_approve(user, application_id, comment=None, material=False):
+def advisor_approve(user, application_id, comment=None, material=False, appeal_id=None):
     teacher = current_teacher(user, "advisor")
     application = get_application(application_id)
     if not _is_primary_advisor(application.id, teacher.id):
         raise BusinessError("当前教师不是该申请的主指导老师", code=40301, status=403)
+    require_hour_application_workflow(application.id, appeal_id)
     if material and application.application_type != "without_material":
         raise BusinessError(
             "任务成果不能通过补交成果接口确认，请使用任务成果确认接口",
@@ -432,13 +438,14 @@ def advisor_approve(user, application_id, comment=None, material=False):
     return application
 
 
-def advisor_reject(user, application_id, comment, material=False):
+def advisor_reject(user, application_id, comment, material=False, appeal_id=None):
     if not comment:
         raise BusinessError("驳回原因不能为空")
     teacher = current_teacher(user, "advisor")
     application = get_application(application_id)
     if not _is_primary_advisor(application.id, teacher.id):
         raise BusinessError("当前教师不是该申请的主指导老师", code=40301, status=403)
+    require_hour_application_workflow(application.id, appeal_id)
     if material and application.application_type != "without_material":
         raise BusinessError(
             "任务成果不能通过补交成果接口驳回，请使用任务成果确认接口",
@@ -523,11 +530,15 @@ def submit_materials(user, application_id, payload):
 
 
 def list_pending_assignment(page=None, page_size=None):
-    return list_admin_hour_applications(status="pending_assignment", page=page, page_size=page_size)
+    query = HourApplication.query.filter_by(status="pending_assignment")
+    query = exclude_active_reopened_appeals(query)
+    query = query.order_by(HourApplication.created_at.desc(), HourApplication.id.desc())
+    return finish_query(query, page, page_size)
 
 
-def assign_reviewer(user, application_id, reviewer_teacher_id, comment=None):
+def assign_reviewer(user, application_id, reviewer_teacher_id, comment=None, appeal_id=None):
     application = get_application(application_id)
+    require_hour_application_workflow(application.id, appeal_id)
     _require_status(application, "pending_assignment")
     reviewer = _active_teacher_with_flag(reviewer_teacher_id, "reviewer")
     ReviewAssignment.query.filter_by(application_id=application.id, status="active").update({"status": "replaced"})
@@ -549,15 +560,15 @@ def assign_reviewer(user, application_id, reviewer_teacher_id, comment=None):
 
 def list_reviewer_pending(user, page=None, page_size=None):
     teacher = current_teacher(user, "reviewer")
-    query = (
+    query = exclude_active_reopened_appeals(
         HourApplication.query.join(ReviewAssignment, ReviewAssignment.application_id == HourApplication.id)
         .filter(
             HourApplication.status == "pending_review",
             ReviewAssignment.reviewer_teacher_id == teacher.id,
             ReviewAssignment.status == "active",
         )
-        .order_by(HourApplication.created_at.desc(), HourApplication.id.desc())
     )
+    query = query.order_by(HourApplication.created_at.desc(), HourApplication.id.desc())
     return finish_query(query, page, page_size)
 
 
@@ -569,11 +580,19 @@ def get_reviewer_application(user, application_id):
     return application
 
 
-def reviewer_approve(user, application_id, comment=None, suggested_hours=None, modified=False):
+def reviewer_approve(
+    user,
+    application_id,
+    comment=None,
+    suggested_hours=None,
+    modified=False,
+    appeal_id=None,
+):
     teacher = current_teacher(user, "reviewer")
     application = get_application(application_id)
     if not _is_active_reviewer(application.id, teacher.id):
         raise BusinessError("当前教师不是被分配的审核老师", code=40301, status=403)
+    require_hour_application_workflow(application.id, appeal_id)
     _require_status(application, "pending_review")
     before = application.status
     if modified:
@@ -595,13 +614,14 @@ def reviewer_approve(user, application_id, comment=None, suggested_hours=None, m
     return application, review_status
 
 
-def reviewer_reject(user, application_id, comment):
+def reviewer_reject(user, application_id, comment, appeal_id=None):
     if not comment:
         raise BusinessError("驳回原因不能为空")
     teacher = current_teacher(user, "reviewer")
     application = get_application(application_id)
     if not _is_active_reviewer(application.id, teacher.id):
         raise BusinessError("当前教师不是被分配的审核老师", code=40301, status=403)
+    require_hour_application_workflow(application.id, appeal_id)
     _require_status(application, "pending_review")
     before = application.status
     application.status = "reviewer_rejected"
@@ -613,7 +633,10 @@ def reviewer_reject(user, application_id, comment):
 
 
 def list_pending_final(page=None, page_size=None):
-    return list_admin_hour_applications(status="pending_admin_final", page=page, page_size=page_size)
+    query = HourApplication.query.filter_by(status="pending_admin_final")
+    query = exclude_active_reopened_appeals(query)
+    query = query.order_by(HourApplication.created_at.desc(), HourApplication.id.desc())
+    return finish_query(query, page, page_size)
 
 
 def final_approve(user, application_id, final_hours=None, comment=None):
