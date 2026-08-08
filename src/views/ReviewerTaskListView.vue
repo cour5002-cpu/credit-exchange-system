@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
+import PaginationControls from '../components/PaginationControls.vue'
 import { getReviewerPendingApplications as getReviewerPendingApi } from '../api/applicationApi.js'
 import { getReviewerAppeals } from '../api/appealApi.js'
 import { adaptApplicationList } from '../adapters/applicationAdapter.js'
@@ -12,7 +13,10 @@ const reviewType = ref('')
 const status = ref('')
 const realApplications=ref([])
 const realAppeals=ref([])
-onMounted(async()=>{const [normalResult,appealResult]=await Promise.allSettled([getReviewerPendingApi({page_size:100}),getReviewerAppeals({page_size:100})]);if(normalResult.status==='fulfilled')realApplications.value=adaptApplicationList(normalResult.value).items;else window.alert(getApiErrorMessage(normalResult.reason,'待审核申请加载失败'));if(appealResult.status==='fulfilled')realAppeals.value=adaptAppealList(appealResult.value).filter(item=>item.reopenStage==='pending_reviewer_review');else window.alert(getApiErrorMessage(appealResult.reason,'申诉复审加载失败'))})
+const page=ref(1);const pageSize=ref(10);const total=ref(0);const loading=ref(false)
+async function loadItems(){loading.value=true;const [normalResult,appealResult]=await Promise.allSettled([getReviewerPendingApi({page:page.value,page_size:pageSize.value}),getReviewerAppeals({page_size:100})]);if(normalResult.status==='fulfilled'){const adapted=adaptApplicationList(normalResult.value);realApplications.value=adapted.items;total.value=Number(adapted.total??adapted.items.length);page.value=Number(adapted.page??page.value);pageSize.value=Number(adapted.page_size??pageSize.value)}else window.alert(getApiErrorMessage(normalResult.reason,'待审核申请加载失败'));if(appealResult.status==='fulfilled')realAppeals.value=adaptAppealList(appealResult.value).filter(item=>item.reopenStage==='pending_reviewer_review');else window.alert(getApiErrorMessage(appealResult.reason,'申诉复审加载失败'));loading.value=false}
+onMounted(loadItems)
+async function changePage(target){page.value=target;await loadItems()}
 
 const allItems = computed(() => [
   ...realApplications.value.filter((item) => item.status === 'pending_review').map((item) => ({
@@ -38,7 +42,7 @@ const items = computed(() => {
 <template><main class="review-page"><div class="page-content">
   <header class="page-header"><div><p class="eyebrow">R101 · REVIEW TASKS</p><h1>待审核成果</h1><p>统一处理课时申请成果材料审核与申诉复审；项目成果上传由指导老师确认。</p></div><RouterLink class="back-link" to="/reviewer/dashboard">返回审核首页</RouterLink></header>
   <section class="filters"><label><span>审核类型</span><select v-model="reviewType"><option value="">全部</option><option value="normal">普通审核</option><option value="appeal">申诉复审</option></select></label><label><span>当前状态</span><select v-model="status"><option value="">全部状态</option><option value="pending_review">待审核老师审核</option><option value="pending_reviewer_review">等待申诉复审</option></select></label><label><span>搜索</span><input v-model="keyword" type="search" placeholder="搜索学生姓名或申请名称" /></label></section>
-  <section class="list-panel"><div class="panel-header"><h2>待审核列表</h2><span>共 {{ items.length }} 项</span></div><div class="table-wrapper"><table><thead><tr><th>编号</th><th>审核类型</th><th>关联申请名称</th><th>学生姓名</th><th>申请 / 申诉来源</th><th>申请 / 原认定课时</th><th>分配时间</th><th>当前状态</th><th>操作</th></tr></thead><tbody><tr v-for="item in items" :key="item.key"><td>{{ item.id }}</td><td><span class="type-tag" :class="`type-tag--${item.reviewType}`">{{ item.reviewTypeText }}</span></td><td>{{ item.title }}</td><td>{{ item.studentName }}</td><td>{{ item.sourceText }}</td><td>{{ item.hours ?? '--' }} 课时</td><td>{{ item.assignTime || '--' }}</td><td><StatusTag :status="item.status" /></td><td><RouterLink class="detail-link" :to="item.detailTo">查看详情</RouterLink></td></tr><tr v-if="!items.length"><td class="empty" colspan="9">暂无分配给当前审核老师的待审核任务。</td></tr></tbody></table></div></section>
+  <section class="list-panel"><div class="panel-header"><h2>待审核列表</h2><span>共 {{ total }} 项</span></div><div class="table-wrapper"><table><thead><tr><th>编号</th><th>审核类型</th><th>关联申请名称</th><th>学生姓名</th><th>申请 / 申诉来源</th><th>申请 / 原认定课时</th><th>分配时间</th><th>当前状态</th><th>操作</th></tr></thead><tbody><tr v-for="item in items" :key="item.key"><td>{{ item.id }}</td><td><span class="type-tag" :class="`type-tag--${item.reviewType}`">{{ item.reviewTypeText }}</span></td><td>{{ item.title }}</td><td>{{ item.studentName }}</td><td>{{ item.sourceText }}</td><td>{{ item.hours ?? '--' }} 课时</td><td>{{ item.assignTime || '--' }}</td><td><StatusTag :status="item.status" /></td><td><RouterLink class="detail-link" :to="item.detailTo">查看详情</RouterLink></td></tr><tr v-if="!items.length"><td class="empty" colspan="9">暂无分配给当前审核老师的待审核任务。</td></tr></tbody></table></div><PaginationControls :page="page" :page-size="pageSize" :total="total" :loading="loading" @change="changePage" /></section>
 </div></main></template>
 
 <style scoped>

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
+import PaginationControls from '../components/PaginationControls.vue'
 import { getReopenedAppealsForAdvisor, reconfirmAppealByAdvisor } from '../api/appealApi.js'
 import { adaptAppealList } from '../adapters/appealAdapter.js'
 import { getAdvisorPendingApplications } from '../api/applicationApi.js'
@@ -10,16 +11,22 @@ import { getApiErrorMessage } from '../utils/apiFeedback.js'
 const keyword = ref('')
 const pendingAppeals = ref([])
 const realApplications = ref([])
-onMounted(async()=>{
-  const pendingResult = await Promise.resolve(getAdvisorPendingApplications({ status: 'submitted', page_size: 100 }))
+const page=ref(1);const pageSize=ref(10);const total=ref(0);const loading=ref(false)
+async function loadConfirmations(){
+  loading.value=true
+  const pendingResult = await Promise.resolve(getAdvisorPendingApplications({ status: 'submitted', page:page.value, page_size:pageSize.value }))
     .then((value) => ({ status: 'fulfilled', value }), (reason) => ({ status: 'rejected', reason }))
   try { pendingAppeals.value = adaptAppealList(await getReopenedAppealsForAdvisor({ page_size: 100 })) } catch (error) { console.error('[advisor appeals]', error) }
   const pending = pendingResult.status === 'fulfilled'
     ? adaptApplicationList(pendingResult.value).items.filter((item) => item.status === 'submitted')
     : []
+  if(pendingResult.status==='fulfilled'){const adapted=adaptApplicationList(pendingResult.value);total.value=Number(adapted.total??pending.length);page.value=Number(adapted.page??page.value);pageSize.value=Number(adapted.page_size??pageSize.value)}
   realApplications.value = pending
   if (pendingResult.status === 'rejected') window.alert(getApiErrorMessage(pendingResult.reason, '待确认课时申请加载失败'))
-})
+  loading.value=false
+}
+onMounted(loadConfirmations)
+async function changePage(target){page.value=target;await loadConfirmations()}
 async function handleAppeal(item, decision) { const comment = window.prompt(decision === 'approve' ? '请输入再次确认意见（可选）' : '请输入驳回意见') || ''; if (decision === 'reject' && !comment.trim()) return; try { await reconfirmAppealByAdvisor(item.id,{decision,comment:comment.trim()});pendingAppeals.value=pendingAppeals.value.filter(row=>row.id!==item.id);window.alert(decision === 'approve' ? '已确认，等待管理员分配复审老师。' : '已驳回，申诉处理完成。') } catch(error){window.alert(error?.message||'申诉再次确认失败')} }
 
 const filteredConfirmations = computed(() => {
@@ -68,7 +75,7 @@ const filteredConfirmations = computed(() => {
       <section class="list-panel" aria-labelledby="confirmation-list-title">
         <div class="panel-header">
           <h2 id="confirmation-list-title">确认事项列表</h2>
-          <span>共 {{ filteredConfirmations.length }} 项</span>
+          <span>共 {{ total }} 项</span>
         </div>
         <div class="table-wrapper">
           <table>
@@ -92,6 +99,7 @@ const filteredConfirmations = computed(() => {
             </tbody>
           </table>
         </div>
+        <PaginationControls :page="page" :page-size="pageSize" :total="total" :loading="loading" @change="changePage" />
       </section>
     </div>
   </main>

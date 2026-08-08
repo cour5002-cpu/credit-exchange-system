@@ -3,8 +3,10 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AttachmentNotice from '../components/AttachmentNotice.vue'
 import ReviewActionBar from '../components/ReviewActionBar.vue'
+import RuleFilePanel from '../components/RuleFilePanel.vue'
 import StatusTag from '../components/StatusTag.vue'
 import { approveApplicationByAdvisor, getAdvisorApplication, rejectApplicationByAdvisor } from '../api/applicationApi.js'
+import { downloadAttachment as downloadAttachmentFile, getAttachment, getAttachmentErrorMessage, previewAttachment as previewAttachmentFile } from '../api/fileApi.js'
 import { adaptApplicationEnvelope } from '../adapters/applicationAdapter.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
@@ -35,6 +37,12 @@ async function loadConfirmation(){
   }
   try {
     confirmation.value = adaptApplicationEnvelope(await getAdvisorApplication(applicationId))
+    if (confirmation.value?.attachments?.length) {
+      confirmation.value.attachments = await Promise.all(confirmation.value.attachments.map(async (file) => {
+        try { return await getAttachment(file.id) } catch { return file }
+      }))
+      confirmation.value.resultMaterials = confirmation.value.attachments
+    }
     if (!confirmation.value) loadError.value = '接口未返回申请详情。'
   } catch (error) {
     confirmation.value = null
@@ -65,12 +73,12 @@ function goBack() {
   router.push('/teacher/confirm')
 }
 
-function previewAttachment(file) {
-  window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。')
+async function previewAttachment(file) {
+  try { await previewAttachmentFile(file) } catch (error) { window.alert(getAttachmentErrorMessage(error, 'preview')) }
 }
 
-function downloadAttachment(file) {
-  window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。')
+async function downloadAttachment(file) {
+  try { await downloadAttachmentFile(file) } catch (error) { window.alert(getAttachmentErrorMessage(error, 'download')) }
 }
 </script>
 
@@ -83,6 +91,7 @@ function downloadAttachment(file) {
           <div><p class="eyebrow">CONFIRMATION DETAIL</p><h1>{{ confirmation.title }}</h1><p>课时申请确认</p></div>
           <StatusTag :status="confirmation.status" />
         </header>
+        <RuleFilePanel rule-type="hour_rule" title="课时认定规则" description="确认学生课时申请时，请参考当前课时认定规则。" />
 
         <section class="detail-card">
           <h2>学生信息</h2>

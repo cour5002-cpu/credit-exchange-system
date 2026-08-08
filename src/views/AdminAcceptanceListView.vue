@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
+import PaginationControls from '../components/PaginationControls.vue'
 import { getPendingAssignmentApplications } from '../api/applicationApi.js'
 import { adaptApplicationList } from '../adapters/applicationAdapter.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
@@ -10,8 +11,10 @@ const keyword = ref('')
 const selectedIds = ref([])
 const refreshKey = ref(0)
 const realItems = ref([])
-async function loadItems(){try{realItems.value=adaptApplicationList(await getPendingAssignmentApplications({page_size:100})).items}catch(error){window.alert(getApiErrorMessage(error,'待分配申请加载失败'))}}
+const page=ref(1);const pageSize=ref(10);const total=ref(0);const loading=ref(false)
+async function loadItems(){loading.value=true;try{const adapted=adaptApplicationList(await getPendingAssignmentApplications({page:page.value,page_size:pageSize.value}));realItems.value=adapted.items;total.value=Number(adapted.total??adapted.items.length);page.value=Number(adapted.page??page.value);pageSize.value=Number(adapted.page_size??pageSize.value)}catch(error){window.alert(getApiErrorMessage(error,'待分配申请加载失败'))}finally{loading.value=false}}
 onMounted(loadItems)
+async function changePage(target){page.value=target;selectedIds.value=[];await loadItems()}
 
 const filteredItems = computed(() => {
   refreshKey.value
@@ -57,7 +60,7 @@ function batchAccept() {
 
       <section class="list-panel">
         <div class="panel-header">
-          <div><h2>申请列表</h2><span>共 {{ filteredItems.length }} 项，已选择 {{ selectedIds.length }} 项</span></div>
+          <div><h2>申请列表</h2><span>共 {{ total }} 项，已选择 {{ selectedIds.length }} 项</span></div>
           <button class="batch-button" type="button" @click="batchAccept">批量受理并分配</button>
         </div>
         <div class="table-wrapper"><table>
@@ -73,6 +76,7 @@ function batchAccept() {
             <tr v-if="!filteredItems.length"><td class="empty" colspan="11">没有找到符合条件的待受理申请。</td></tr>
           </tbody>
         </table></div>
+        <PaginationControls :page="page" :page-size="pageSize" :total="total" :loading="loading" @change="changePage" />
       </section>
     </div>
   </main>

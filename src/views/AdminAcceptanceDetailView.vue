@@ -6,6 +6,7 @@ import StatusTag from '../components/StatusTag.vue'
 import { loadReviewerOptions } from '../services/commonDependencyService.js'
 import { assignApplicationReviewer, getAdminApplication } from '../api/applicationApi.js'
 import { adaptApplicationEnvelope } from '../adapters/applicationAdapter.js'
+import { downloadAttachment, getAttachmentErrorMessage, previewAttachment } from '../api/fileApi.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
 const route = useRoute()
@@ -46,8 +47,8 @@ async function acceptApplication() {
     window.alert(getApiErrorMessage(error, '分配失败'))
   }
 }
-function previewFile() { window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。') }
-function downloadFile() { window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。') }
+async function previewFile(file) { try { await previewAttachment(file) } catch (error) { window.alert(getAttachmentErrorMessage(error, 'preview')) } }
+async function downloadFile(file) { try { await downloadAttachment(file) } catch (error) { window.alert(getAttachmentErrorMessage(error, 'download')) } }
 function goBack() { router.push('/admin/review-assign') }
 </script>
 

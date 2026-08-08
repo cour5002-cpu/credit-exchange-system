@@ -3,13 +3,19 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AttachmentNotice from '../components/AttachmentNotice.vue'
 import MemberInputTable from '../components/MemberInputTable.vue'
+import RuleFilePanel from '../components/RuleFilePanel.vue'
 import StageDescription from '../components/StageDescription.vue'
 import { addApplication, getApplications } from '../mock/applications.js'
 import { getApprovedTaskResultsForStudent, markTaskResultApplicationCreated } from '../mock/taskResults.js'
 import { TASK_TYPE_OPTIONS, getTaskById } from '../mock/tasks.js'
 import { loadAdvisorOptions, loadTaskTypeOptions } from '../services/commonDependencyService.js'
-import { getStudentApplication, submitApplication as submitApplicationApi } from '../api/applicationApi.js'
-import { uploadAttachment } from '../api/fileApi.js'
+import {
+  getStudentApplication,
+  getStudentApplications,
+  saveApplicationDraft,
+  submitApplication as submitApplicationApi,
+} from '../api/applicationApi.js'
+import { downloadAttachment, getAttachmentErrorMessage, previewAttachment, uploadAttachment } from '../api/fileApi.js'
 import { toApplicationPayload } from '../adapters/applicationAdapter.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
 import { currentUser as authCurrentUser } from '../stores/authStore.js'
@@ -73,6 +79,8 @@ watch(() => authCurrentUser.value?.student, () => {
 }, { immediate: true })
 
 const feedback = ref({ type: '', message: '' })
+const draftId = ref(null)
+const draftStorageKey = computed(() => `hour-application-draft:${currentUser.id ?? currentUser.studentId ?? 'student'}`)
 const observerPanelExpanded = ref(false)
 const observerSearch = ref('')
 const taskResultVersion = ref(0)
@@ -186,14 +194,131 @@ function validateForm() {
   return ''
 }
 
-function saveDraft() {
+function getStoredDraftId() {
+  try {
+    const value = Number(window.localStorage.getItem(draftStorageKey.value))
+    return Number.isInteger(value) && value > 0 ? value : null
+  } catch {
+    return null
+  }
+}
+
+function storeDraftId(id) {
+  draftId.value = id
+  try { window.localStorage.setItem(draftStorageKey.value, String(id)) } catch { /* storage may be unavailable */ }
+}
+
+function unwrapApplication(payload) {
+  if (!payload?.application) return payload
+  return {
+    ...payload.application,
+    id: payload.application.id ?? payload.id,
+    status: payload.application.status ?? payload.status,
+  }
+}
+
+function restoreDraft(payload) {
+  const draft = unwrapApplication(payload)
+  if (!draft || draft.status !== 'draft') return false
+
+  const advisors = payload?.advisors ?? draft.advisors ?? []
+  const primaryAdvisor = advisors.find((item) => item.advisor_role === 'primary')
+  const viewAdvisors = advisors.filter((item) => item.advisor_role !== 'primary')
+  const members = payload?.members ?? draft.members ?? []
+  const attachments = payload?.attachments ?? draft.attachments ?? []
+
+  form.title = draft.title ?? ''
+  form.description = draft.description ?? ''
+  form.source = 'student'
+  form.taskId = ''
+  form.requestedHours = draft.requested_hours ?? ''
+  form.taskType = String(draft.task_type_id ?? '')
+  form.applicationType = draft.application_type === 'without_material' ? 'without_result' : 'with_result'
+  form.primaryTeacherId = String(draft.advisor_teacher_id ?? primaryAdvisor?.teacher?.id ?? primaryAdvisor?.teacher_id ?? '')
+  form.observerTeacherIds = viewAdvisors
+    .map((item) => String(item.teacher?.id ?? item.teacher_id ?? ''))
+    .filter(Boolean)
+  form.expectedResultDate = draft.material_due_at?.slice?.(0, 16) ?? ''
+  form.members = members.length
+    ? members.map((item) => {
+        const student = item.student ?? item
+        const studentDbId = Number(student.id ?? item.student_id)
+        return {
+          id: studentDbId || student.student_no,
+          studentDbId: studentDbId || null,
+          name: student.name ?? item.student_name ?? '',
+          studentNo: student.student_no ?? student.studentNo ?? '',
+          college: student.college ?? '',
+          major: student.major ?? '',
+          isLeader: Boolean(item.is_leader ?? ['leader', 'captain'].includes(item.role ?? item.member_role)),
+        }
+      })
+    : [createCurrentUserMember()]
+  form.attachmentIds = attachments.map((item) => Number(item.id)).filter((id) => Number.isInteger(id) && id > 0)
+  form.attachments = attachments.map((item) => ({
+    ...item,
+    name: item.name ?? item.original_name ?? item.file_name ?? `附件 ${item.id}`,
+  }))
+  storeDraftId(Number(draft.id))
+  return true
+}
+
+async function loadExistingDraft() {
+  try {
+    const storedId = getStoredDraftId()
+    if (storedId) {
+      try {
+        const detail = await getStudentApplication(storedId)
+        if (restoreDraft(detail)) return
+      } catch { /* fall through to the server-side draft list */ }
+    }
+
+    const result = await getStudentApplications({ status: 'draft', role: 'applicant', page: 1, page_size: 100 })
+    const items = Array.isArray(result) ? result : result?.items ?? result?.applications ?? []
+    const latest = [...items]
+      .filter((item) => item.status === 'draft')
+      .sort((a, b) => Number(b.id) - Number(a.id))[0]
+    if (!latest?.id) return
+    const detail = await getStudentApplication(latest.id)
+    if (restoreDraft(detail)) feedback.value = { type: 'success', message: '已加载上次保存的草稿。' }
+  } catch (error) {
+    console.error('[hour-application] 草稿加载失败', error)
+    feedback.value = { type: 'error', message: getApiErrorMessage(error, '草稿加载失败') }
+  }
+}
+
+async function saveDraft() {
   if (!canSubmitApplication.value) {
     feedback.value = { type: 'error', message: permissionState.value.message }
     return
   }
 
-  feedback.value = { type: 'success', message: '草稿已模拟保存，本次操作不会提交到后端。' }
-  window.alert(feedback.value.message)
+  const error = validateForm()
+  if (error) {
+    feedback.value = { type: 'error', message: error }
+    window.alert(error)
+    return
+  }
+
+  try {
+    const payload = toApplicationPayload({
+      ...form,
+      applyType: form.applicationType,
+      taskTypeId: form.taskType,
+      advisorTeacherId: form.primaryTeacherId,
+      viewTeacherIds: form.observerTeacherIds,
+    })
+    const response = await saveApplicationDraft(payload)
+    const saved = unwrapApplication(response)
+    const savedId = Number(saved?.id ?? response?.id)
+    if (!Number.isInteger(savedId) || savedId <= 0) throw new Error('后端未返回有效的草稿 ID')
+    storeDraftId(savedId)
+    feedback.value = { type: 'success', message: `草稿保存成功（ID：${savedId}）。` }
+    window.alert(feedback.value.message)
+  } catch (error) {
+    feedback.value = { type: 'error', message: getApiErrorMessage(error, '草稿保存失败') }
+    window.alert(feedback.value.message)
+  }
 }
 
 async function uploadFiles(event) {
@@ -347,8 +472,8 @@ async function submitApplication() {
   router.push('/student/hour-progress')
 }
 
-function previewTaskResultFile() { window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。') }
-function downloadTaskResultFile() { window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。') }
+async function previewFile(file) { try { await previewAttachment(file) } catch (error) { window.alert(getAttachmentErrorMessage(error, 'preview')) } }
+async function downloadFile(file) { try { await downloadAttachment(file) } catch (error) { window.alert(getAttachmentErrorMessage(error, 'download')) } }
 
 function goBack() {
   router.push('/student/dashboard')
@@ -358,6 +483,7 @@ onMounted(async () => {
   taskTypeOptions.value = types.filter((item) => item.allowStudentSelf !== false)
   teachers.value = advisors
   dependenciesLoaded.value = true
+  await loadExistingDraft()
 })
 </script>
 
@@ -385,7 +511,8 @@ onMounted(async () => {
         </div>
       </section>
 
-      <form class="application-form" @submit.prevent="submitApplication">
+    <RuleFilePanel rule-type="hour_rule" title="课时认定规则" description="提交课时申请前，请先阅读当前课时认定规则。" />
+    <form class="application-form" @submit.prevent="submitApplication">
           <section class="form-section">
           <div class="section-heading">
             <h2>基本信息</h2>
@@ -510,21 +637,21 @@ onMounted(async () => {
             <table><thead><tr><th>团队成员</th><th>学号</th><th>学院</th><th>专业</th><th>角色</th></tr></thead><tbody><tr v-for="member in selectedTask.members" :key="member.studentId"><td>{{ member.name }}</td><td>{{ member.studentId }}</td><td>{{ member.college || '--' }}</td><td>{{ member.major || '--' }}</td><td>{{ member.role === 'captain' ? '队长' : '成员' }}</td></tr></tbody></table>
           </div>
           <div v-if="form.source === 'task' && selectedTask" class="task-result-files">
-            <h3>成果材料</h3><article v-for="file in selectedTask.resultMaterials" :key="file.id"><div><strong>{{ file.name || file.fileName }}</strong><small>{{ file.type || file.fileType || '未知类型' }} · {{ file.size || file.fileSize || '--' }} · {{ file.uploadedAt || file.uploadTime || '--' }}</small></div><div><button type="button" @click="previewTaskResultFile">预览</button><button type="button" @click="downloadTaskResultFile">下载</button></div></article><p v-if="!selectedTask.resultMaterials.length">暂无附件材料</p>
-            <h3>证明材料</h3><article v-for="file in selectedTask.proofMaterials" :key="file.id"><div><strong>{{ file.name || file.fileName }}</strong><small>{{ file.type || file.fileType || '未知类型' }} · {{ file.size || file.fileSize || '--' }} · {{ file.uploadedAt || file.uploadTime || '--' }}</small></div><div><button type="button" @click="previewTaskResultFile">预览</button><button type="button" @click="downloadTaskResultFile">下载</button></div></article><p v-if="!selectedTask.proofMaterials.length">暂无附件材料</p>
+             <h3>成果材料</h3><article v-for="file in selectedTask.resultMaterials" :key="file.id"><div><strong>{{ file.name || file.fileName }}</strong><small>{{ file.type || file.fileType || '未知类型' }} · {{ file.size || file.fileSize || '--' }} · {{ file.uploadedAt || file.uploadTime || '--' }}</small></div><div><button type="button" @click="previewFile(file)">预览</button><button type="button" @click="downloadFile(file)">下载</button></div></article><p v-if="!selectedTask.resultMaterials.length">暂无附件材料</p>
+             <h3>证明材料</h3><article v-for="file in selectedTask.proofMaterials" :key="file.id"><div><strong>{{ file.name || file.fileName }}</strong><small>{{ file.type || file.fileType || '未知类型' }} · {{ file.size || file.fileSize || '--' }} · {{ file.uploadedAt || file.uploadTime || '--' }}</small></div><div><button type="button" @click="previewFile(file)">预览</button><button type="button" @click="downloadFile(file)">下载</button></div></article><p v-if="!selectedTask.proofMaterials.length">暂无附件材料</p>
           </div>
           <p v-if="form.source === 'task' && !approvedTaskResults.length" class="task-member-empty">暂无可申请课时的已确认任务成果。请先由队长上传成果，并等待指导老师确认通过。</p>
 
           <AttachmentNotice
-            v-if="form.applicationType === 'with_result'"
-            title="成果材料上传说明"
-            description="请准备能够证明项目过程和完成情况的成果材料，正式上传功能将在后续开放。"
-            :required="true"
+            v-if="form.source === 'student'"
+            :title="form.applicationType === 'with_result' ? '成果材料上传说明' : '无成果申请附件说明'"
+            :description="form.applicationType === 'with_result' ? '请上传能够证明项目过程和完成情况的成果材料。' : '可上传立项、计划、承诺或其他无成果申请辅助材料。'"
+            :required="form.applicationType === 'with_result'"
             :accept-types="['PDF', 'Word', '图片']"
           />
-          <div v-if="form.applicationType === 'with_result'" class="form-field form-field-wide">
+          <div v-if="form.source === 'student'" class="form-field form-field-wide">
             <input type="file" multiple :disabled="!canSubmitApplication" @change="uploadFiles" />
-            <div v-for="(file, index) in form.attachments" :key="file.id"><span>{{ file.name }}</span> <button type="button" @click="removeUploadedFile(index)">删除</button></div>
+             <div v-for="(file, index) in form.attachments" :key="file.id"><span>{{ file.name }}</span> <button type="button" @click="previewFile(file)">预览</button> <button type="button" @click="downloadFile(file)">下载</button> <button type="button" @click="removeUploadedFile(index)">删除</button></div>
           </div>
           </section>
 

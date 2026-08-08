@@ -4,15 +4,16 @@ import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
 import { approveAppealReview, getReviewerAppeal, modifiedApproveAppealReview, rejectAppealReview } from '../api/appealApi.js'
 import { adaptAppealEnvelope } from '../adapters/appealAdapter.js'
+import { downloadAttachment, getAttachment, getAttachmentErrorMessage, previewAttachment } from '../api/fileApi.js'
 
 const route = useRoute(); const router = useRouter(); const hours = ref(''); const comment = ref('')
 const appeal = ref(null)
 const application = computed(() => appeal.value?.target)
 const pending = computed(() => appeal.value?.reopenStage === 'pending_reviewer_review' || appeal.value?.status === 'processing')
-onMounted(async()=>{try{appeal.value=adaptAppealEnvelope(await getReviewerAppeal(Number(route.params.id)))}catch(error){window.alert(error?.message||'申诉复审详情加载失败')}})
+onMounted(async()=>{try{appeal.value=adaptAppealEnvelope(await getReviewerAppeal(Number(route.params.id)));if(appeal.value?.appealMaterials?.length)appeal.value.appealMaterials=await Promise.all(appeal.value.appealMaterials.map(async(file)=>{try{return await getAttachment(file.id)}catch{return file}}))}catch(error){window.alert(error?.message||'申诉复审详情加载失败')}})
 function back() { router.push(route.query.from === 'records' ? '/reviewer/review-records' : '/reviewer/review-tasks') }
-function preview() { window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。') }
-function download() { window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。') }
+async function preview(file) { try { await previewAttachment(file) } catch (error) { window.alert(getAttachmentErrorMessage(error, '附件预览失败，请稍后重试。')) } }
+async function download(file) { try { await downloadAttachment(file) } catch (error) { window.alert(getAttachmentErrorMessage(error, '附件下载失败，请稍后重试。')) } }
 async function approve() { if (!pending.value) return window.alert('该申诉已完成复审。');if(!comment.value.trim())return window.alert('请填写复审意见。');try{if(hours.value!==''&&Number(hours.value)!==Number(application.value?.final_hours??appeal.value.originalFinalHours)){await modifiedApproveAppealReview(appeal.value.id,{reviewer_suggested_hours:Number(hours.value),comment:comment.value.trim()})}else{await approveAppealReview(appeal.value.id,{comment:comment.value.trim()})}window.alert('复审已通过，等待管理员最终确认。');back()}catch(error){window.alert(error?.message||'复审处理失败')}}
 async function reject() { if (!pending.value) return window.alert('该申诉已完成复审。');if(!comment.value.trim())return window.alert('请填写复审意见。');try{await rejectAppealReview(appeal.value.id,{comment:comment.value.trim()});window.alert('复审已驳回。');back()}catch(error){window.alert(error?.message||'复审处理失败')}}
 </script>
@@ -22,7 +23,7 @@ async function reject() { if (!pending.value) return window.alert('该申诉已�
   <section class="card"><h2>申诉与学生信息</h2><dl class="grid"><div><dt>关联课时申请</dt><dd>{{ appeal.applicationTitle }}</dd></div><div><dt>学生</dt><dd>{{ appeal.studentName }}（{{ appeal.studentId }}）</dd></div><div><dt>原申请状态</dt><dd><StatusTag :status="appeal.originalStatus" /></dd></div><div><dt>原认定 / 最终课时</dt><dd>{{ appeal.originalFinalHours }} 课时</dd></div><div><dt>当前复审老师</dt><dd>{{ appeal.reviewTeacherName }}（{{ appeal.reviewTeacherId }}）</dd></div><div><dt>管理员受理意见</dt><dd>{{ appeal.adminComment || '--' }}</dd></div></dl></section>
   <section class="card"><h2>原课时认定结果</h2><dl class="grid"><div><dt>原审核老师意见</dt><dd>{{ application?.reviewComment || '--' }}</dd></div><div><dt>原管理员最终确认意见</dt><dd>{{ application?.finalComment || '--' }}</dd></div><div><dt>原申请课时</dt><dd>{{ application?.requestedHours ?? '--' }} 课时</dd></div><div><dt>原最终课时</dt><dd>{{ appeal.originalFinalHours }} 课时</dd></div></dl></section>
   <section class="card"><h2>学生申诉原因</h2><p>{{ appeal.appealReason }}</p></section>
-  <section class="card"><h2>申诉材料</h2><div class="files"><article v-for="file in appeal.appealMaterials" :key="file.id"><div><strong>{{ file.name || file.fileName }}</strong><small>{{ file.type || file.fileType }} · {{ file.size || file.fileSize || '--' }} · {{ file.uploadedAt || file.uploadTime || '--' }}</small></div><div><button @click="preview">预览</button><button @click="download">下载</button></div></article><p v-if="!appeal.appealMaterials.length">暂无附件材料</p></div></section>
+  <section class="card"><h2>申诉材料</h2><div class="files"><article v-for="file in appeal.appealMaterials" :key="file.id"><div><strong>{{ file.name || file.fileName }}</strong><small>{{ file.type || file.fileType }} · {{ file.size || file.fileSize || '--' }} · {{ file.uploadedAt || file.uploadTime || '--' }}</small></div><div><button @click="preview(file)">预览</button><button @click="download(file)">下载</button></div></article><p v-if="!appeal.appealMaterials.length">暂无附件材料</p></div></section>
   <section class="card"><h2>复审结论</h2><label>复审课时<input v-model="hours" type="number" min="0" :disabled="!pending" placeholder="复审通过时必填" /></label><label>复审意见<textarea v-model="comment" rows="5" :disabled="!pending" placeholder="复审通过或驳回均必填"></textarea></label><div v-if="!pending" class="result"><p>复审结果：{{ appeal.reviewResult === 'approved' ? '复审通过' : '复审驳回' }}</p><p>复审课时：{{ appeal.reviewHours ?? '--' }}</p><p>复审意见：{{ appeal.reviewComment || '--' }}</p><p>复审时间：{{ appeal.reviewTime || '--' }}</p></div></section>
   <div class="actions"><button @click="back">返回</button><button class="reject" :disabled="!pending" @click="reject">复审驳回</button><button class="approve" :disabled="!pending" @click="approve">复审通过</button></div>
 </template><section v-else class="card empty">申诉不存在，或未分配给当前审核老师。<button @click="back">返回</button></section></div></main></template>

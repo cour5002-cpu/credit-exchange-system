@@ -3,9 +3,19 @@ import { adaptStudent, adaptTeacher } from './userAdapter.js'
 
 const applicationTypeMap = { with_result: 'with_material', without_result: 'without_material', task_result: 'task_result' }
 
+const attachmentList = (value) => Array.isArray(value) ? value : []
+const attachmentRefs = (value) => attachmentList(value).map((attachment) => (
+  typeof attachment === 'object' && attachment !== null ? attachment : { id: attachment }
+))
+const uniqueAttachments = (...groups) => [...new Map(
+  groups.flatMap(attachmentRefs).filter((attachment) => attachment.id !== undefined && attachment.id !== null)
+    .map((attachment) => [String(attachment.id), attachment])
+).values()]
+
 export function adaptApplication(item) {
   if (!item) return null
   const taskResultSubmission = item.task_result_submission ?? null
+  const materialSubmission = item.material_submission ?? item.latest_material_submission ?? item.supplement_submission ?? item.material_submissions?.at(-1) ?? null
   const sourceTask = item.source_task ?? taskResultSubmission?.task ?? null
   const team = item.team ?? taskResultSubmission?.team ?? sourceTask?.team ?? null
   const rawMembers = item.members ?? team?.members ?? taskResultSubmission?.members ?? sourceTask?.members ?? []
@@ -22,16 +32,39 @@ export function adaptApplication(item) {
     }
   }).filter(Boolean)
   const leader = adaptStudent(team?.leader ?? item.leader ?? rawMembers.find((relation) => relation.is_leader)?.student)
-  const attachments = [...new Map([
-    ...(item.attachments ?? []),
-    ...(taskResultSubmission?.attachments ?? []),
-  ].map((attachment) => [attachment.id, attachment])).values()]
+  const attachments = uniqueAttachments(item.attachments, item.material_attachments, item.attachment_ids, item.material_attachment_ids, item.result_attachment_ids, materialSubmission?.attachments, materialSubmission?.attachment_ids, materialSubmission?.material_attachment_ids, taskResultSubmission?.attachments, taskResultSubmission?.attachment_ids)
   const advisorRelation = (item.advisors ?? []).find((relation) => relation.advisor_role === 'primary')
   const viewAdvisorRelations = (item.advisors ?? []).filter((relation) => relation.advisor_role !== 'primary')
-  const reviewerReview = [...(item.reviews ?? [])].reverse().find((review) => String(review.review_result ?? review.result ?? '').includes('reviewer'))
-  const advisorReview = [...(item.reviews ?? [])].reverse().find((review) => String(review.review_result ?? review.result ?? '').includes('advisor'))
-  const finalReview = [...(item.reviews ?? [])].reverse().find((review) => String(review.review_result ?? review.result ?? '').includes('final'))
+  const reviewerReview = [...(item.reviews ?? [])].reverse().find((review) => (
+    review.stage === 'reviewer'
+    || review.operator_role === 'reviewer'
+  ))
+  const advisorReview = [...(item.reviews ?? [])].reverse().find((review) => (
+    review.stage === 'advisor'
+    || review.operator_role === 'advisor'
+  ))
+  const finalReview = [...(item.reviews ?? [])].reverse().find((review) => (
+    ['admin_final', 'final'].includes(review.stage)
+    || (
+      review.operator_role === 'admin'
+      && ['final_approved', 'final_rejected'].includes(review.after_status)
+    )
+  ))
   const reviewerResult = item.reviewer_result ?? reviewerReview
+  const reviewerDecision = reviewerResult?.decision ?? reviewerResult?.review_result ?? reviewerResult?.result ?? ''
+  const reviewerStatus = reviewerDecision === 'rejected'
+    ? 'rejected'
+    : reviewerDecision === 'approved'
+      ? 'approved'
+      : reviewerDecision === 'modified_approved'
+        ? 'modified_approved'
+        : ''
+  const adminDecision = finalReview?.decision ?? ''
+  const adminStatus = adminDecision === 'rejected'
+    ? 'rejected'
+    : adminDecision === 'approved'
+      ? 'approved'
+      : ''
   const sourceTextMap = { student_self: '学生自主申请', admin_task: '管理员任务', teacher_task: '指导老师任务' }
   const typeTextMap = { with_material: '有成果申请', without_material: '无成果申请', task_result: '任务成果申请' }
   return {
@@ -88,16 +121,24 @@ export function adaptApplication(item) {
     canOperate: item.can_operate ?? item.can_review ?? advisorRelation?.can_operate ?? false,
     mainAdvisor: adaptTeacher(advisorRelation?.teacher ?? item.advisor),
     viewAdvisors: viewAdvisorRelations.map((relation) => adaptTeacher(relation.teacher)).filter(Boolean),
-    advisorStatus: advisorReview ? 'approved' : '',
+    advisorStatus: advisorReview?.decision === 'rejected'
+      ? 'rejected'
+      : advisorReview?.decision === 'approved'
+        ? 'approved'
+        : '',
     advisorComment: advisorReview?.comment ?? '',
     advisorConfirmTime: advisorReview?.created_at ?? advisorReview?.reviewed_at ?? '',
     adminAcceptComment: item.assignments?.at(-1)?.comment ?? '',
     adminAcceptTime: item.assignments?.at(-1)?.created_at ?? '',
     reviewer: adaptTeacher(reviewerResult?.reviewer ?? reviewerResult?.teacher),
-    reviewStatus: reviewerResult?.review_result ?? reviewerResult?.result ?? '',
+    reviewerStatus,
+    reviewerComment: reviewerResult?.comment ?? '',
+    reviewStatus: reviewerStatus,
     reviewComment: reviewerResult?.comment ?? '',
     reviewTime: reviewerResult?.created_at ?? reviewerResult?.reviewed_at ?? '',
-    finalStatus: item.status === 'final_approved' ? 'approved' : item.status === 'final_rejected' ? 'rejected' : '',
+    adminStatus: adminStatus || (item.status === 'final_approved' ? 'approved' : item.status === 'final_rejected' ? 'rejected' : ''),
+    adminComment: finalReview?.comment ?? '',
+    finalStatus: adminStatus || (item.status === 'final_approved' ? 'approved' : item.status === 'final_rejected' ? 'rejected' : ''),
     finalComment: finalReview?.comment ?? '',
     finalConfirmTime: finalReview?.created_at ?? finalReview?.reviewed_at ?? '',
     canReview: item.can_review ?? item.actions?.can_review,
@@ -108,12 +149,8 @@ export function adaptApplicationEnvelope(payload) {
   if (!payload) return null
   if (!payload.application) return adaptApplication(payload)
   const taskResultSubmission = payload.task_result_submission ?? payload.application.task_result_submission
-  const attachmentCandidates = [
-    ...(payload.attachments ?? []),
-    ...(payload.application.attachments ?? []),
-    ...(taskResultSubmission?.attachments ?? []),
-  ]
-  const attachments = [...new Map(attachmentCandidates.map((attachment) => [attachment.id, attachment])).values()]
+  const materialSubmission = payload.material_submission ?? payload.latest_material_submission ?? payload.supplement_submission ?? payload.material_submissions?.at(-1) ?? payload.application.material_submission ?? payload.application.latest_material_submission ?? payload.application.supplement_submission ?? payload.application.material_submissions?.at(-1)
+  const attachments = uniqueAttachments(payload.attachments, payload.attachment_ids, payload.material_attachment_ids, payload.result_attachment_ids, payload.application.attachments, payload.application.attachment_ids, payload.application.material_attachments, payload.application.material_attachment_ids, payload.application.result_attachment_ids, materialSubmission?.attachments, materialSubmission?.attachment_ids, materialSubmission?.material_attachment_ids, taskResultSubmission?.attachments, taskResultSubmission?.attachment_ids)
   return adaptApplication({
     ...payload.application,
     applicant: payload.applicant ?? payload.application.applicant,
@@ -146,9 +183,7 @@ export function adaptExtensionRequest(payload) {
   const extension = payload.extension_request ?? payload
   const application = adaptApplication(payload.application ?? extension.application)
   const applicant = adaptStudent(extension.applicant ?? extension.student)
-  const extensionAttachments = payload.attachments ?? extension.attachments
-    ?? (payload.attachment ? [payload.attachment] : extension.attachment ? [extension.attachment]
-      : extension.attachment_id ? [{ id: extension.attachment_id, file_name: extension.filename, url: extension.url }] : [])
+  const extensionAttachments = uniqueAttachments(payload.attachments, payload.attachment_ids, payload.proof_attachment_ids, extension.attachments, extension.attachment_ids, extension.proof_attachment_ids, payload.attachment ? [payload.attachment] : [], extension.attachment ? [extension.attachment] : [], extension.attachment_id ? [{ id: extension.attachment_id, file_name: extension.filename }] : [])
   const reviewLevel = extension.review_level === 'advisor' ? 'normal' : extension.review_level === 'admin' ? 'special' : extension.review_level
   const status = extension.status === 'submitted'
     ? (reviewLevel === 'special' ? 'pending_admin_review' : 'pending_advisor_review')

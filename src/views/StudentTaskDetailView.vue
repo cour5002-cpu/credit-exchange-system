@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
 import { getTaskTypeText } from '../mock/tasks.js'
 import { getStudentTask,getTaskTeam } from '../api/taskApi.js';import { adaptTaskEnvelope } from '../adapters/taskAdapter.js';import { getApiErrorMessage } from '../utils/apiFeedback.js'
+import { downloadAttachment, getAttachmentErrorMessage, previewAttachment } from '../api/fileApi.js'
 
 const route = useRoute(); const router = useRouter();const task=ref(null);const team=ref(null);onMounted(async()=>{try{const [taskPayload,teamPayload]=await Promise.all([getStudentTask(Number(route.params.id)),getTaskTeam(Number(route.params.id))]);task.value=adaptTaskEnvelope(taskPayload);team.value=teamPayload}catch(error){window.alert(getApiErrorMessage(error,'任务详情加载失败'))}})
 const detail = computed(() => ({task:task.value,applyResult:task.value?.myRegistration,isLeader:team.value?.can_submit_result===true}))
@@ -17,8 +18,8 @@ const resultText = computed(() => ({
   converted_to_hour_application: '已转入课时认定',
 }[result.value?.status] || '未提交'))
 function back(){router.push('/student/tasks')}
-function preview(){window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。')}
-function download(){window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。')}
+async function preview(file){try{await previewAttachment(file)}catch(error){window.alert(getAttachmentErrorMessage(error,'preview'))}}
+async function download(file){try{await downloadAttachment(file)}catch(error){window.alert(getAttachmentErrorMessage(error,'download'))}}
 </script>
 
 <template><main class="page"><div class="content"><template v-if="task">
@@ -26,7 +27,7 @@ function download(){window.alert('当前为 Mock 附件下载，真实下载需�
   <section class="card"><h2>任务信息</h2><dl class="grid"><div><dt>任务类型</dt><dd>{{ getTaskTypeText(task.taskType) }}</dd></div><div><dt>指导老师</dt><dd>{{ task.advisorName }}</dd></div><div><dt>报名截止时间</dt><dd>{{ task.registrationDeadline }}</dd></div><div><dt>当前任务状态</dt><dd><StatusTag :status="task.status" /></dd></div><div class="wide"><dt>任务说明</dt><dd>{{ task.description }}</dd></div><div class="wide"><dt>成果提交要求</dt><dd>{{ task.resultRequirement }}</dd></div></dl></section>
   <section class="card"><h2>我的参与信息</h2><dl class="grid"><div><dt>报名状态</dt><dd>{{ detail.applyResult?.applyStatus || '--' }}</dd></div><div><dt>筛选结果</dt><dd>{{ detail.applyResult?.selected ? '已选中' : detail.applyResult?.applyStatus === 'not_selected' ? '未选中' : '等待筛选' }}</dd></div><div><dt>队长</dt><dd>{{ task.leaderName || '尚未指定' }}</dd></div><div><dt>我的身份</dt><dd>{{ detail.isLeader ? '队长' : detail.applyResult?.selected ? '成员' : '报名学生' }}</dd></div><div><dt>成果状态</dt><dd><StatusTag :status="result?.status || 'draft'" :text="resultText" /></dd></div><div v-if="result?.advisorComment" class="wide"><dt>指导老师成果意见</dt><dd>{{ result.advisorComment }}</dd></div></dl></section>
   <section class="card"><h2>团队成员</h2><p v-if="!detail.applyResult?.selected" class="muted">被选中后可查看团队成员。</p><div v-else class="members"><span v-for="member in members" :key="member.studentId">{{ member.studentName }}（{{ member.studentId === task.leaderId ? '队长' : '成员' }}）</span></div></section>
-  <section class="card"><h2>附件材料</h2><div class="files"><article v-for="file in task.attachments" :key="file.id"><div><strong>{{ file.name }}</strong><small>{{ file.type || '未知类型' }} · {{ file.size || '--' }} · {{ file.uploadedAt || '--' }}</small></div><div><button @click="preview">预览</button><button @click="download">下载</button></div></article><p v-if="!task.attachments?.length" class="muted">暂无附件材料。</p></div></section>
+  <section class="card"><h2>附件材料</h2><div class="files"><article v-for="file in task.attachments" :key="file.id"><div><strong>{{ file.name }}</strong><small>{{ file.type || '未知类型' }} · {{ file.size || '--' }} · {{ file.uploadedAt || '--' }}</small></div><div><button @click="preview(file)">预览</button><button @click="download(file)">下载</button></div></article><p v-if="!task.attachments?.length" class="muted">暂无附件材料。</p></div></section>
   <div class="actions"><button @click="back">返回</button><RouterLink :to="`/student/tasks/${task.taskId}/result`">查看报名结果</RouterLink><RouterLink :to="`/student/tasks/${task.taskId}/team`">查看团队信息</RouterLink><RouterLink v-if="canSubmitResult" :to="`/student/tasks/${task.taskId}/result-submit`">上传成果</RouterLink></div>
 </template><section v-else class="card empty">未找到与当前学生相关的任务。<button @click="back">返回</button></section></div></main></template>
 

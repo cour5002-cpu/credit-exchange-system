@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
 import { getStudentApplication } from '../api/applicationApi.js'
 import { getAppealableTarget } from '../api/appealApi.js'
+import { downloadAttachment, getAttachmentErrorMessage, previewAttachment } from '../api/fileApi.js'
 import { adaptApplicationEnvelope } from '../adapters/applicationAdapter.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
@@ -74,12 +75,12 @@ function getTimelineStep(index, key, title, item, time = '', comment = '') {
   return { key, title, state, time, comment }
 }
 
-function preview() {
-  window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。')
+async function preview(file) {
+  try { await previewAttachment(file) } catch (error) { window.alert(getAttachmentErrorMessage(error, 'preview')) }
 }
 
-function download() {
-  window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。')
+async function download(file) {
+  try { await downloadAttachment(file) } catch (error) { window.alert(getAttachmentErrorMessage(error, 'download')) }
 }
 
 function goBack() {
@@ -191,7 +192,7 @@ function goBack() {
           <h2>学生上传材料</h2>
           <div v-if="application.attachments.length" class="file-list">
             <article v-for="file in application.attachments" :key="file.id">
-              <div><strong>{{ file.name }}</strong><small>{{ file.type }} · {{ file.uploadedAt || 'Mock 上传时间' }}</small></div>
+              <div><strong>{{ file.name }}</strong><small>{{ file.type }} · {{ file.uploadedAt || '--' }}</small></div>
               <div><button type="button" @click="preview(file)">预览</button><button type="button" @click="download(file)">下载</button></div>
             </article>
           </div>

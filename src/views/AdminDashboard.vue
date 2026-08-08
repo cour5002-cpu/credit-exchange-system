@@ -5,6 +5,7 @@ import ImportInfoModal from './components/ImportInfoModal.vue'
 const showImportModal = ref(false)
 
 const entries = [
+  { title: '规则文件管理', description: '查看、上传和下载系统规则文件。', to: '/admin/rule-files' },
   { title: '任务管理', description: '维护系统中的任务信息。', to: '/admin/tasks' },
   { title: '审核分配', description: '为待审核事项分配审核老师。', to: '/admin/review-assign' },
   { title: '最终确认', description: '处理等待最终确认的业务。', to: '/admin/final-confirm' },

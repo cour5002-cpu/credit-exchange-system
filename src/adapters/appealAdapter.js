@@ -6,6 +6,9 @@ export function adaptAppeal(item) {
   if (!item) return null
   const originalApplication = item.original_application ?? item.target ?? null
   const applicationId = item.hour_application_id ?? originalApplication?.id ?? item.target_id
+  const attachments = item.attachments ?? item.appeal_materials ?? (item.attachment_ids ?? []).map((attachment) => (
+    typeof attachment === 'object' && attachment !== null ? attachment : { id: attachment }
+  ))
   return {
     id: item.id,
     appealId: item.appeal_id ?? item.id,
@@ -38,7 +41,7 @@ export function adaptAppeal(item) {
     reviewerTeacherId: item.reviewer_teacher_id ?? item.reviewer?.id,
     originalApplication: originalApplication ? adaptApplication(originalApplication) : null,
     target: originalApplication ? adaptApplication(originalApplication) : null,
-    appealMaterials: (item.attachments ?? []).map(adaptAttachment),
+    appealMaterials: attachments.map(adaptAttachment).filter(Boolean),
   }
 }
 
@@ -52,7 +55,8 @@ export function adaptAppealEnvelope(payload) {
     hour_application_id: payload.hour_application_id ?? appeal.hour_application_id,
     target_status: payload.target_status ?? appeal.target_status,
     application_type: payload.application_type ?? appeal.application_type,
-    attachments: payload.attachments ?? appeal.attachments,
+    attachments: payload.attachments ?? appeal.attachments ?? payload.appeal_materials ?? appeal.appeal_materials,
+    attachment_ids: payload.attachment_ids ?? appeal.attachment_ids,
   })
 }
 

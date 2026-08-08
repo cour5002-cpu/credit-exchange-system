@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
 import { approveExtensionByAdmin, getAdminExtensionRequest, rejectExtensionByAdmin } from '../api/applicationApi.js'
 import { adaptExtensionRequest } from '../adapters/applicationAdapter.js'
+import { downloadAttachment, getAttachmentErrorMessage, previewAttachment } from '../api/fileApi.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
 const route=useRoute();const router=useRouter();const comment=ref('');const item=ref(null)
 const pending=computed(()=>item.value?.actions?.can_approve===true||item.value?.actions?.can_reject===true||(item.value?.canOperate===true&&item.value?.status==='pending_admin_review')||item.value?.status==='pending_admin_review')
@@ -11,8 +12,8 @@ async function loadItem(){try{item.value=adaptExtensionRequest(await getAdminExt
 onMounted(loadItem)
 const extensionDays=computed(()=>item.value?.extensionDays??(item.value?Math.ceil((new Date(item.value.newExpectedResultTime)-new Date(item.value.originalExpectedResultTime))/86400000):0))
 function back(){router.push('/admin/extensions')}
-function preview(file){if(!file?.url)return window.alert('附件地址缺失，无法查看。');window.open(file.url,'_blank','noopener,noreferrer')}
-function download(file){if(!file?.url)return window.alert('附件地址缺失，无法下载。');const link=document.createElement('a');link.href=file.url;link.download=file.name||'';link.rel='noopener';link.click()}
+async function preview(file){try{await previewAttachment(file)}catch(error){window.alert(getAttachmentErrorMessage(error,'preview'))}}
+async function download(file){try{await downloadAttachment(file)}catch(error){window.alert(getAttachmentErrorMessage(error,'download'))}}
 async function approve(){if(!pending.value)return window.alert('该特殊延期申请已处理。');try{await approveExtensionByAdmin(item.value.id,{comment:comment.value.trim()});await loadItem();window.alert('特殊延期已审核通过，学生可在新的截止时间前补交成果。');back()}catch(error){window.alert(getApiErrorMessage(error,'审核失败，请稍后重试'))}}
 async function reject(){if(!comment.value.trim())return window.alert('驳回特殊延期时必须填写审核意见。');try{await rejectExtensionByAdmin(item.value.id,{comment:comment.value.trim()});await loadItem();window.alert('特殊延期已驳回。');back()}catch(error){window.alert(getApiErrorMessage(error,'驳回失败，请稍后重试'))}}
 </script>

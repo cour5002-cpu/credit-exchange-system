@@ -1,40 +1,22 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
-import { getApplications } from '../mock/applications.js'
-import { getAdvisorProcessedExchanges } from '../mock/exchanges.js'
-import { getTaskResults } from '../mock/taskResults.js'
-import { getAdvisorTasks } from '../mock/tasks.js'
+import { getOperationRecord, getOperationRecords } from '../api/recordApi.js'
+import { adaptRecordEnvelope, adaptRecordList } from '../adapters/recordAdapter.js'
 
-const currentAdvisorId = 'T001'
 const type = ref(''); const result = ref(''); const keyword = ref(''); const selected = ref(null)
+const allRecords = ref([])
 const typeOptions = ['课时申请确认', '无成果申请首次确认', '补交成果确认', '普通延期确认', '学分兑换确认', '任务成果确认', '报名筛选', '队长指定', '发布任务申请']
 const resultText = (value) => ({ approved: '通过', confirmed: '通过', rejected: '驳回', submitted: '已提交', completed: '已完成' }[value] || value || '--')
-
-function record(data) { return { comment: '--', person: '--', result: '--', status: '', ...data } }
-const allRecords = computed(() => {
-  const records = []
-  getApplications().filter((item) => item.mainAdvisor?.id === currentAdvisorId).forEach((item) => {
-    if (item.advisorConfirmTime) records.push(record({ id: `HOUR-${item.id}`, type: item.applyType === 'without_result' ? '无成果申请首次确认' : '课时申请确认', title: item.title, person: item.studentName, result: item.advisorStatus || (item.status === 'advisor_rejected' ? 'rejected' : 'approved'), comment: item.advisorComment, time: item.advisorConfirmTime, status: item.status, sourceId: item.id, detail: { 申请编号: item.id, 申请类型: item.applyTypeText, 主指导老师: item.mainAdvisor?.name, 申请课时: `${item.requestedHours} 课时` } }))
-    if (item.supplementAdvisorConfirmTime) records.push(record({ id: `SUP-${item.id}`, type: '补交成果确认', title: item.title, person: item.studentName, result: item.supplementAdvisorStatus, comment: item.supplementAdvisorComment, time: item.supplementAdvisorConfirmTime, status: item.status, sourceId: item.id, detail: { 申请编号: item.id, 补交时间: item.supplementTime, 补交次数: item.supplementCount } }))
-    if (item.extensionAdvisorConfirmTime) records.push(record({ id: `EXT-${item.id}`, type: '普通延期确认', title: item.title, person: item.studentName, result: item.extensionStatus, comment: item.extensionAdvisorComment, time: item.extensionAdvisorConfirmTime, status: item.status, sourceId: item.id, detail: { 申请编号: item.id, 原预计时间: item.originalExpectedResultTime, 新预计时间: item.newExpectedResultTime } }))
-  })
-  getAdvisorProcessedExchanges(currentAdvisorId).forEach((item) => records.push(record({ id: `EX-${item.id}`, type: '学分兑换确认', title: item.taskName || item.projectTitle, person: item.captainName || item.studentName, result: item.advisorConfirmStatus, comment: item.advisorComment, time: item.advisorConfirmTime, status: item.status, sourceId: item.id, detail: { 兑换编号: item.exchangeId, 团队名称: item.teamName, 兑换课时: item.exchangeHours || item.finalHours, 兑换学分: item.estimatedCredits } })))
-  getTaskResults().filter((item) => item.advisorId === currentAdvisorId && item.advisorConfirmTime).forEach((item) => records.push(record({ id: `RESULT-${item.resultId}`, type: '任务成果确认', title: item.taskTitle, person: item.leaderName, result: item.status === 'advisor_result_rejected' ? 'rejected' : 'approved', comment: item.advisorComment, time: item.advisorConfirmTime, status: item.status, sourceId: item.resultId, detail: { 成果编号: item.resultId, 任务编号: item.taskId, 团队人数: item.teamMembers?.length || 0, 成果说明: item.resultDescription } })))
-  getAdvisorTasks(currentAdvisorId).forEach((item) => {
-    if (item.selectionTime) records.push(record({ id: `SELECT-${item.taskId}`, type: '报名筛选', title: item.title, person: item.leaderName || '报名学生', result: 'completed', comment: `已选中 ${item.selectedStudents?.length || 0} 名学生`, time: item.selectionTime, status: item.status, sourceId: item.taskId, detail: { 任务编号: item.taskId, 报名人数: item.applicants?.length || 0, 已选中人数: item.selectedStudents?.length || 0 } }))
-    if (item.leaderAssignTime) records.push(record({ id: `LEADER-${item.taskId}`, type: '队长指定', title: item.title, person: item.leaderName, result: 'completed', comment: `已指定 ${item.leaderName} 为队长`, time: item.leaderAssignTime, status: item.status, sourceId: item.taskId, detail: { 任务编号: item.taskId, 队长学号: item.leaderId, 队长姓名: item.leaderName } }))
-    if (item.source === 'advisor' && item.submitTime) records.push(record({ id: `PUBLISH-${item.taskId}`, type: '发布任务申请', title: item.title, person: item.advisorName, result: 'submitted', comment: item.adminComment || '已提交任务发布申请', time: item.submitTime, status: item.status, sourceId: item.taskId, detail: { 任务编号: item.taskId, 任务类型: item.taskType, 报名截止时间: item.registrationDeadline, 管理员意见: item.adminComment || '--' } }))
-  })
-  return records.sort((a, b) => String(b.time || '').localeCompare(String(a.time || '')))
-})
 const resultOptions = computed(() => [...new Set(allRecords.value.map((item) => resultText(item.result)))])
 const records = computed(() => { const search = keyword.value.trim().toLowerCase(); return allRecords.value.filter((item) => (!type.value || item.type === type.value) && (!result.value || resultText(item.result) === result.value) && (!search || [item.title, item.person, item.sourceId].some((value) => String(value || '').toLowerCase().includes(search)))) })
+async function openDetail(item) { try { selected.value = adaptRecordEnvelope(await getOperationRecord(item.id)) } catch (error) { window.alert(error?.message || '处理记录详情加载失败') } }
+onMounted(async () => { try { allRecords.value = adaptRecordList(await getOperationRecords({ role_scope: 'advisor', page: 1, page_size: 100 })) } catch (error) { window.alert(error?.message || '处理记录加载失败') } })
 </script>
 
 <template><main class="page"><div class="content"><header><div><p class="eyebrow">PROCESSING RECORDS</p><h1>我的处理记录</h1><p>汇总当前指导老师已经处理或提交的业务事项。</p></div><RouterLink class="back" to="/teacher/dashboard">返回指导老师首页</RouterLink></header>
 <section class="filters"><label><span>处理类型</span><select v-model="type"><option value="">全部类型</option><option v-for="item in typeOptions" :key="item">{{ item }}</option></select></label><label><span>处理结果</span><select v-model="result"><option value="">全部结果</option><option v-for="item in resultOptions" :key="item">{{ item }}</option></select></label><label><span>搜索</span><input v-model="keyword" placeholder="学生姓名、任务名称或申请名称" /></label></section>
-<section class="panel"><div class="panel-head"><h2>处理记录</h2><span>共 {{ records.length }} 条</span></div><div class="table-wrap"><table><thead><tr><th>记录编号</th><th>处理类型</th><th>关联对象名称</th><th>学生 / 队长 / 任务发布人</th><th>处理结果</th><th>处理意见</th><th>处理时间</th><th>当前状态</th><th>操作</th></tr></thead><tbody><tr v-for="item in records" :key="item.id"><td>{{ item.id }}</td><td>{{ item.type }}</td><td>{{ item.title }}</td><td>{{ item.person }}</td><td>{{ resultText(item.result) }}</td><td class="comment">{{ item.comment || '--' }}</td><td>{{ item.time }}</td><td><StatusTag :status="item.status" /></td><td><button class="detail" @click="selected = item">查看详情</button></td></tr><tr v-if="!records.length"><td class="empty" colspan="9">暂无处理记录</td></tr></tbody></table></div></section>
+<section class="panel"><div class="panel-head"><h2>处理记录</h2><span>共 {{ records.length }} 条</span></div><div class="table-wrap"><table><thead><tr><th>记录编号</th><th>处理类型</th><th>关联对象名称</th><th>学生 / 队长 / 任务发布人</th><th>处理结果</th><th>处理意见</th><th>处理时间</th><th>当前状态</th><th>操作</th></tr></thead><tbody><tr v-for="item in records" :key="item.id"><td>{{ item.id }}</td><td>{{ item.type }}</td><td>{{ item.title }}</td><td>{{ item.person }}</td><td>{{ resultText(item.result) }}</td><td class="comment">{{ item.comment || '--' }}</td><td>{{ item.time }}</td><td><StatusTag :status="item.status" /></td><td><button class="detail" @click="openDetail(item)">查看详情</button></td></tr><tr v-if="!records.length"><td class="empty" colspan="9">暂无处理记录</td></tr></tbody></table></div></section>
 <div v-if="selected" class="modal-mask" @click.self="selected = null"><section class="modal"><header><div><p class="eyebrow">RECORD DETAIL</p><h2>处理记录详情</h2></div><button @click="selected = null">关闭</button></header><dl class="detail-grid"><div><dt>记录编号</dt><dd>{{ selected.id }}</dd></div><div><dt>处理类型</dt><dd>{{ selected.type }}</dd></div><div><dt>关联对象</dt><dd>{{ selected.title }}</dd></div><div><dt>学生 / 队长</dt><dd>{{ selected.person }}</dd></div><div><dt>处理结果</dt><dd>{{ resultText(selected.result) }}</dd></div><div><dt>处理时间</dt><dd>{{ selected.time }}</dd></div><div><dt>当前状态</dt><dd><StatusTag :status="selected.status" /></dd></div><div class="wide"><dt>处理意见</dt><dd>{{ selected.comment || '--' }}</dd></div><div v-for="(value, label) in selected.detail" :key="label"><dt>{{ label }}</dt><dd>{{ value || '--' }}</dd></div></dl><div class="modal-actions"><button @click="selected = null">返回</button></div></section></div>
 </div></main></template>
 

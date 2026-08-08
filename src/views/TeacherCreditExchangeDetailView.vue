@@ -2,8 +2,10 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
+import RuleFilePanel from '../components/RuleFilePanel.vue'
 import { approveExchangeByAdvisor, getAdvisorExchange, rejectExchangeByAdvisor } from '../api/exchangeApi.js'
 import { adaptExchangeEnvelope } from '../adapters/exchangeAdapter.js'
+import { downloadAttachment, getAttachmentErrorMessage, previewAttachment } from '../api/fileApi.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
 const route = useRoute(); const router = useRouter()
@@ -17,16 +19,17 @@ function validate() { if (!item.value?.memberDistributions?.length) return '成�
 async function approve() { const error=validate(); if(error){feedback.value=error;return window.alert(error)};try{await approveExchangeByAdvisor(item.value.id,{comment:opinion.value.trim()});window.alert('确认通过，申请已进入管理员最终确认。');goBack()}catch(error){window.alert(getApiErrorMessage(error,'确认兑换失败'))} }
 async function reject() { if(!opinion.value.trim()){feedback.value='驳回时必须填写确认意见。';return window.alert(feedback.value)};try{await rejectExchangeByAdvisor(item.value.id,{comment:opinion.value.trim()});window.alert('申请已驳回并退回学生端。');goBack()}catch(error){window.alert(getApiErrorMessage(error,'驳回兑换失败'))} }
 function goBack(){router.push('/teacher/confirm/exchanges')}
-function fileAction(action){window.alert(action==='预览'?'当前为 Mock 附件预览，真实预览需后端文件服务支持。':'当前为 Mock 附件下载，真实下载需后端文件服务支持。')}
+async function previewFile(file){try{await previewAttachment(file)}catch(error){window.alert(getAttachmentErrorMessage(error,'附件预览失败，请稍后重试。'))}}async function downloadFile(file){try{await downloadAttachment(file)}catch(error){window.alert(getAttachmentErrorMessage(error,'附件下载失败，请稍后重试。'))}}
 </script>
 
 <template><main class="page"><div class="content"><template v-if="item">
-  <header class="header"><div><p class="eyebrow">T602 · EXCHANGE DETAIL</p><h1>{{ item.projectTitle }}</h1><p>{{ item.exchangeId }}</p></div><StatusTag :status="item.status" /></header>
+<header class="header"><div><p class="eyebrow">T602 · EXCHANGE DETAIL</p><h1>{{ item.projectTitle }}</h1><p>{{ item.exchangeId }}</p></div><StatusTag :status="item.status" /></header>
+<RuleFilePanel rule-type="credit_rule" title="学分兑换规则" description="确认兑换申请时，请参考当前学分兑换规则。" />
   <section class="card"><h2>团队信息</h2><dl class="grid"><div><dt>团队名称</dt><dd>{{ item.teamName || '--' }}</dd></div><div><dt>成员数量</dt><dd>{{ item.memberDistributions?.length || 0 }} 人</dd></div></dl></section>
   <section class="card"><h2>队长信息</h2><dl class="grid"><div><dt>队长姓名</dt><dd>{{ item.captainName || item.studentName }}</dd></div><div><dt>学号</dt><dd>{{ item.studentId }}</dd></div></dl></section>
   <section class="card"><h2>任务信息</h2><dl class="grid"><div><dt>项目名称</dt><dd>{{ item.projectTitle }}</dd></div><div><dt>任务名称</dt><dd>{{ item.taskName || '--' }}</dd></div><div><dt>申请来源</dt><dd>{{ item.sourceText || '--' }}</dd></div><div><dt>项目最终认定课时</dt><dd>{{ item.finalHours }} 课时</dd></div></dl></section>
   <section class="card"><h2>成员学时 / 学分分配表</h2><div class="table-wrap"><table><thead><tr><th>成员姓名</th><th>学号</th><th>角色</th><th>分配课时</th><th>分配学分</th><th>备注</th></tr></thead><tbody><tr v-for="member in item.memberDistributions" :key="member.studentId"><td>{{ member.studentName }}</td><td>{{ member.studentId }}</td><td>{{ member.role==='captain'?'队长':'成员' }}</td><td>{{ member.allocatedHours }}</td><td>{{ Number(member.allocatedCredits||0).toFixed(2) }}</td><td>{{ member.remark||'--' }}</td></tr><tr v-if="!item.memberDistributions?.length"><td class="empty" colspan="6">成员分配表为空。</td></tr></tbody></table></div><div class="summary"><span>成员分配课时总和：<strong>{{ allocatedHours }}</strong></span><span>成员分配学分总和：<strong>{{ allocatedCredits.toFixed(2) }}</strong></span></div></section>
-  <section class="card"><h2>分配证明材料</h2><div class="files"><article v-for="file in item.proofMaterials" :key="file.id||file.name"><div><strong>{{ file.name }}</strong><small>{{ file.type||'未知类型' }} · {{ file.uploadedAt||'--' }}</small></div><div><button @click="fileAction('预览',file)">预览</button><button @click="fileAction('下载',file)">下载</button></div></article><p v-if="!item.proofMaterials?.length" class="empty">暂无证明材料。</p></div></section>
+  <section class="card"><h2>分配证明材料</h2><div class="files"><article v-for="file in item.proofMaterials" :key="file.id||file.name"><div><strong>{{ file.name }}</strong><small>{{ file.type||'未知类型' }} · {{ file.uploadedAt||'--' }}</small></div><div><button @click="previewFile(file)">预览</button><button @click="downloadFile(file)">下载</button></div></article><p v-if="!item.proofMaterials?.length" class="empty">暂无证明材料。</p></div></section>
   <section class="card"><h2>队长申请说明</h2><p>{{ item.applyReason || '无' }}</p></section>
   <section class="card"><h2>确认信息</h2><dl class="grid status-grid"><div><dt>当前状态</dt><dd><StatusTag :status="item.status" /></dd></div><div><dt>确认时间</dt><dd>{{ item.advisorConfirmTime || '--' }}</dd></div><div v-if="!canProcess"><dt>指导老师确认意见</dt><dd>{{ item.advisorComment || '无' }}</dd></div></dl><template v-if="canProcess"><label for="opinion">指导老师确认意见</label><textarea id="opinion" v-model="opinion" rows="5" placeholder="请输入确认意见；驳回时必填。"></textarea></template><p v-if="feedback" class="feedback">{{ feedback }}</p></section>
   <div class="actions"><button class="back" @click="goBack">返回</button><button class="reject" :disabled="!canProcess" @click="reject">驳回申请</button><button class="approve" :disabled="!canProcess" @click="approve">确认通过</button></div>

@@ -6,6 +6,7 @@ import StatusTag from '../components/StatusTag.vue'
 import { finalApproveApplication, finalRejectApplication, getApplicationFinalReview } from '../api/applicationApi.js'
 import { adaptApplicationEnvelope } from '../adapters/applicationAdapter.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
+import { downloadAttachment, getAttachmentErrorMessage, previewAttachment } from '../api/fileApi.js'
 const route = useRoute(); const router = useRouter(); const item = ref(null); const opinion = ref(''); const feedback = ref('')
 const canFinalApprove = computed(() => item.value?.actions?.can_approve === true || (item.value?.canOperate === true && item.value?.status === 'pending_admin_final'))
 const canFinalReject = computed(() => item.value?.actions?.can_reject === true || (item.value?.canOperate === true && item.value?.status === 'pending_admin_final'))
@@ -20,7 +21,7 @@ const timeline = computed(() => item.value ? [
 function showOperationError(error, fallback) { if (error?.code === 40301 || error?.status === 403 || error?.response?.status === 403) return window.alert('无权限执行最终确认，请确认当前账号为管理员'); window.alert(getApiErrorMessage(error, fallback)) }
 async function approve() { if (!item.value || !canFinalApprove.value) return;try{await finalApproveApplication(item.value.id,{comment:opinion.value.trim()});await loadItem();feedback.value='最终确认成功';window.alert(feedback.value)}catch(error){showOperationError(error,'最终确认失败，请稍后重试')} }
 async function reject() { if (!item.value || !canFinalReject.value) return;if (!opinion.value.trim()) return window.alert('请填写最终确认意见');try{await finalRejectApplication(item.value.id,{comment:opinion.value.trim()});await loadItem();feedback.value='最终驳回成功';window.alert(feedback.value)}catch(error){showOperationError(error,'最终驳回失败，请稍后重试')} }
-function preview() { window.alert('当前为 Mock 附件预览，真实预览需后端文件服务支持。') } function download() { window.alert('当前为 Mock 附件下载，真实下载需后端文件服务支持。') } function goBack() { router.push('/admin/final-confirm') }
+async function preview(file) { try { await previewAttachment(file) } catch (error) { window.alert(getAttachmentErrorMessage(error, 'preview')) } } async function download(file) { try { await downloadAttachment(file) } catch (error) { window.alert(getAttachmentErrorMessage(error, 'download')) } } function goBack() { router.push('/admin/final-confirm') }
 </script>
 <template><main class="detail-page"><div class="content"><template v-if="item"><header class="page-header"><div><p class="eyebrow">FINAL CONFIRMATION DETAIL</p><h1>{{ item.title }}</h1><p>{{ item.sourceText }}</p></div><StatusTag :status="item.status" /></header>
 <section class="card"><h2>学生信息</h2><dl class="grid"><div><dt>姓名</dt><dd>{{ item.studentName }}</dd></div><div><dt>学号</dt><dd>{{ item.studentId }}</dd></div><div><dt>申请人身份</dt><dd>{{ item.captainId === item.currentUserId ? '队长' : '成员' }}</dd></div><div><dt>提交时间</dt><dd>{{ item.submitTime }}</dd></div></dl></section>

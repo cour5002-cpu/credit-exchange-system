@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
 import { getStudentExchange } from '../api/exchangeApi.js'
 import { adaptExchangeEnvelope } from '../adapters/exchangeAdapter.js'
+import { downloadAttachment, getAttachmentErrorMessage, previewAttachment } from '../api/fileApi.js'
 import { currentUser as authCurrentUser } from '../stores/authStore.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
@@ -22,7 +23,7 @@ const credited = computed(() => [EXCHANGE_STATUS.COMPLETED, EXCHANGE_STATUS.FINA
 const pending = computed(() => PENDING_CREDIT_STATUSES.includes(item.value?.status))
 const rejected = computed(() => [EXCHANGE_STATUS.FINAL_REJECTED, EXCHANGE_STATUS.ADVISOR_REJECTED, EXCHANGE_STATUS.REJECTED].includes(item.value?.status))
 const resultText = computed(() => credited.value ? '学分已到账' : item.value?.status === EXCHANGE_STATUS.PENDING_CONFIRMATION ? '待指导老师确认' : pending.value ? '待管理员最终确认' : rejected.value ? '兑换已驳回' : '')
-function fileAction(action) { window.alert(action === '预览' ? '当前为 Mock 附件预览，真实预览需后端文件服务支持。' : '当前为 Mock 附件下载，真实下载需后端文件服务支持。') }
+async function fileAction(action, file) { try { await (action === '预览' ? previewAttachment(file) : downloadAttachment(file)) } catch (error) { window.alert(getAttachmentErrorMessage(error, action === '预览' ? 'preview' : 'download')) } }
 function goBack() { router.push('/student/credit-exchange-records') }
 </script>
 

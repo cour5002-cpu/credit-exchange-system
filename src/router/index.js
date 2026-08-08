@@ -261,6 +261,11 @@ const router = createRouter({
       component: () => import('../views/AdminDashboard.vue'),
     },
     {
+      path: '/admin/rule-files',
+      name: 'admin-rule-files',
+      component: () => import('../views/AdminRuleFilesView.vue'),
+    },
+    {
       path: '/admin/processed-records',
       name: 'admin-processed-records',
       redirect: '/admin/tasks/processed-records',
@@ -384,16 +389,26 @@ function getRequiredRole(path) {
 }
 
 router.beforeEach(async (to) => {
+  if (to.path === '/login') {
+    if (authState.initialized) return authState.user ? getHomePath(authState.user) : true
+    restoreSession()
+      .then((user) => {
+        if (user && router.currentRoute.value.path === '/login') router.replace(getHomePath(user))
+      })
+      .catch((error) => {
+        console.warn('[auth] 后台恢复会话失败，继续显示登录页。', error)
+      })
+    return true
+  }
+
   let user
   try {
     user = await restoreSession()
   } catch (error) {
     // 非认证类网络/服务端错误保留到登录页展示，避免进入受保护页面。
-    if (to.path === '/login') return true
     return { path: '/login', query: { redirect: to.fullPath } }
   }
 
-  if (to.path === '/login') return user ? getHomePath(user) : true
   if (!user) return { path: '/login', query: { redirect: to.fullPath } }
 
   const requiredRole = getRequiredRole(to.path)

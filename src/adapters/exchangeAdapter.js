@@ -3,6 +3,8 @@ import { adaptStudent, adaptTeacher } from './userAdapter.js'
 
 export function adaptExchange(item) {
   if (!item) return null
+  const attachmentCandidates = item.attachments ?? item.proof_materials ?? item.proof_attachments
+    ?? (item.attachment_ids ?? []).map((id) => ({ id }))
   return {
     id: item.id,
     exchangeId: item.id,
@@ -37,7 +39,7 @@ export function adaptExchange(item) {
     hoursArrived: true,
     exchanged: item.status === 'final_approved',
     memberDistributions: (item.allocations ?? []).map((row) => ({ student: adaptStudent(row.student), studentDbId: row.student_id ?? row.student?.id, studentId: row.student_no ?? row.student?.student_no, studentName: row.student_name ?? row.student?.name, role: row.role ?? (row.is_leader ? 'captain' : 'member'), allocatedHours: row.hours ?? row.allocated_hours, allocatedCredits: row.allocated_credits, memberHours: row.hours ?? row.allocated_hours, memberCredits: row.allocated_credits, creditType: row.credit_type, remark: row.remark })),
-    proofMaterials: (item.attachments ?? []).map(adaptAttachment),
+    proofMaterials: attachmentCandidates.map(adaptAttachment).filter(Boolean),
     reviews: item.reviews ?? [],
     actions: item.actions ?? {},
   }
@@ -49,7 +51,8 @@ export function adaptExchangeEnvelope(payload) {
   return adaptExchange({
     ...payload.exchange,
     allocations: payload.allocations ?? payload.exchange.allocations,
-    attachments: payload.attachments ?? payload.exchange.attachments,
+    attachments: payload.attachments ?? payload.exchange.attachments ?? payload.proof_materials ?? payload.proof_attachments,
+    attachment_ids: payload.attachment_ids ?? payload.exchange.attachment_ids,
     actions: payload.actions ?? payload.exchange.actions,
   })
 }

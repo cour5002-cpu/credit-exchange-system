@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
+import PaginationControls from '../components/PaginationControls.vue'
 import { getStatusText } from '../utils/status.js'
 import { getStudentApplication, getStudentApplications } from '../api/applicationApi.js'
 import { adaptApplicationEnvelope, adaptApplicationList } from '../adapters/applicationAdapter.js'
@@ -13,9 +14,19 @@ const selectedStatus = ref('')
 const keyword = ref('')
 const remoteApplications = ref([])
 const loadError = ref('')
+const page = ref(1)
+const pageSize = ref(10)
+const total = ref(0)
+const loading = ref(false)
 async function loadApplications() {
+  loading.value = true
   try {
-    const listed = adaptApplicationList(await getStudentApplications({ page_size: 100 })).items
+    const payload = await getStudentApplications({ page: page.value, page_size: pageSize.value })
+    const adapted = adaptApplicationList(payload)
+    const listed = adapted.items
+    total.value = Number(adapted.total ?? listed.length)
+    page.value = Number(adapted.page ?? page.value)
+    pageSize.value = Number(adapted.page_size ?? pageSize.value)
     const submittedId = Number(route.query.submittedId)
     if (Number.isInteger(submittedId) && submittedId > 0 && !listed.some((item) => item.id === submittedId)) {
       const submitted = adaptApplicationEnvelope(await getStudentApplication(submittedId))
@@ -24,7 +35,9 @@ async function loadApplications() {
     remoteApplications.value = listed
     loadError.value = ''
   } catch (error) { loadError.value = getApiErrorMessage(error, '课时申请加载失败') }
+  finally { loading.value = false }
 }
+async function changePage(target) { page.value = target; await loadApplications() }
 onMounted(loadApplications)
 const canSupplementResult = (application) => application?.applicationType === 'without_material' && application.status === 'pending_material'
 const canApplyExtension = (application) => application?.applicationType === 'without_material' && application.status === 'pending_material' && !application.extensionApplied
@@ -86,7 +99,7 @@ const applications = computed(() => {
       <section class="list-panel" aria-labelledby="progress-list-title">
         <div class="panel-header">
           <h2 id="progress-list-title">我的申请</h2>
-          <span>共 {{ applications.length }} 条</span>
+          <span>共 {{ total }} 条</span>
         </div>
         <div class="table-wrapper">
           <table>
@@ -125,6 +138,7 @@ const applications = computed(() => {
             </tbody>
           </table>
         </div>
+        <PaginationControls :page="page" :page-size="pageSize" :total="total" :loading="loading" @change="changePage" />
       </section>
     </div>
   </main>

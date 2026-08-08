@@ -59,7 +59,9 @@ export async function restoreSession({ force = false } = {}) {
     .catch((error) => {
       state.user = null
       state.initialized = true
-      if (error?.code === 40101 || error?.status === 401 || error?.category === 'unauthorized') return null
+      const unauthorized = error?.code === 40101 || error?.status === 401 || error?.category === 'unauthorized'
+      if (unauthorized) return null
+      console.warn('[auth] 会话恢复请求异常。', error)
       throw error
     })
     .finally(() => {

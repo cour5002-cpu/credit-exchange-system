@@ -2,9 +2,18 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AttachmentNotice from '../components/AttachmentNotice.vue'
+import RuleFilePanel from '../components/RuleFilePanel.vue'
 import StatusTag from '../components/StatusTag.vue'
-import { getAvailableHourAwards, getExchangeFormData, saveExchangeDraft, submitExchange as submitExchangeApi } from '../api/exchangeApi.js'
-import { uploadAttachment } from '../api/fileApi.js'
+import {
+  getAvailableHourAwards,
+  getExchangeFormData,
+  getStudentExchange,
+  getStudentExchanges,
+  saveExchangeDraft,
+  submitExchange as submitExchangeApi,
+} from '../api/exchangeApi.js'
+import { downloadAttachment, getAttachmentErrorMessage, previewAttachment, uploadAttachment } from '../api/fileApi.js'
+import { adaptAttachment } from '../adapters/taskAdapter.js'
 import { adaptHourAwardList, toExchangePayload } from '../adapters/exchangeAdapter.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
 import { currentUser as authCurrentUser } from '../stores/authStore.js'
@@ -15,9 +24,11 @@ const currentStudentId = computed(() => Number(authCurrentUser.value?.student?.i
 const HOURS_PER_CREDIT = 10
 const form = reactive({ applicationId: '', hourAwardRecordId: '', applyReason: '', attachment: null, attachmentIds: [], memberDistributions: [] })
 const feedback = ref({ type: '', message: '' })
+const draftId = ref(null)
+const pendingDraftAllocations = ref(null)
+const draftStorageKey = computed(() => `credit-exchange-draft:${currentStudentId.value || 'student'}`)
 const attachmentInput = ref(null)
 const remoteAwards = ref([])
-onMounted(async()=>{try{remoteAwards.value=adaptHourAwardList(await getAvailableHourAwards({page_size:100})).filter(item=>item.status==='final_approved')}catch(error){window.alert(getApiErrorMessage(error,'可兑换课时加载失败'))}})
 
 const eligibleApplications = computed(() => {
   return remoteAwards.value
@@ -78,7 +89,7 @@ watch(selectedApplication, async (application) => {
     allocatedHours: '',
     allocatedCredits: 0,
     remark: '',
-  }))}catch(error){form.memberDistributions=[];window.alert(getApiErrorMessage(error,'兑换表单数据加载失败'))}
+  }));if(pendingDraftAllocations.value){const savedHours=new Map(pendingDraftAllocations.value.map((row)=>[Number(row.student_id??row.student?.id),row.hours??null]));form.memberDistributions.forEach((member)=>{if(savedHours.has(Number(member.studentDbId))){member.allocatedHours=savedHours.get(Number(member.studentDbId))??'';updateMemberCredits(member)}});pendingDraftAllocations.value=null}}catch(error){form.memberDistributions=[];window.alert(getApiErrorMessage(error,'兑换表单数据加载失败'))}
 })
 
 function updateMemberCredits(member) {
@@ -120,15 +131,81 @@ async function handleAttachmentChange(event) {
   try{const uploaded=await uploadAttachment(file,'credit_exchange');const id=Number(uploaded.id);if(!Number.isInteger(id)||id<=0)throw new Error('无效附件 ID');form.attachment={...uploaded.attachment,id};form.attachmentIds=[id];feedback.value={type:'',message:''}}catch(error){window.alert('认定证明上传失败，请重新上传')}
 }
 
+async function previewFile(file) { try { await previewAttachment(file) } catch (error) { window.alert(getAttachmentErrorMessage(error, '附件预览失败，请稍后重试。')) } }
+async function downloadFile(file) { try { await downloadAttachment(file) } catch (error) { window.alert(getAttachmentErrorMessage(error, '附件下载失败，请稍后重试。')) } }
+
 function removeAttachment() {
   form.attachment = null
   form.attachmentIds = []
   if (attachmentInput.value) attachmentInput.value.value = ''
 }
 
+function getStoredDraftId() {
+  try {
+    const value = Number(window.localStorage.getItem(draftStorageKey.value))
+    return Number.isInteger(value) && value > 0 ? value : null
+  } catch {
+    return null
+  }
+}
+
+function storeDraftId(id) {
+  draftId.value = id
+  try { window.localStorage.setItem(draftStorageKey.value, String(id)) } catch { /* storage may be unavailable */ }
+}
+
+function restoreDraft(payload) {
+  const exchange = payload?.exchange ?? payload
+  if (!exchange || (exchange.status ?? payload?.status) !== 'draft') return false
+  const id = Number(exchange.id ?? payload?.id)
+  const hourAwardRecordId = Number(exchange.hour_award_record_id)
+  if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(hourAwardRecordId) || hourAwardRecordId <= 0) return false
+
+  const allocations = payload?.allocations ?? exchange.allocations ?? []
+  const attachmentIds = payload?.attachment_ids ?? exchange.attachment_ids ?? []
+  const attachments = payload?.attachments ?? exchange.attachments ?? attachmentIds.map((attachmentId) => ({ id: attachmentId }))
+  pendingDraftAllocations.value = allocations
+  form.applicationId = hourAwardRecordId
+  form.hourAwardRecordId = hourAwardRecordId
+  form.attachmentIds = attachments.map((item) => Number(item.id)).filter((item) => Number.isInteger(item) && item > 0)
+  form.attachment = attachments[0] ? adaptAttachment(attachments[0]) : null
+  storeDraftId(id)
+  return true
+}
+
+async function loadExistingDraft() {
+  try {
+    const storedId = getStoredDraftId()
+    if (storedId) {
+      try {
+        if (restoreDraft(await getStudentExchange(storedId))) return
+      } catch { /* fall through to the server-side draft list */ }
+    }
+    const result = await getStudentExchanges({ status: 'draft', page: 1, page_size: 100 })
+    const items = Array.isArray(result) ? result : result?.items ?? result?.exchanges ?? []
+    const latest = [...items]
+      .filter((item) => item.status === 'draft')
+      .sort((left, right) => Number(right.id) - Number(left.id))[0]
+    if (!latest?.id) return
+    if (restoreDraft(await getStudentExchange(latest.id))) {
+      feedback.value = { type: 'success', message: '已加载上次保存的学分兑换草稿。' }
+    }
+  } catch (error) {
+    console.error('[credit-exchange] 草稿加载失败', error)
+    feedback.value = { type: 'error', message: getApiErrorMessage(error, '草稿加载失败') }
+  }
+}
+
 async function saveDraft() {
   if(!form.hourAwardRecordId)return window.alert('请选择可兑换项目')
-  try{await saveExchangeDraft(toExchangePayload(form));feedback.value={type:'success',message:'学分兑换申请草稿已保存。'};window.alert(feedback.value.message)}catch(error){window.alert(getApiErrorMessage(error,'草稿保存失败'))}
+  const sourcePayload = toExchangePayload(form)
+  const payload = {
+    hour_award_record_id: sourcePayload.hour_award_record_id,
+    allocations: sourcePayload.allocations.map(({ student_id, hours }) => ({ student_id, hours })),
+    attachment_ids: sourcePayload.attachment_ids,
+    confirm_calculated_credits: sourcePayload.confirm_calculated_credits,
+  }
+  try{const response=await saveExchangeDraft(payload);const saved=response?.exchange??response;const id=Number(saved?.id??response?.id);if(!Number.isInteger(id)||id<=0)throw new Error('后端未返回有效的草稿 ID');storeDraftId(id);feedback.value={type:'success',message:`学分兑换申请草稿已保存（ID：${id}）。`};window.alert(feedback.value.message)}catch(error){feedback.value={type:'error',message:getApiErrorMessage(error,'草稿保存失败')};window.alert(feedback.value.message)}
 }
 
 async function submitExchange() {
@@ -156,6 +233,16 @@ async function submitExchange() {
   try{await submitExchangeApi(payload);feedback.value={type:'success',message:'学分兑换申请提交成功，已进入指导老师确认。'};window.alert(feedback.value.message);router.push('/student/credit-exchange-records')}catch(error){window.alert(getApiErrorMessage(error,'学分兑换申请提交失败'))}
 }
 
+onMounted(async () => {
+  try {
+    remoteAwards.value = adaptHourAwardList(await getAvailableHourAwards({ page_size: 100 }))
+      .filter((item) => item.status === 'final_approved')
+    await loadExistingDraft()
+  } catch (error) {
+    window.alert(getApiErrorMessage(error, '可兑换课时加载失败'))
+  }
+})
+
 function goBack() {
   router.push('/student/dashboard')
 }
@@ -175,7 +262,8 @@ function goBack() {
         <article><span>本次预计兑换学分</span><strong>{{ estimatedCredits }}</strong><small>1 课时兑换 0.1 学分</small></article>
       </section>
 
-      <form class="exchange-form" novalidate @submit.prevent="submitExchange">
+    <RuleFilePanel rule-type="credit_rule" title="学分兑换规则" description="发起兑换前，请阅读当前学分兑换规则文件。" />
+    <form class="exchange-form" novalidate @submit.prevent="submitExchange">
         <section class="form-card">
           <div class="section-heading"><div><h2>学生信息</h2><p>兑换申请将以当前登录学生身份提交。</p></div><StatusTag status="draft" text="填写中" /></div>
           <div class="form-grid">
@@ -227,10 +315,10 @@ function goBack() {
         </section>
 
         <section class="form-card">
-          <div class="section-heading"><div><h2>上传认定证明</h2><p>当前为 Mock 文件选择，不会上传到服务器。</p></div></div>
+          <div class="section-heading"><div><h2>上传认定证明</h2><p>附件将上传到服务器并随兑换申请提交。</p></div></div>
           <AttachmentNotice title="认定证明上传说明" description="请上传课时最终认定证明、最终确认结果截图或其他辅助材料，用于管理员核对兑换资格。" :required="true" :accept-types="['PDF', 'Word', '图片']" />
           <label class="upload-control"><span>选择认定证明 <strong>*</strong></span><input ref="attachmentInput" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" @change="handleAttachmentChange" /></label>
-          <article v-if="form.attachment" class="selected-file"><div><strong>{{ form.attachment.name }}</strong><small>{{ form.attachment.type }} · {{ form.attachment.uploadedAt }}</small></div><button type="button" @click="removeAttachment">移除</button></article>
+          <article v-if="form.attachment" class="selected-file"><div><strong>{{ form.attachment.name }}</strong><small>{{ form.attachment.type }} · {{ form.attachment.uploadedAt }}</small></div><div><button type="button" @click="previewFile(form.attachment)">预览</button><button type="button" @click="downloadFile(form.attachment)">下载</button><button type="button" @click="removeAttachment">移除</button></div></article>
         </section>
 
         <p v-if="feedback.message" class="feedback" :class="`feedback--${feedback.type}`" role="status">{{ feedback.message }}</p>

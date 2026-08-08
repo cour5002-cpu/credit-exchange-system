@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import StatusTag from '../components/StatusTag.vue'
 import { finalApproveExchange, finalRejectExchange, getAdminExchange } from '../api/exchangeApi.js'
 import { adaptExchangeEnvelope } from '../adapters/exchangeAdapter.js'
+import { downloadAttachment, getAttachmentErrorMessage, previewAttachment } from '../api/fileApi.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
 
 const route = useRoute()
@@ -22,7 +23,8 @@ async function reject() {
   if (!opinion.value.trim()) return window.alert('驳回兑换必须填写处理意见。')
   try{await finalRejectExchange(item.value.id,{comment:opinion.value.trim()});window.alert('已驳回兑换申请。');goBack()}catch(error){window.alert(getApiErrorMessage(error,'最终驳回兑换失败'))}
 }
-function fileAction(action) { window.alert(action === '预览' ? '当前为 Mock 附件预览，真实预览需后端文件服务支持。' : '当前为 Mock 附件下载，真实下载需后端文件服务支持。') }
+async function previewFile(file) { try { await previewAttachment(file) } catch (error) { window.alert(getAttachmentErrorMessage(error, '附件预览失败，请稍后重试。')) } }
+async function downloadFile(file) { try { await downloadAttachment(file) } catch (error) { window.alert(getAttachmentErrorMessage(error, '附件下载失败，请稍后重试。')) } }
 function goBack() { router.push('/admin/final-confirm/exchanges') }
 </script>
 
@@ -34,7 +36,7 @@ function goBack() { router.push('/admin/final-confirm/exchanges') }
       <section class="card"><h2>团队与任务信息</h2><dl class="grid"><div><dt>团队名称</dt><dd>{{ item.teamName || '--' }}</dd></div><div><dt>任务名称</dt><dd>{{ item.taskName || item.projectTitle }}</dd></div><div><dt>已到账课时</dt><dd>{{ item.finalHours }} 课时 · {{ item.hoursArrived ? '已到账' : '未到账' }}</dd></div><div><dt>是否已兑换</dt><dd>{{ item.exchanged ? '已兑换' : '未兑换' }}</dd></div><div><dt>申请兑换课时</dt><dd>{{ item.exchangeHours }}</dd></div><div><dt>申请兑换学分</dt><dd>{{ Number(item.estimatedCredits || 0).toFixed(2) }}</dd></div></dl></section>
       <section class="card"><h2>成员学时 / 学分分配表</h2><div class="table-wrap"><table><thead><tr><th>成员姓名</th><th>学号</th><th>成员角色</th><th>分配课时</th><th>分配学分</th><th>备注</th></tr></thead><tbody><tr v-for="member in item.memberDistributions" :key="member.studentId"><td>{{ member.studentName }}</td><td>{{ member.studentId }}</td><td>{{ member.role === 'captain' ? '队长' : '成员' }}</td><td>{{ member.allocatedHours }}</td><td>{{ Number(member.allocatedCredits || 0).toFixed(2) }}</td><td>{{ member.remark || '--' }}</td></tr><tr v-if="!item.memberDistributions?.length"><td class="empty" colspan="6">暂无成员分配数据。</td></tr></tbody></table></div><dl class="grid allocation-summary"><div><dt>项目最终认定课时</dt><dd>{{ item.finalHours }}</dd></div><div><dt>成员分配课时总和</dt><dd>{{ allocatedHoursTotal }}</dd></div><div><dt>项目预计总学分</dt><dd>{{ Number(item.estimatedCredits || 0).toFixed(2) }}</dd></div><div><dt>成员分配学分总和</dt><dd>{{ allocatedCreditsTotal.toFixed(2) }}</dd></div></dl></section>
       <section class="card"><h2>指导老师确认</h2><dl class="grid"><div><dt>确认状态</dt><dd><StatusTag :status="item.advisorConfirmStatus" /></dd></div><div><dt>确认意见</dt><dd>{{ item.advisorComment || '无' }}</dd></div></dl></section>
-      <section class="card"><h2>分配证明材料</h2><div class="files"><article v-for="file in item.proofMaterials" :key="file.id || file.name"><div><strong>{{ file.name }}</strong><small>{{ file.type || '未知类型' }} · {{ file.uploadedAt || '--' }}</small></div><div><button @click="fileAction('预览', file)">预览</button><button @click="fileAction('下载', file)">下载</button></div></article><p v-if="!item.proofMaterials?.length" class="empty">暂无证明材料。</p></div></section>
+      <section class="card"><h2>分配证明材料</h2><div class="files"><article v-for="file in item.proofMaterials" :key="file.id || file.name"><div><strong>{{ file.name }}</strong><small>{{ file.type || '未知类型' }} · {{ file.uploadedAt || '--' }}</small></div><div><button @click="previewFile(file)">预览</button><button @click="downloadFile(file)">下载</button></div></article><p v-if="!item.proofMaterials?.length" class="empty">暂无证明材料。</p></div></section>
       <section class="card"><h2>最终确认处理</h2><dl class="grid summary"><div><dt>当前最终确认状态</dt><dd><StatusTag :status="item.status" /></dd></div><div><dt>最终确认时间</dt><dd>{{ item.finalConfirmTime || '--' }}</dd></div></dl><label for="opinion"><strong>处理意见</strong></label><textarea id="opinion" v-model="opinion" rows="5" placeholder="最终确认意见可选；驳回兑换时必填。"></textarea></section>
       <div class="actions"><button class="back" type="button" @click="goBack">返回</button><template v-if="canHandle"><button class="reject" type="button" @click="reject">驳回兑换</button><button class="approve" type="button" @click="approve">最终确认兑换</button></template></div>
     </template>
