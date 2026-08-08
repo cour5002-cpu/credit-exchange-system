@@ -164,7 +164,11 @@ def reviewer_appeal_reviews():
 @login_required
 @role_required("reviewer")
 def reviewer_appeal_review_detail(appeal_id):
-    return _handle_business(lambda: ok(_appeal_detail_payload(get_reviewer_appeal(current_user, appeal_id))))
+    def payload():
+        appeal = get_reviewer_appeal(current_user, appeal_id)
+        return ok(_appeal_detail_payload(appeal, get_appeal_target(appeal)))
+
+    return _handle_business(payload)
 
 
 def _review_appeal_response(appeal_id, decision):

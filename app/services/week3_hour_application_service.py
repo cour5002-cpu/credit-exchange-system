@@ -457,6 +457,56 @@ def advisor_reject(user, application_id, comment, material=False):
     return application
 
 
+def prepare_task_result_reconfirmation(application, user_id):
+    """Restore a task-result application to the advisor confirmation state."""
+    if application.application_type != "task_result":
+        return
+
+    submission = None
+    if application.task_result_submission_id:
+        submission = db.session.get(
+            TaskResultSubmission,
+            application.task_result_submission_id,
+        )
+    if not submission:
+        submission = TaskResultSubmission.query.filter_by(
+            hour_application_id=application.id
+        ).first()
+    if not submission:
+        raise BusinessError(
+            "任务成果关联记录不存在，无法重新进入指导老师确认",
+            code=40902,
+            status=409,
+        )
+
+    before = submission.status
+    submission.status = "submitted"
+    submission.advisor_comment = None
+    submission.advisor_reviewed_by = None
+    submission.advisor_reviewed_at = None
+    application.advisor_reviewed_at = None
+
+    primary_advisor = ApplicationAdvisor.query.filter_by(
+        application_id=application.id,
+        advisor_role="primary",
+        can_operate=True,
+    ).first()
+    if primary_advisor:
+        primary_advisor.reviewed_at = None
+    if submission.task:
+        submission.task.status = "result_submitted"
+
+    if before != submission.status:
+        _add_operation(
+            user_id,
+            "task_result",
+            submission.id,
+            "appeal_reopen",
+            before,
+            submission.status,
+        )
+
+
 def submit_materials(user, application_id, payload):
     student = current_student(user)
     application = get_visible_application_for_student(user, application_id)

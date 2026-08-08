@@ -21,6 +21,7 @@ from app.services.week3_hour_application_service import (
     advisor_approve,
     advisor_reject,
     assign_reviewer,
+    prepare_task_result_reconfirmation,
     reviewer_approve,
     reviewer_reject,
 )
@@ -148,6 +149,7 @@ def admin_approve_appeal(user, appeal_id, admin_advice):
     target.status = target_status
     if appeal.target_type == "hour_application":
         target.appeal_advice = admin_advice
+        prepare_task_result_reconfirmation(target, user.id)
     _add_operation(user.id, "appeal", appeal.id, "approve", before, appeal.status)
     db.session.commit()
     return appeal, target
@@ -198,6 +200,7 @@ def advisor_reconfirm_appeal(user, appeal_id, decision, comment=None):
         raise BusinessError("再次确认驳回原因不能为空")
     if appeal.target_type == "hour_application":
         target_application = _get_appeal_target("hour_application", appeal.target_id)
+        prepare_task_result_reconfirmation(target_application, user.id)
         reuse_submitted_material = (
             target_application.application_type == "without_material"
             and target_application.status == "material_submitted"

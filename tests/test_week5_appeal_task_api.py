@@ -334,6 +334,85 @@ class Week5AppealTaskApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
         self.assertEqual(response.json["data"]["registrations"][0]["status"], "selected")
 
+    def test_student_task_detail_hides_other_registrations(self):
+        admin_client, _ = self.client_login("admin", "admin123")
+        student1_client, _ = self.client_login("student1", "student123")
+        student2_client, _ = self.client_login("student2", "student123")
+        advisor_client, advisor_me = self.client_login("teacher1", "teacher123")
+        task_type_id = admin_client.get(
+            "/api/v1/task-types?enabled=true"
+        ).json["data"]["items"][0]["id"]
+        task = admin_client.post("/api/v1/admin/tasks", json={
+            "title": "学生任务详情隐私测试",
+            "description": "学生只能看到自己的报名信息",
+            "task_type_id": task_type_id,
+            "advisor_teacher_id": advisor_me["teacher"]["id"],
+            "result_requirement": "提交成果",
+            "registration_deadline": (datetime.now() + timedelta(days=7)).isoformat(),
+        })
+        task_id = task.json["data"]["id"]
+        own_registration = student1_client.post(
+            f"/api/v1/student/tasks/{task_id}/registrations",
+            json={"remark": "学生一报名理由"},
+        ).json["data"]["registration_id"]
+        student2_client.post(
+            f"/api/v1/student/tasks/{task_id}/registrations",
+            json={"remark": "学生二报名理由"},
+        )
+
+        detail = student1_client.get(f"/api/v1/student/tasks/{task_id}")
+        self.assertEqual(detail.status_code, 200, detail.get_data(as_text=True))
+        self.assertEqual(detail.json["data"]["registration"]["id"], own_registration)
+        self.assertNotIn("registrations", detail.json["data"])
+        self.assertNotIn("members", detail.json["data"])
+        self.assertNotIn("registrations", detail.json["data"]["task"])
+        self.assertNotIn("members", detail.json["data"]["task"])
+        self.assertNotIn("学生二报名理由", detail.get_data(as_text=True))
+
+    def test_selection_requires_a_decision_for_every_registration(self):
+        admin_client, _ = self.client_login("admin", "admin123")
+        student1_client, _ = self.client_login("student1", "student123")
+        student2_client, _ = self.client_login("student2", "student123")
+        advisor_client, advisor_me = self.client_login("teacher1", "teacher123")
+        task_type_id = admin_client.get(
+            "/api/v1/task-types?enabled=true"
+        ).json["data"]["items"][0]["id"]
+        task = admin_client.post("/api/v1/admin/tasks", json={
+            "title": "报名完整筛选测试",
+            "description": "全部报名必须明确选中或不选中",
+            "task_type_id": task_type_id,
+            "advisor_teacher_id": advisor_me["teacher"]["id"],
+            "result_requirement": "提交成果",
+            "registration_deadline": (datetime.now() + timedelta(days=7)).isoformat(),
+        })
+        task_id = task.json["data"]["id"]
+        first_id = student1_client.post(
+            f"/api/v1/student/tasks/{task_id}/registrations", json={}
+        ).json["data"]["registration_id"]
+        second_id = student2_client.post(
+            f"/api/v1/student/tasks/{task_id}/registrations", json={}
+        ).json["data"]["registration_id"]
+        with self.app.app_context():
+            db_task = db.session.get(CollegeTask, task_id)
+            db_task.registration_deadline = datetime.now() - timedelta(seconds=1)
+            db.session.commit()
+
+        incomplete = advisor_client.post(
+            f"/api/v1/advisor/tasks/{task_id}/registrations/select",
+            json={"selected_registration_ids": [first_id]},
+        )
+        self.assertEqual(incomplete.status_code, 409, incomplete.get_data(as_text=True))
+        self.assertIn("全部报名学生", incomplete.json["message"])
+
+        complete = advisor_client.post(
+            f"/api/v1/advisor/tasks/{task_id}/registrations/select",
+            json={
+                "selected_registration_ids": [first_id],
+                "not_selected_registration_ids": [second_id],
+            },
+        )
+        self.assertEqual(complete.status_code, 200, complete.get_data(as_text=True))
+
     def test_admin_and_advisor_task_publish_attachments(self):
         admin_client, _ = self.client_login("admin", "admin123")
         advisor_client, advisor_me = self.client_login("teacher1", "teacher123")
@@ -602,6 +681,10 @@ class Week5AppealTaskApiTest(unittest.TestCase):
             "reviewer_teacher_id": reviewer_me["teacher"]["id"], "comment": "重新分配"
         })
         self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        response = reviewer_client.get(f"/api/v1/reviewer/appeal-reviews/{appeal_id}")
+        self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
+        self.assertEqual(response.json["data"]["appeal"]["id"], appeal_id)
+        self.assertEqual(response.json["data"]["target"]["id"], application_id)
         response = reviewer_client.post(f"/api/v1/reviewer/appeal-reviews/{appeal_id}/approve", json={"comment": "申诉复审通过"})
         self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
         self.assertEqual(response.json["data"]["target_status"], "pending_admin_final")
