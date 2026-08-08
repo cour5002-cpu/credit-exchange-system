@@ -7,22 +7,14 @@ from flask_login import current_user, login_required
 from app.core.responses import fail, handle_business, ok
 from app.core.validation import parse_bool_query, parse_pagination_args
 from app.extensions import db
-from app.models.appeal import Appeal
-from app.models.application_advisor import ApplicationAdvisor
 from app.models.attachment import Attachment
 from app.models.college_task import CollegeTask
-from app.models.credit_exchange_allocation import CreditExchangeAllocation
 from app.models.credit_exchange_application import CreditExchangeApplication
-from app.models.extension_request import ExtensionRequest
 from app.models.hour_application import HourApplication
-from app.models.hour_application_member import HourApplicationMember
 from app.models.operation_log import OperationLog
-from app.models.student import Student
-from app.models.task_member import TaskMember
-from app.models.task_result_submission import TaskResultSubmission
-from app.models.teacher import Teacher
 from app.modules.api.blueprint import api_bp
 from app.schemas.base import attachment_summary, operation_record_summary
+from app.services.attachment_access_service import can_access_attachment
 from app.utils.pagination import paginate_query
 from app.utils.permissions import role_required
 from app.utils.time_utils import business_now
@@ -77,7 +69,7 @@ def get_attachment(attachment_id):
     attachment = Attachment.query.filter_by(id=attachment_id, status="active").first()
     if not attachment:
         return fail("附件不存在", code=40401, status=404)
-    if not _can_access_attachment(attachment):
+    if not can_access_attachment(current_user, attachment):
         return fail("无权访问该附件", code=40301, status=403)
     if parse_bool_query(request.args.get("download")):
         path = os.path.join(current_app.root_path, attachment.file_path)
@@ -170,85 +162,4 @@ def _attachment_bound_to_draft(attachment):
     if attachment.owner_type == "college_task":
         owner = db.session.get(CollegeTask, attachment.owner_id)
         return bool(owner and owner.status == "draft")
-    return False
-
-
-def _can_access_attachment(attachment):
-    if attachment.uploaded_by == current_user.id or current_user.has_role("admin"):
-        return True
-    if not attachment.owner_type or not attachment.owner_id:
-        return False
-    if attachment.owner_type == "rule_file":
-        return True
-    student = Student.query.filter_by(user_id=current_user.id).first()
-    teacher = Teacher.query.filter_by(user_id=current_user.id).first()
-    if attachment.owner_type == "hour_application":
-        application = db.session.get(HourApplication, attachment.owner_id)
-        if not application:
-            return False
-        if student and (
-            student.id in {application.student_id, application.applicant_student_id, application.leader_student_id}
-            or HourApplicationMember.query.filter_by(application_id=application.id, student_id=student.id, status="active").first()
-        ):
-            return True
-        return bool(teacher and (
-            application.assigned_teacher_id == teacher.id
-            or ApplicationAdvisor.query.filter_by(application_id=application.id, teacher_id=teacher.id).first()
-        ))
-    if attachment.owner_type == "extension_request":
-        extension = db.session.get(ExtensionRequest, attachment.owner_id)
-        if not extension:
-            return False
-        application = extension.application
-        if student and student.id in {
-            application.student_id,
-            application.applicant_student_id,
-            application.leader_student_id,
-        }:
-            return True
-        return bool(teacher and ApplicationAdvisor.query.filter_by(
-            application_id=application.id,
-            teacher_id=teacher.id,
-        ).first())
-    if attachment.owner_type == "college_task":
-        task = db.session.get(CollegeTask, attachment.owner_id)
-        if not task:
-            return False
-        if student:
-            return task.status in {
-                "published",
-                "registration_open",
-                "registration_closed",
-                "selection_pending",
-                "leader_pending",
-                "task_in_progress",
-            }
-        return bool(teacher and task.advisor_teacher_id == teacher.id)
-    if attachment.owner_type == "task_result":
-        submission = db.session.get(TaskResultSubmission, attachment.owner_id)
-        if not submission:
-            return False
-        if student and TaskMember.query.filter_by(task_id=submission.task_id, student_id=student.id, status="active").first():
-            return True
-        return bool(teacher and submission.task.advisor_teacher_id == teacher.id)
-    if attachment.owner_type == "credit_exchange":
-        exchange = db.session.get(CreditExchangeApplication, attachment.owner_id)
-        if not exchange:
-            return False
-        if student and (
-            student.id in {exchange.student_id, exchange.applicant_student_id}
-            or CreditExchangeAllocation.query.filter_by(exchange_application_id=exchange.id, student_id=student.id).first()
-        ):
-            return True
-        return bool(teacher and exchange.advisor_teacher_id == teacher.id)
-    if attachment.owner_type == "appeal":
-        appeal = db.session.get(Appeal, attachment.owner_id)
-        if student and appeal and appeal.applicant_student_id == student.id:
-            return True
-        if teacher and appeal and appeal.target_type == "hour_application":
-            target = db.session.get(HourApplication, appeal.target_id)
-            return bool(target and (
-                target.assigned_teacher_id == teacher.id
-                or ApplicationAdvisor.query.filter_by(application_id=target.id, teacher_id=teacher.id).first()
-            ))
     return False
