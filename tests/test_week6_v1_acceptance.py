@@ -4,6 +4,7 @@ from io import BytesIO
 
 from app.commands.seed_data import seed_default_users, seed_system_configs, seed_task_types
 from app.extensions import db
+from app.models.hour_application import HourApplication
 from tests.test_support import create_isolated_test_app
 
 
@@ -114,6 +115,29 @@ class Week6V1AcceptanceTest(unittest.TestCase):
         self.assertIn("pages", response.json["data"])
         self.assertEqual(admin.get("/api/v1/operation-records?role_scope=advisor").status_code, 403)
         self.assertEqual(admin.get("/api/v1/operation-records?role_scope=admin&page_size=101").status_code, 400)
+
+    def test_legacy_hour_application_post_cannot_create_parallel_workflow(self):
+        student = self.login("student1", "student123")
+        with self.app.app_context():
+            before_count = HourApplication.query.count()
+
+        response = student.post(
+            "/student/hour-applications/new",
+            data={
+                "task_type_code": "project",
+                "title": "不应写入的旧版申请",
+                "participant_count": 1,
+                "participant_members": "测试学生1",
+                "major_name": "软件工程",
+                "course_name": "程序设计",
+                "instructor_name": "张老师",
+                "requested_hours": "8",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(response.status_code, 302)
+        with self.app.app_context():
+            self.assertEqual(HourApplication.query.count(), before_count)
 
 
 if __name__ == "__main__":
