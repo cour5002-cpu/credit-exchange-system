@@ -178,8 +178,16 @@ def select_task_registrations(user, task_id, payload):
         raise BusinessError("选中和未选中报名记录不能重复")
     registrations = TaskRegistration.query.filter(TaskRegistration.task_id == task.id).all()
     by_id = {item.id: item for item in registrations}
-    if not set(selected_ids + not_selected_ids).issubset(by_id):
+    handled_ids = set(selected_ids + not_selected_ids)
+    if not handled_ids.issubset(by_id):
         raise BusinessError("报名记录不存在或不属于当前任务", code=40401, status=404)
+    unhandled_ids = set(by_id) - handled_ids
+    if unhandled_ids:
+        raise BusinessError(
+            "必须处理当前任务的全部报名学生",
+            code=40901,
+            status=409,
+        )
     TaskMember.query.filter_by(task_id=task.id).delete()
     now = business_now()
     for registration_id in selected_ids:
@@ -508,5 +516,3 @@ def _advance_task_registration(task):
     ):
         task.status = "selection_pending"
         db.session.commit()
-
-

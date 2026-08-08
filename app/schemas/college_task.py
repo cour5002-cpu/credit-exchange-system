@@ -148,7 +148,16 @@ def task_detail_payload(task):
 
 
 def student_task_detail_payload(task, registration):
-    payload = task_detail_payload(task)
+    task_payload = task_detail(task)
+    # Registration lists, team members and admin comments are not public task data.
+    # Students receive their own registration below and use the guarded team API
+    # after selection to view the final team.
+    for private_field in ("registrations", "members", "leader", "admin_review_comment"):
+        task_payload.pop(private_field, None)
+    payload = {
+        "task": task_payload,
+        "attachments": owner_attachments("college_task", task.id),
+    }
     payload["registration"] = task_registration_summary(registration) if registration else None
     payload["can_register"] = (
         task.status in {"published", "registration_open"}
