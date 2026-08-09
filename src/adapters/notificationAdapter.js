@@ -2,13 +2,15 @@ export function adaptNotification(item) {
   if (!item) return null
   return {
     id: item.id,
-    notificationId: item.id,
     title: item.title,
     content: item.content,
-    relatedBizType: item.target_type,
-    relatedBizId: item.target_id,
+    category: item.category,
+    messageType: item.message_type,
+    bizType: item.biz_type,
+    bizId: item.biz_id,
+    bizAvailable: item.biz_available,
     isRead: item.is_read,
-    createTime: item.created_at,
+    readAt: item.read_at,
+    createdAt: item.created_at,
   }
 }
-

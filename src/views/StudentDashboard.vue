@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { getAvailableHourAwards, getStudentExchanges } from '../api/exchangeApi.js'
 import { adaptExchangeList, adaptHourAwardList } from '../adapters/exchangeAdapter.js'
 import { currentUser as authCurrentUser } from '../stores/authStore.js'
+import NotificationBadge from '../components/NotificationBadge.vue'
 
 const exchanges = ref([])
 const availableAwards = ref([])
@@ -37,7 +38,6 @@ const entries = [
   { title: '课时申请进度', description: '查看课时申请的处理状态。', to: '/student/hour-progress' },
   { title: '学分兑换', description: '选择已最终确认的项目申请学分兑换。', to: '/student/credit-exchange' },
   { title: '申诉与问题投诉', description: '提交使用过程中遇到的问题。', to: '/student/feedback' },
-  { title: '信息通知', description: '查看学生端通知消息。', to: '/student/notifications' },
 ]
 </script>
 
@@ -45,7 +45,7 @@ const entries = [
   <header class="dashboard-header"><div><p class="eyebrow">STUDENT PORTAL</p><h1>学生端首页</h1><p>欢迎进入课时 / 学分兑换系统学生工作台。</p></div>
     <section class="credit-card" aria-label="我的学分"><div class="credit-card__title"><div><small>MY CREDITS</small><h2>我的学分</h2></div><RouterLink to="/student/credit-exchange-records">查看兑换记录</RouterLink></div><div class="credit-stats"><article><strong>{{ creditedCredits.toFixed(2) }}</strong><span>已到账学分</span></article><article><strong>{{ pendingCredits.toFixed(2) }}</strong><span>待到账学分</span></article><article><strong>{{ availableProjectCount }}</strong><span>可兑换项目</span></article></div></section>
   </header>
-  <section class="entry-grid" aria-label="学生端功能入口"><RouterLink v-for="entry in entries" :key="entry.to" :to="entry.to" class="entry-card"><h2>{{ entry.title }}</h2><p>{{ entry.description }}</p></RouterLink></section>
+  <section class="entry-grid" aria-label="学生端功能入口"><RouterLink v-for="entry in entries" :key="entry.to" :to="entry.to" class="entry-card"><h2>{{ entry.title }}</h2><p>{{ entry.description }}</p></RouterLink><NotificationBadge to="/student/notifications" description="查看学生端通知消息。" /></section>
 </div></main></template>
 
 <style scoped>

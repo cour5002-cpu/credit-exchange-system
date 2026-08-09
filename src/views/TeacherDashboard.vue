@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { getAdvisorPendingApplications, getAdvisorPendingNormalExtensions, getAdvisorPendingSupplementApplications } from '../mock/applications.js'
 import { getAdvisorPendingExchanges } from '../mock/exchanges.js'
 import { getAdvisorPendingAppealConfirmations } from '../mock/appeals.js'
+import NotificationBadge from '../components/NotificationBadge.vue'
 const currentAdvisorId = 'T001'
 const pendingHours = computed(() => getAdvisorPendingApplications(currentAdvisorId).length)
 const pendingSupplements = computed(() => getAdvisorPendingSupplementApplications(currentAdvisorId).length)
@@ -14,7 +15,6 @@ const entries = computed(() => [
   { title: '发布任务', description: '创建并发布新的任务。', to: '/teacher/publish-task' },
   { title: '待确认事项', description: `课时申请 ${pendingHours.value} 项，补交成果 ${pendingSupplements.value} 项，普通延期 ${pendingExtensions.value} 项，学分兑换 ${pendingExchanges.value} 项，申诉再确认 ${pendingAppeals.value} 项。`, to: '/teacher/confirm' },
   { title: '我的处理记录', description: '查看已经处理的业务记录。', to: '/teacher/records' },
-  { title: '信息通知', description: '查看指导老师端通知消息。', to: '/teacher/notifications' },
 ])
 </script>
 
@@ -32,6 +32,7 @@ const entries = computed(() => [
           <h2>{{ entry.title }}</h2>
           <p>{{ entry.description }}</p>
         </RouterLink>
+        <NotificationBadge to="/teacher/notifications" description="查看指导老师端通知消息。" />
       </section>
     </div>
   </main>

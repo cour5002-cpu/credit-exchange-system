@@ -8,7 +8,6 @@ const placeholderRoutes = [
   ['/reviewer/notifications', 'reviewer-notifications', '信息通知', '查看审核老师端通知消息。'],
   ['/admin/appeals-complaints', 'admin-appeals-complaints', '申诉与投诉', '处理用户提交的申诉与投诉。'],
   ['/admin/extensions', 'admin-extensions', '特殊延期', '管理特殊情况的延期申请。'],
-  ['/admin/statistics', 'admin-statistics', '数据统计', '查看系统业务统计数据。'],
   ['/admin/notifications', 'admin-notifications', '信息通知', '查看管理员端通知消息。'],
 ].filter(([path]) => !['/student/notifications','/teacher/notifications','/reviewer/notifications','/admin/notifications'].includes(path)).map(([path, name, title, description]) => ({
   path,
@@ -259,6 +258,11 @@ const router = createRouter({
       path: '/admin/dashboard',
       name: 'admin-dashboard',
       component: () => import('../views/AdminDashboard.vue'),
+    },
+    {
+      path: '/admin/statistics',
+      name: 'admin-statistics',
+      component: () => import('../views/AdminStatisticsView.vue'),
     },
     {
       path: '/admin/rule-files',

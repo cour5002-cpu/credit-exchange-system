@@ -12,9 +12,10 @@ export const getReopenedAppealsForAdvisor = (params) => get('/advisor/appeals/re
 export const reconfirmAppealByAdvisor = (id, data) => post(`/advisor/appeals/${id}/reconfirm`, data)
 export const getReopenedAppealsForAssignment = (params) => get('/admin/appeals/reopened/pending-assignment', params)
 export const assignAppealReviewer = (id, data) => post(`/admin/appeals/${id}/assign-reviewer`, data)
+export const batchAssignAppealReviewer = (data) => post('/admin/appeals/reopened/batch-assign-reviewer', data)
+export const batchFinalApproveReopenedAppeals = (data) => post('/admin/appeals/reopened/batch-final-approve', data)
 export const getReviewerAppeals = (params) => get('/reviewer/appeal-reviews', params)
 export const getReviewerAppeal = (id) => get(`/reviewer/appeal-reviews/${id}`)
 export const approveAppealReview = (id, data = {}) => post(`/reviewer/appeal-reviews/${id}/approve`, data)
 export const modifiedApproveAppealReview = (id, data) => post(`/reviewer/appeal-reviews/${id}/modified-approve`, data)
 export const rejectAppealReview = (id, data) => post(`/reviewer/appeal-reviews/${id}/reject`, data)
-

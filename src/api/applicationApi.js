@@ -21,6 +21,7 @@ export const getPendingFinalApplications = (params) => get('/admin/hour-applicat
 export const getApplicationFinalReview = (id) => get(`/admin/hour-applications/${id}/final-review`)
 export const finalApproveApplication = (id, data = {}) => post(`/admin/hour-applications/${id}/final-approve`, data)
 export const finalRejectApplication = (id, data) => post(`/admin/hour-applications/${id}/final-reject`, data)
+export const batchFinalApproveApplications = (data) => post('/admin/hour-applications/batch-final-approve', data)
 export const submitApplicationMaterials = (id, data) => post(`/student/hour-applications/${id}/materials`, data)
 export const getPendingMaterials = (params) => get('/advisor/hour-applications/materials/pending', params)
 export const getApplicationMaterials = (id) => get(`/advisor/hour-applications/${id}/materials`)

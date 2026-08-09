@@ -36,3 +36,4 @@ export const getTaskPublishRequests = (params) => get('/admin/task-publish-reque
 export const getTaskPublishRequest = (id) => get(`/admin/task-publish-requests/${id}`)
 export const approveTaskPublish = (id, data = {}) => post(`/admin/task-publish-requests/${id}/approve`, data)
 export const rejectTaskPublish = (id, data) => post(`/admin/task-publish-requests/${id}/reject`, data)
+export const batchApproveTaskPublish = (data) => post('/admin/task-publish-requests/batch-approve', data)

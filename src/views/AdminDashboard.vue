@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import ImportInfoModal from './components/ImportInfoModal.vue'
+import NotificationBadge from '../components/NotificationBadge.vue'
 
 const showImportModal = ref(false)
 
@@ -12,7 +13,6 @@ const entries = [
   { title: '申诉与投诉', description: '处理用户提交的申诉与投诉。', to: '/admin/appeals-complaints' },
   { title: '特殊延期', description: '管理特殊情况的延期申请。', to: '/admin/extensions' },
   { title: '数据统计', description: '查看系统业务统计数据。', to: '/admin/statistics' },
-  { title: '信息通知', description: '查看管理员端通知消息。', to: '/admin/notifications' },
 ]
 </script>
 
@@ -35,6 +35,7 @@ const entries = [
           <h2>{{ entry.title }}</h2>
           <p>{{ entry.description }}</p>
         </RouterLink>
+        <NotificationBadge to="/admin/notifications" description="查看管理员端通知消息。" />
       </section>
     </div>
 

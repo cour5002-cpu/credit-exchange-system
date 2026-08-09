@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { currentReviewerId, getApplications } from '../mock/applications.js'
 import { getAppeals } from '../mock/appeals.js'
+import NotificationBadge from '../components/NotificationBadge.vue'
 
 const pendingNormal = computed(() => getApplications().filter((item) => item.status === 'pending_reviewer' && item.reviewerId === currentReviewerId.value).length)
 const pendingAppeals = computed(() => getAppeals().filter((item) => item.status === 'pending_re_review' && item.reviewTeacherId === currentReviewerId.value).length)
@@ -14,7 +15,6 @@ const recordCount = computed(() => {
 const entries = computed(() => [
   { title: '待审核成果', description: `普通审核 ${pendingNormal.value} 项，申诉复审 ${pendingAppeals.value} 项`, count: pendingNormal.value + pendingAppeals.value, to: '/reviewer/review-tasks' },
   { title: '我的审核记录', description: '查看普通课时申请审核和申诉复审记录。', count: recordCount.value, to: '/reviewer/review-records' },
-  { title: '信息通知', description: '查看审核老师端通知消息。', count: 0, to: '/reviewer/notifications' },
 ])
 </script>
 
@@ -23,6 +23,7 @@ const entries = computed(() => [
     <header class="dashboard-header"><p class="eyebrow">REVIEWER PORTAL</p><h1>审核老师端首页</h1><p>审核课时认定材料，并处理管理员分配的申诉复审任务。</p></header>
     <section class="entry-grid" aria-label="审核老师端功能入口">
       <RouterLink v-for="entry in entries" :key="entry.to" :to="entry.to" class="entry-card"><div class="card-heading"><h2>{{ entry.title }}</h2><strong>{{ entry.count }}</strong></div><p>{{ entry.description }}</p></RouterLink>
+      <NotificationBadge to="/reviewer/notifications" description="查看审核老师端通知消息。" />
     </section>
   </div></main>
 </template>
