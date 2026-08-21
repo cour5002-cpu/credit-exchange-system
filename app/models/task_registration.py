@@ -11,6 +11,7 @@ class TaskRegistration(db.Model):
     task_id = db.Column(db.BigInteger, db.ForeignKey("college_tasks.id"), nullable=False)
     student_id = db.Column(db.BigInteger, db.ForeignKey("students.id"), nullable=False)
     apply_reason = db.Column(db.Text)
+    contact_phone = db.Column(db.String(20))
     status = db.Column(db.String(32), nullable=False, default="submitted")
     selected_by = db.Column(db.BigInteger, db.ForeignKey("users.id"))
     selected_at = db.Column(db.DateTime)

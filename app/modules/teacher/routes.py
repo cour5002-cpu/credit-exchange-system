@@ -1,6 +1,7 @@
-from flask import Blueprint, flash, redirect, render_template, url_for
-from flask_login import current_user, login_required
+from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask_login import login_required
 
+from app.core.legacy import block_legacy_write
 from app.modules.teacher.forms import ReviewHourApplicationForm
 from app.models.hour_application import HourApplication
 from app.services.hour_application_service import (
@@ -8,7 +9,7 @@ from app.services.hour_application_service import (
     list_application_reviews,
     list_assigned_applications,
 )
-from app.services.review_service import get_teacher_application_detail, submit_review
+from app.services.review_service import get_teacher_application_detail
 from app.services.teacher_service import get_current_teacher
 from app.utils.permissions import role_required
 
@@ -74,6 +75,12 @@ def next_application(application_id):
 @login_required
 @role_required("reviewer")
 def review_application_detail(application_id):
+    if request.method == "POST":
+        return block_legacy_write(
+            "teacher.review_application_detail",
+            application_id=application_id,
+        )
+
     teacher = get_current_teacher()
     if not teacher:
         flash("当前账号未绑定教师信息。", "danger")
@@ -86,11 +93,6 @@ def review_application_detail(application_id):
 
     form = ReviewHourApplicationForm()
     is_readonly = application.status != "assigned"
-    if not is_readonly and form.validate_on_submit():
-        submit_review(application, teacher.id, current_user.id, form)
-        flash("审核结果已提交。可点击“下一个”继续审核后续申请。", "success")
-        return redirect(url_for("teacher.review_application_detail", application_id=application.id))
-
     if not is_readonly and form.approved_hours.data is None:
         form.approved_hours.data = application.requested_hours
 

@@ -1,6 +1,7 @@
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import login_required
 
+from app.core.legacy import block_legacy_write
 from app.modules.hour_application.forms import HourApplicationForm
 from app.models.student_hour_account import StudentHourAccount
 from app.services.hour_account_service import get_total_exchanged_credits
@@ -8,7 +9,6 @@ from app.services.form_option_service import get_test_course_map, get_test_major
 from app.services.hour_application_service import (
     list_application_attachments,
     list_application_reviews,
-    create_hour_application,
     get_student_application_detail,
     get_task_type_choices,
     list_student_applications,
@@ -31,24 +31,15 @@ def dashboard():
 @login_required
 @role_required("student")
 def create_hour_application_view():
+    if request.method == "POST":
+        return block_legacy_write("student.create_hour_application_view")
+
     student = get_current_student()
     if not student:
         flash("当前账号未绑定学生信息。", "danger")
         return redirect(url_for("student.dashboard"))
 
     form = HourApplicationForm()
-
-    if form.validate_on_submit():
-        try:
-            files = request.files.getlist("attachments")
-            create_hour_application(student.id, form, files, uploaded_by=student.user_id)
-            flash("课时申请已提交。", "success")
-            return redirect(url_for("student.list_hour_applications"))
-        except Exception as e:
-            # 记录错误日志（可选）
-            # current_app.logger.error(f"课时申请提交失败: {str(e)}")
-            flash(f"提交失败，请稍后重试。错误信息：{str(e)}", "danger")
-            # 保持在当前页面，用户可以重新提交
 
     return render_template(
         "student/hour_application_create.html",

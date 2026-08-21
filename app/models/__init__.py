@@ -8,12 +8,15 @@ from app.models.application_advisor import ApplicationAdvisor
 from app.models.attachment import Attachment
 from app.models.college_task import CollegeTask
 from app.models.extension_request import ExtensionRequest
+from app.models.extension_rule import ExtensionRule
+from app.models.extension_rule_task_type import ExtensionRuleTaskType
 from app.models.hour_award_record import HourAwardRecord
 from app.models.hour_application import HourApplication
 from app.models.hour_application_attachment import HourApplicationAttachment
 from app.models.hour_application_member import HourApplicationMember
 from app.models.hour_application_review import HourApplicationReview
 from app.models.operation_log import OperationLog
+from app.models.notification import Notification
 from app.models.review_assignment import ReviewAssignment
 from app.models.rule_file import RuleFile
 from app.models.student import Student

@@ -76,6 +76,8 @@ def seed_system_configs() -> None:
         ("max_single_exchange_hours", "100", "单次最大兑换课时数"),
         ("allow_student_resubmit", "0", "是否允许驳回后重新提交"),
         ("extension_special_threshold_days", "30", "延期超过30天时转管理员审核（V1固定口径）"),
+        ("current_academic_year", "2026-2027", "消息模块当前学年"),
+        ("current_semester", "1", "消息模块当前学期"),
     ]
     for key, value, description in items:
         exists = SystemConfig.query.filter_by(config_key=key).first()
@@ -94,6 +96,11 @@ def seed_default_users() -> None:
     ensure_admin_user()
     ensure_teacher_users()
     ensure_student_user()
+    admin = User.query.filter_by(username="admin", status="active").first()
+    if admin:
+        from app.services.extension_rule_service import ensure_default_extension_rule
+
+        ensure_default_extension_rule(admin)
 
 
 def ensure_teacher1_pending_hour_application():

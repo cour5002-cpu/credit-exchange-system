@@ -1,6 +1,7 @@
 import csv
 import io
 import re
+from datetime import date
 from dataclasses import dataclass
 from uuid import uuid4
 from zipfile import BadZipFile
@@ -155,6 +156,15 @@ def import_students(file_storage, mode="upsert", imported_by_user_id=None, ip=No
         if student_status not in STUDENT_STATUSES:
             errors.append(ImportErrorItem(row_no, "status", "学生状态只能是 active、disabled 或 graduated"))
             continue
+        graduation_text = row.get("expected_graduation_date") or row.get("预计毕业日期")
+        if graduation_text:
+            try:
+                expected_graduation_date = date.fromisoformat(graduation_text[:10])
+            except ValueError:
+                errors.append(ImportErrorItem(row_no, "expected_graduation_date", "预计毕业日期格式必须为 YYYY-MM-DD"))
+                continue
+        else:
+            expected_graduation_date = None
 
         existing_student = Student.query.filter_by(student_no=student_no).first()
         username = row.get("username") or row.get("账号") or student_no
@@ -191,6 +201,7 @@ def import_students(file_storage, mode="upsert", imported_by_user_id=None, ip=No
         student.major = row.get("major") or row.get("专业") or ""
         student.grade = row.get("grade") or row.get("年级") or ""
         student.class_name = row.get("class_name") or row.get("班级") or ""
+        student.expected_graduation_date = expected_graduation_date
         student.status = student_status
         student.import_batch_no = batch_no
         if not existing_student:

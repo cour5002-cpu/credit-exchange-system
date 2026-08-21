@@ -5,6 +5,9 @@ from app.extensions import db
 
 class HourApplication(db.Model):
     __tablename__ = "hour_applications"
+    __table_args__ = (
+        db.Index("ix_hour_applications_status_created", "status", "created_at", "id"),
+    )
 
     TASK_TYPE_LABELS = {
         "project": "项目类",

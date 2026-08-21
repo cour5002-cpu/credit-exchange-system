@@ -3,6 +3,8 @@ from decimal import Decimal, InvalidOperation, ROUND_FLOOR, ROUND_HALF_UP
 
 from sqlalchemy import and_, or_
 
+from app.core.errors import BusinessError
+from app.core.identity import current_student, current_teacher
 from app.extensions import db
 from app.models.application_advisor import ApplicationAdvisor
 from app.models.attachment import Attachment
@@ -15,7 +17,9 @@ from app.models.hour_award_record import HourAwardRecord
 from app.models.operation_log import OperationLog
 from app.models.rule_file import RuleFile
 from app.models.student_credit_record import StudentCreditRecord
-from app.services.week3_hour_application_service import BusinessError, current_student, current_teacher
+from app.models.teacher import Teacher
+from app.models.user import User
+from app.services.notification_service import create_notification
 from app.utils.number_generator import generate_application_no
 from app.utils.pagination import finish_query
 from app.utils.time_utils import business_now, format_api_datetime, parse_api_datetime
@@ -51,6 +55,14 @@ def create_rule_file(user, payload):
     attachment.owner_type = "rule_file"
     attachment.owner_id = item.id
     _add_operation(user.id, "rule_file", item.id, "create", None, item.status)
+    for recipient in User.query.filter_by(status="active").all():
+        create_notification(
+            recipient.id, user.id, "rule", "rule_updated",
+            "规则文件已更新", f"管理员发布了新的规则文件“{item.title}”。",
+            biz_type="rule_file", biz_id=item.id,
+            payload={"rule_type": item.rule_type, "version_no": item.version_no},
+            dedupe_key=f"rule-file:{item.id}:published:{item.version_no or 1}",
+        )
     db.session.commit()
     return item
 
@@ -195,13 +207,14 @@ def submit_credit_exchange(user, payload, submit=True):
     calculated_allocations = _calculate_allocations(award, rule, allocations_payload, require_complete=submit)
     estimated_credits = calculate_credits(total_hours, rule) if rule else None
 
+    advisor_teacher_id = _primary_advisor_id(award.application_id)
     application = CreditExchangeApplication(
         exchange_no=generate_application_no("EX"),
         student_id=student.id,
         applicant_student_id=student.id,
         hour_application_id=award.application_id,
         hour_award_record_id=award.id,
-        advisor_teacher_id=_primary_advisor_id(award.application_id),
+        advisor_teacher_id=advisor_teacher_id,
         requested_hours=total_hours,
         total_hours=total_hours,
         estimated_credits=estimated_credits,
@@ -227,6 +240,19 @@ def submit_credit_exchange(user, payload, submit=True):
         )
     _bind_exchange_attachments(application.id, attachment_ids, user.id)
     _add_operation(user.id, "credit_exchange", application.id, "submit" if submit else "draft", None, application.status)
+    if submit:
+        advisor = db.session.get(Teacher, advisor_teacher_id)
+        if not advisor or advisor.status != "active":
+            raise BusinessError("原课时申请的主指导老师不可用，不能提交兑换申请", code=40902, status=409)
+        notification = create_notification(
+            advisor.user_id, user.id, "credit_exchange", "credit_exchange_submitted",
+            "新的学分兑换申请待确认", f"学生{student.name}提交了学分兑换申请“{application.exchange_no}”，请及时确认。",
+            biz_type="credit_exchange", biz_id=application.id,
+            payload={"exchange_no": application.exchange_no, "status": application.status},
+            dedupe_key=f"credit-exchange:{application.id}:1:submitted",
+        )
+        if notification is None:
+            raise BusinessError("原课时申请的主指导老师账号不可用，不能提交兑换申请", code=40902, status=409)
     db.session.commit()
     return application
 
@@ -297,6 +323,15 @@ def advisor_reject_credit_exchange(user, exchange_id, comment):
     item.advisor_review_comment = comment
     item.advisor_reviewed_at = business_now()
     _add_operation(user.id, "credit_exchange", item.id, "advisor_rejected", before, item.status)
+    recipient = item.applicant or item.student
+    if recipient:
+        create_notification(
+            recipient.user_id, user.id, "credit_exchange", "credit_exchange_rejected",
+            "学分兑换申请已驳回", f"您的学分兑换申请已被指导老师驳回。原因：{comment}",
+            biz_type="credit_exchange", biz_id=item.id,
+            payload={"exchange_no": item.exchange_no, "status": item.status},
+            dedupe_key=f"credit-exchange:{item.id}:1:advisor:rejected",
+        )
     db.session.commit()
     return item
 
@@ -356,7 +391,20 @@ def admin_final_approve_credit_exchange(user, exchange_id, comment=None):
             )
         )
     _add_operation(user.id, "credit_exchange", item.id, "final_approved", before, item.status)
-    complete_appeal_for_target("credit_exchange", item.id, "completed")
+    complete_appeal_for_target("credit_exchange", item.id, "completed", user.id)
+    recipients = {allocation.student.user_id for allocation in item.allocations if allocation.student and allocation.student.status == "active"}
+    if not recipients:
+        recipient = item.applicant or item.student
+        if recipient:
+            recipients.add(recipient.user_id)
+    for recipient_user_id in recipients:
+        create_notification(
+            recipient_user_id, user.id, "credit_exchange", "credit_exchange_approved",
+            "学分兑换已通过", f"您的学分兑换申请已最终通过，兑换学分已入账。",
+            biz_type="credit_exchange", biz_id=item.id,
+            payload={"exchange_no": item.exchange_no, "status": item.status},
+            dedupe_key=f"credit-exchange:{item.id}:1:final:approved",
+        )
     db.session.commit()
     return item, record
 
@@ -376,7 +424,16 @@ def admin_final_reject_credit_exchange(user, exchange_id, comment):
     item.reviewed_by_admin_id = user.id
     item.review_comment = comment
     _add_operation(user.id, "credit_exchange", item.id, "final_rejected", before, item.status)
-    complete_appeal_for_target("credit_exchange", item.id, "completed")
+    complete_appeal_for_target("credit_exchange", item.id, "completed", user.id)
+    recipient = item.applicant or item.student
+    if recipient:
+        create_notification(
+            recipient.user_id, user.id, "credit_exchange", "credit_exchange_rejected",
+            "学分兑换终审驳回", f"您的学分兑换申请未通过终审。原因：{comment}",
+            biz_type="credit_exchange", biz_id=item.id,
+            payload={"exchange_no": item.exchange_no, "status": item.status},
+            dedupe_key=f"credit-exchange:{item.id}:1:final:rejected",
+        )
     db.session.commit()
     return item
 
