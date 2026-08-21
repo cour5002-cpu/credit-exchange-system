@@ -5,7 +5,10 @@ from app.extensions import db
 
 class Appeal(db.Model):
     __tablename__ = "appeals"
-    __table_args__ = (db.Index("ix_appeals_target", "target_type", "target_id"),)
+    __table_args__ = (
+        db.Index("ix_appeals_target", "target_type", "target_id"),
+        db.Index("ix_appeals_status_stage_created", "status", "reopen_stage", "created_at", "id"),
+    )
 
     id = db.Column(db.BigInteger, primary_key=True)
     appeal_no = db.Column(db.String(64), unique=True, nullable=False)

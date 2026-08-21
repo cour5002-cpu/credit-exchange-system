@@ -1,10 +1,10 @@
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import login_required
 
+from app.core.legacy import block_legacy_write
 from app.modules.hour_application.forms import AssignTeacherForm
 from app.services.form_option_service import get_test_course_map, get_test_major_options
 from app.services.hour_application_service import (
-    assign_teacher,
     get_application_by_id,
     get_filtered_teacher_choices,
     list_application_attachments,
@@ -60,6 +60,12 @@ def hour_application_detail(application_id):
 @login_required
 @role_required("admin")
 def assign_hour_application_teacher(application_id):
+    if request.method == "POST":
+        return block_legacy_write(
+            "admin.assign_hour_application_teacher",
+            application_id=application_id,
+        )
+
     application = get_application_by_id(application_id)
     if not application:
         flash("未找到对应申请。", "warning")
@@ -75,18 +81,6 @@ def assign_hour_application_teacher(application_id):
         course_name=course_name,
         keyword=keyword,
     )
-
-    if form.validate_on_submit():
-        try:
-            # 将教师ID字符串转换为整数
-            teacher_id = int(form.teacher_id.data)
-            assign_teacher(application, teacher_id)
-            flash("审核教师分配成功。", "success")
-            return redirect(url_for("admin.list_hour_applications"))
-        except ValueError:
-            flash("请选择有效的教师。", "danger")
-        except Exception as e:
-            flash(f"分配失败，请稍后重试。错误信息：{str(e)}", "danger")
 
     return render_template(
         "admin/assign_teacher.html",

@@ -13,6 +13,7 @@ class Student(db.Model):
     major = db.Column(db.String(128))
     grade = db.Column(db.String(32))
     class_name = db.Column(db.String(64))
+    expected_graduation_date = db.Column(db.Date)
     status = db.Column(db.String(20), nullable=False, default="active")
     import_batch_no = db.Column(db.String(64))
     created_at = db.Column(db.DateTime, server_default=db.func.now(), nullable=False)

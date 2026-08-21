@@ -5,6 +5,9 @@ from app.extensions import db
 
 class CreditExchangeApplication(db.Model):
     __tablename__ = "credit_exchange_applications"
+    __table_args__ = (
+        db.Index("ix_credit_exchanges_status_created", "status", "created_at", "id"),
+    )
 
     STATUS_LABELS = {
         "draft": "草稿",

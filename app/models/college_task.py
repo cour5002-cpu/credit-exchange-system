@@ -5,6 +5,9 @@ from app.extensions import db
 
 class CollegeTask(db.Model):
     __tablename__ = "college_tasks"
+    __table_args__ = (
+        db.Index("ix_college_tasks_status_created", "status", "created_at", "id"),
+    )
 
     id = db.Column(db.BigInteger, primary_key=True)
     task_no = db.Column(db.String(64), unique=True, nullable=False)

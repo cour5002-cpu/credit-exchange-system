@@ -68,6 +68,7 @@ htmlcov/
 # 本地开发过程记录
 docs/development/
 docs/archive/
+docs/learning/
 docs/spec/11-8周任务详细分工规划.md
 第一阶段任务功能详情描述.md
 超详细需求文档.md
