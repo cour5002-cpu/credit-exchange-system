@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% from "components/form_helpers.html" import render_errors %}
+
+{% block title %}审核兑换申请{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('admin.dashboard') }}">管理员首页</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('credit_exchange.admin_list') }}">全部兑换申请</a></li>
+    <li class="breadcrumb-item active" aria-current="page">兑换申请详情</li>
+  </ol>
+</nav>
+<div class="card shadow-sm">
+  <div class="card-body p-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h2 class="h4 mb-0">审核兑换申请</h2>
+    </div>
+    <dl class="row">
+      <dt class="col-sm-3">兑换单号</dt>
+      <dd class="col-sm-9">{{ application.exchange_no }}</dd>
+      <dt class="col-sm-3">学生姓名</dt>
+      <dd class="col-sm-9">{{ application.student.name if application.student else '空' }}</dd>
+      <dt class="col-sm-3">申请兑换课时</dt>
+      <dd class="col-sm-9">{{ application.requested_hours }}</dd>
+      <dt class="col-sm-3">预计兑换学分</dt>
+      <dd class="col-sm-9">{{ application.estimated_credits }}</dd>
+      <dt class="col-sm-3">兑换说明</dt>
+      <dd class="col-sm-9">{{ application.description or '空' }}</dd>
+      <dt class="col-sm-3">状态</dt>
+      <dd class="col-sm-9">{{ application.status_name }}</dd>
+    </dl>
+
+    {% if application.status == 'submitted' %}
+    <form method="post">
+      {{ form.hidden_tag() }}
+      <div class="mb-3">
+        {{ form.action.label(class="form-label d-block") }}
+        {% for subfield in form.action %}
+        <div class="form-check form-check-inline">
+          {{ subfield(class="form-check-input") }}
+          {{ subfield.label(class="form-check-label") }}
+        </div>
+        {% endfor %}
+        {{ render_errors(form.action) }}
+      </div>
+      <div class="mb-3">
+        {{ form.review_comment.label(class="form-label") }}
+        {{ form.review_comment(class="form-control", rows="4") }}
+        {{ render_errors(form.review_comment) }}
+      </div>
+      {{ form.submit(class="btn btn-primary") }}
+    </form>
+    {% else %}
+    <div class="alert alert-light border mb-0">
+      审核意见：{{ application.review_comment or '空' }}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 错误提示弹窗 -->
+<div class="modal fade" id="errorModal" tabindex="-1" aria-labelledby="errorModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title" id="errorModalLabel">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i>操作失败
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-0" id="errorMessage"></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 检查是否有错误消息需要显示
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        {% if category == 'danger' %}
+          const errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
+          document.getElementById('errorMessage').textContent = '{{ message }}';
+          errorModal.show();
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+</script>
+{% endblock %}

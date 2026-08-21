@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="p-5 mb-4 bg-white rounded-3 shadow-sm">
+  <div class="container-fluid py-3">
+    <h1 class="display-6">课时申请与学分兑换系统</h1>
+    <p class="col-md-8 fs-5 text-secondary">
+      当前版本已完成项目初始化、角色登录骨架与核心数据模型，接下来将继续接入课时申请、审核和兑换流程。
+    </p>
+    <a class="btn btn-primary btn-lg" href="{{ url_for('auth.login') }}">进入系统</a>
+  </div>
+</div>
+{% endblock %}

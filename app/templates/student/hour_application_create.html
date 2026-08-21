@@ -1,0 +1,513 @@
+{% extends "base.html" %}
+{% from "components/form_helpers.html" import render_errors %}
+
+{% block title %}提交课时申请{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('student.dashboard') }}">学生首页</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('student.list_hour_applications') }}">我的课时申请</a></li>
+    <li class="breadcrumb-item active" aria-current="page">提交课时申请</li>
+  </ol>
+</nav>
+<div class="card shadow-sm">
+  <div class="card-body p-4">
+    <h2 class="h4 mb-4">提交课时申请</h2>
+    <form method="post" enctype="multipart/form-data" novalidate>
+      {{ form.hidden_tag() }}
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          {{ form.task_type_code.label(class="form-label") }}
+          <div class="dropdown dropdown-input-group">
+            <div class="input-group">
+              {{ form.task_type_code(class="form-control", autocomplete="off", id="task_type_code", placeholder="请选择或输入文本", required=false) }}
+              <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-menu-target="task-type-menu" aria-expanded="false"></button>
+            </div>
+            <ul class="dropdown-menu w-100" id="task-type-menu">
+              {% for option in task_type_options %}
+              <li><button class="dropdown-item" type="button" data-target-input="task_type_code" data-value="{{ option }}">{{ option }}</button></li>
+              {% endfor %}
+            </ul>
+          </div>
+          {{ render_errors(form.task_type_code) }}
+        </div>
+        <div class="col-md-6 mb-3">
+          {{ form.major_name.label(class="form-label") }}
+          <div class="dropdown dropdown-input-group">
+            <div class="input-group">
+              {{ form.major_name(class="form-control readonly-select-input", autocomplete="off", id="major_name", placeholder="请选择", readonly=true, required=false) }}
+              <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-menu-target="major-menu" aria-expanded="false"></button>
+            </div>
+            <ul class="dropdown-menu w-100" id="major-menu">
+            {% for major in major_options %}
+              <li><button class="dropdown-item" type="button" data-target-input="major_name" data-value="{{ major }}">{{ major }}</button></li>
+            {% endfor %}
+            </ul>
+          </div>
+          {{ render_errors(form.major_name) }}
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          {{ form.course_name.label(class="form-label") }}
+          <div class="dropdown dropdown-input-group">
+            <div class="input-group">
+              {{ form.course_name(class="form-control readonly-select-input", autocomplete="off", id="course_name", placeholder="请选择", readonly=true, required=false) }}
+              <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-menu-target="course-menu" aria-expanded="false"></button>
+            </div>
+            <ul class="dropdown-menu w-100" id="course-menu"></ul>
+          </div>
+          {{ render_errors(form.course_name) }}
+        </div>
+        <div class="col-md-6 mb-3">
+          {{ form.instructor_name.label(class="form-label") }}
+          <div class="dropdown dropdown-input-group">
+            <div class="input-group">
+              {{ form.instructor_name(class="form-control", autocomplete="off", id="instructor_name", placeholder="请选择或输入文本", required=false) }}
+              <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-menu-target="teacher-menu" aria-expanded="false"></button>
+            </div>
+            <ul class="dropdown-menu w-100" id="teacher-menu"></ul>
+          </div>
+          {{ render_errors(form.instructor_name) }}
+        </div>
+      </div>
+      <div class="mb-3">
+        <div class="d-flex justify-content-between align-items-center">
+          {{ form.title.label(class="form-label mb-0") }}
+          <span class="form-text" id="title-counter">字数限制（0/200）</span>
+        </div>
+        {{ form.title(class="form-control", rows="4", maxlength="200", required=false) }}
+        {{ render_errors(form.title) }}
+      </div>
+      <div class="mb-3">
+        {{ form.participant_count.label(class="form-label") }}
+        {{ form.participant_count(class="form-control number-spinner-always", min="1", max="50", required=false) }}
+        {{ form.participant_members() }}
+        {{ render_errors(form.participant_count) }}
+      </div>
+      <div class="mb-3">
+        <label class="form-label">参与人员</label>
+        <div id="participant-member-container" class="row g-2"></div>
+        {{ render_errors(form.participant_members) }}
+      </div>
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          {{ form.requested_hours.label(class="form-label") }}
+          {{ form.requested_hours(class="form-control", required=false) }}
+          {{ render_errors(form.requested_hours) }}
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <label class="form-label" for="attachments">证明材料</label>
+          <input class="form-control" id="attachments" name="attachments" type="file" multiple>
+          <div class="form-text">建议上传不超过 5 个文件，单文件不超过 5MB，总大小控制在 10MB 内。</div>
+        </div>
+      </div>
+      <div class="d-flex gap-2">
+        {{ form.submit(class="btn btn-primary") }}
+        <a class="btn btn-outline-secondary" href="{{ url_for('student.list_hour_applications') }}">查看我的申请</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 错误提示弹窗 -->
+<div class="modal fade" id="errorModal" tabindex="-1" aria-labelledby="errorModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title" id="errorModalLabel">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i>提交失败
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-0" id="errorMessage"></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const countInput = document.getElementById("participant_count");
+    const hiddenInput = document.getElementById("participant_members");
+    const container = document.getElementById("participant-member-container");
+    const form = countInput.closest("form");
+    
+    // 检查是否有错误消息需要显示
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          {% if category == 'danger' %}
+            const errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
+            document.getElementById('errorMessage').textContent = '{{ message }}';
+            errorModal.show();
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    const titleInput = document.getElementById("title");
+    const titleCounter = document.getElementById("title-counter");
+    const majorInput = document.getElementById("major_name");
+    const courseInput = document.getElementById("course_name");
+    const teacherInput = document.getElementById("instructor_name");
+    const courseMenu = document.getElementById("course-menu");
+    const teacherMenu = document.getElementById("teacher-menu");
+    const courseMap = {{ course_map | tojson }};
+    const teacherMap = {{ teacher_map | tojson }};
+    const dropdownToggles = document.querySelectorAll("[data-menu-target]");
+    const readonlyDropdownInputs = document.querySelectorAll(".readonly-select-input");
+    const allCourses = Array.from(new Set(Object.values(courseMap).flat()));
+    const allTeachers = Array.from(
+      new Set(
+        Object.values(teacherMap).flatMap((courseTeacherMap) =>
+          Object.values(courseTeacherMap).flat()
+        )
+      )
+    );
+
+    function closeAllDropdowns(exceptMenuId) {
+      document.querySelectorAll(".dropdown-input-group .dropdown-menu").forEach((menu) => {
+        const shouldStayOpen = exceptMenuId && menu.id === exceptMenuId;
+        menu.classList.toggle("show", !!shouldStayOpen);
+      });
+      dropdownToggles.forEach((button) => {
+        const expanded = exceptMenuId && button.dataset.menuTarget === exceptMenuId;
+        button.setAttribute("aria-expanded", expanded ? "true" : "false");
+      });
+    }
+
+    function initializeCustomDropdowns() {
+      dropdownToggles.forEach((button) => {
+        button.addEventListener("click", function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          const menuId = button.dataset.menuTarget;
+          const menu = document.getElementById(menuId);
+          const isOpen = menu.classList.contains("show");
+          closeAllDropdowns(isOpen ? null : menuId);
+        });
+      });
+
+      readonlyDropdownInputs.forEach((input) => {
+        input.addEventListener("click", function (event) {
+          const menuId = input.id === "major_name" ? "major-menu" : "course-menu";
+          event.preventDefault();
+          const menu = document.getElementById(menuId);
+          const isOpen = menu.classList.contains("show");
+          closeAllDropdowns(isOpen ? null : menuId);
+        });
+      });
+
+      document.addEventListener("click", function (event) {
+        if (!event.target.closest(".dropdown-input-group")) {
+          closeAllDropdowns(null);
+        }
+      });
+    }
+
+    function renderParticipantInputs() {
+      const count = parseInt(countInput.value || "0", 10);
+      const previousValues = Array.from(container.querySelectorAll("input")).map((input) => input.value);
+      container.innerHTML = "";
+      if (!count || count < 1) {
+        return;
+      }
+      for (let i = 0; i < count; i += 1) {
+        const col = document.createElement("div");
+        col.className = "col-md-6";
+
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "form-control";
+        input.placeholder = `参与人员 ${i + 1}`;
+        input.value = previousValues[i] || "";
+        input.dataset.participantIndex = String(i);
+
+        const errorText = document.createElement("div");
+        errorText.className = "text-danger small mt-1 d-none";
+        errorText.textContent = "此字段不能为空";
+
+        input.addEventListener("input", function () {
+          errorText.classList.toggle("d-none", !!input.value.trim());
+        });
+
+        col.appendChild(input);
+        col.appendChild(errorText);
+        container.appendChild(col);
+      }
+    }
+
+    function syncParticipantMembers() {
+      const values = Array.from(container.querySelectorAll("input")).map((input) => input.value.trim());
+      hiddenInput.value = values.join("||");
+    }
+
+    function bindDropdownValues(target) {
+      target.querySelectorAll("[data-target-input]").forEach((button) => {
+        button.addEventListener("click", function () {
+          const input = document.getElementById(button.dataset.targetInput);
+          input.value = button.dataset.value;
+          input.dispatchEvent(new Event("input"));
+          closeAllDropdowns(null);
+        });
+      });
+    }
+
+    function rebuildOptions(target, values, inputId) {
+      target.innerHTML = "";
+      values.forEach((value) => {
+        const li = document.createElement("li");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "dropdown-item";
+        button.dataset.targetInput = inputId;
+        button.dataset.value = value;
+        button.textContent = value;
+        li.appendChild(button);
+        target.appendChild(li);
+      });
+      bindDropdownValues(target);
+    }
+
+    function getTeachersForCourse(courseName) {
+      return Array.from(
+        new Set(
+          Object.values(teacherMap).flatMap((courseTeacherMap) => courseTeacherMap[courseName] || [])
+        )
+      );
+    }
+
+    function updateCourseOptions() {
+      const selectedMajor = majorInput.value.trim();
+      const courses = selectedMajor ? (courseMap[selectedMajor] || allCourses) : allCourses;
+      const previousCourse = courseInput.value.trim();
+      rebuildOptions(courseMenu, courses, "course_name");
+      if (previousCourse) {
+        if (courses.includes(previousCourse)) {
+          courseInput.value = previousCourse;
+        } else {
+          courseInput.value = "";
+        }
+      }
+      updateTeacherOptions();
+    }
+
+    function updateTeacherOptions() {
+      const selectedMajor = majorInput.value.trim();
+      const selectedCourse = courseInput.value.trim();
+      const previousTeacher = teacherInput.value.trim();
+      let teachers = [];
+
+      if (selectedMajor && selectedCourse) {
+        teachers = ((teacherMap[selectedMajor] || {})[selectedCourse]) || [];
+      } else if (selectedCourse) {
+        teachers = getTeachersForCourse(selectedCourse);
+      } else {
+        teachers = allTeachers;
+      }
+
+      rebuildOptions(teacherMenu, teachers, "instructor_name");
+      if (previousTeacher) {
+        if (teachers.includes(previousTeacher)) {
+          teacherInput.value = previousTeacher;
+        } else {
+          teacherInput.value = "";
+        }
+      }
+    }
+
+    function updateTitleCount() {
+      titleCounter.textContent = `字数限制（${titleInput.value.length}/200）`;
+    }
+
+    countInput.addEventListener("input", renderParticipantInputs);
+    majorInput.addEventListener("input", updateCourseOptions);
+    courseInput.addEventListener("input", updateTeacherOptions);
+    titleInput.addEventListener("input", updateTitleCount);
+    
+    // 输入时清除错误提示
+    document.getElementById("task_type_code").addEventListener("input", function() {
+      const error = this.parentElement.parentElement.querySelector(".validation-error");
+      if (error && this.value.trim()) {
+        error.classList.add("d-none");
+      }
+    });
+    
+    document.getElementById("major_name").addEventListener("input", function() {
+      const error = this.parentElement.parentElement.querySelector(".validation-error");
+      if (error && this.value.trim()) {
+        error.classList.add("d-none");
+      }
+    });
+    
+    document.getElementById("course_name").addEventListener("input", function() {
+      const error = this.parentElement.parentElement.querySelector(".validation-error");
+      if (error && this.value.trim()) {
+        error.classList.add("d-none");
+      }
+    });
+    
+    document.getElementById("instructor_name").addEventListener("input", function() {
+      const error = this.parentElement.parentElement.querySelector(".validation-error");
+      if (error && this.value.trim()) {
+        error.classList.add("d-none");
+      }
+    });
+    
+    titleInput.addEventListener("input", function() {
+      const error = this.parentElement.querySelector(".validation-error");
+      if (error && this.value.trim()) {
+        error.classList.add("d-none");
+      }
+    });
+    
+    countInput.addEventListener("input", function() {
+      const error = this.parentElement.querySelector(".validation-error");
+      if (error && this.value && parseInt(this.value) >= 1) {
+        error.classList.add("d-none");
+      }
+    });
+    
+    document.getElementById("requested_hours").addEventListener("input", function() {
+      const error = this.parentElement.querySelector(".validation-error");
+      if (error && this.value && parseFloat(this.value) > 0) {
+        error.classList.add("d-none");
+      }
+    });
+    form.addEventListener("submit", function (event) {
+      let hasError = false;
+      let firstErrorInput = null;
+      
+      // 同步参与人员数据到隐藏字段
+      syncParticipantMembers();
+      
+      // 验证任务类别
+      const taskTypeInput = document.getElementById("task_type_code");
+      const taskTypeError = taskTypeInput.parentElement.parentElement.querySelector(".validation-error") || createErrorElement(taskTypeInput.parentElement.parentElement);
+      if (!taskTypeInput.value.trim()) {
+        taskTypeError.textContent = "此字段不能为空";
+        taskTypeError.classList.remove("d-none");
+        hasError = true;
+        if (!firstErrorInput) firstErrorInput = taskTypeInput;
+      } else {
+        taskTypeError.classList.add("d-none");
+      }
+      
+      // 验证专业
+      const majorInput = document.getElementById("major_name");
+      const majorError = majorInput.parentElement.parentElement.querySelector(".validation-error") || createErrorElement(majorInput.parentElement.parentElement);
+      if (!majorInput.value.trim()) {
+        majorError.textContent = "此字段不能为空";
+        majorError.classList.remove("d-none");
+        hasError = true;
+        if (!firstErrorInput) firstErrorInput = majorInput;
+      } else {
+        majorError.classList.add("d-none");
+      }
+      
+      // 验证课程
+      const courseInput = document.getElementById("course_name");
+      const courseError = courseInput.parentElement.parentElement.querySelector(".validation-error") || createErrorElement(courseInput.parentElement.parentElement);
+      if (!courseInput.value.trim()) {
+        courseError.textContent = "此字段不能为空";
+        courseError.classList.remove("d-none");
+        hasError = true;
+        if (!firstErrorInput) firstErrorInput = courseInput;
+      } else {
+        courseError.classList.add("d-none");
+      }
+      
+      // 验证课任/指导老师
+      const instructorInput = document.getElementById("instructor_name");
+      const instructorError = instructorInput.parentElement.parentElement.querySelector(".validation-error") || createErrorElement(instructorInput.parentElement.parentElement);
+      if (!instructorInput.value.trim()) {
+        instructorError.textContent = "此字段不能为空";
+        instructorError.classList.remove("d-none");
+        hasError = true;
+        if (!firstErrorInput) firstErrorInput = instructorInput;
+      } else {
+        instructorError.classList.add("d-none");
+      }
+      
+      // 验证任务详情描述
+      const titleInput = document.getElementById("title");
+      const titleError = titleInput.parentElement.querySelector(".validation-error") || createErrorElement(titleInput.parentElement);
+      if (!titleInput.value.trim()) {
+        titleError.textContent = "此字段不能为空";
+        titleError.classList.remove("d-none");
+        hasError = true;
+        if (!firstErrorInput) firstErrorInput = titleInput;
+      } else {
+        titleError.classList.add("d-none");
+      }
+      
+      // 验证参与人数
+      const countInput = document.getElementById("participant_count");
+      const countError = countInput.parentElement.querySelector(".validation-error") || createErrorElement(countInput.parentElement);
+      if (!countInput.value || parseInt(countInput.value) < 1) {
+        countError.textContent = "此字段不能为空";
+        countError.classList.remove("d-none");
+        hasError = true;
+        if (!firstErrorInput) firstErrorInput = countInput;
+      } else {
+        countError.classList.add("d-none");
+      }
+      
+      // 验证参与人员
+      const participantInputs = Array.from(container.querySelectorAll("input"));
+      participantInputs.forEach((input) => {
+        const errorText = input.parentElement.querySelector(".text-danger");
+        if (!input.value.trim()) {
+          errorText.classList.remove("d-none");
+          hasError = true;
+          if (!firstErrorInput) firstErrorInput = input;
+        } else {
+          errorText.classList.add("d-none");
+        }
+      });
+      
+      // 验证申请课时
+      const hoursInput = document.getElementById("requested_hours");
+      const hoursError = hoursInput.parentElement.querySelector(".validation-error") || createErrorElement(hoursInput.parentElement);
+      if (!hoursInput.value || parseFloat(hoursInput.value) <= 0) {
+        hoursError.textContent = "此字段不能为空";
+        hoursError.classList.remove("d-none");
+        hasError = true;
+        if (!firstErrorInput) firstErrorInput = hoursInput;
+      } else {
+        hoursError.classList.add("d-none");
+      }
+      
+      // 如果有错误，滚动到第一个错误字段并聚焦
+      if (hasError) {
+        event.preventDefault();
+        if (firstErrorInput) {
+          firstErrorInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          setTimeout(() => {
+            firstErrorInput.focus();
+          }, 300);
+        }
+      }
+    });
+    
+    function createErrorElement(parent) {
+      const errorDiv = document.createElement("div");
+      errorDiv.className = "text-danger small mt-1 validation-error d-none";
+      parent.appendChild(errorDiv);
+      return errorDiv;
+    }
+    initializeCustomDropdowns();
+    bindDropdownValues(document);
+    renderParticipantInputs();
+    updateCourseOptions();
+    updateTitleCount();
+  })();
+</script>
+{% endblock %}

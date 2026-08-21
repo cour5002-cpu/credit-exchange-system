@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}兑换申请详情{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('student.dashboard') }}">学生首页</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('credit_exchange.student_list') }}">我的兑换申请</a></li>
+    <li class="breadcrumb-item active" aria-current="page">兑换申请详情</li>
+  </ol>
+</nav>
+<div class="card shadow-sm">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h2 class="h4 mb-0">兑换申请详情</h2>
+    </div>
+    <dl class="row mb-0">
+      <dt class="col-sm-3">兑换单号</dt>
+      <dd class="col-sm-9">{{ application.exchange_no }}</dd>
+      <dt class="col-sm-3">申请兑换课时</dt>
+      <dd class="col-sm-9">{{ application.requested_hours }}</dd>
+      <dt class="col-sm-3">预计兑换学分</dt>
+      <dd class="col-sm-9">{{ application.estimated_credits }}</dd>
+      <dt class="col-sm-3">兑换说明</dt>
+      <dd class="col-sm-9">{{ application.description or '空' }}</dd>
+      <dt class="col-sm-3">状态</dt>
+      <dd class="col-sm-9">{{ application.status_name }}</dd>
+      <dt class="col-sm-3">审核意见</dt>
+      <dd class="col-sm-9">{{ application.review_comment or '空' }}</dd>
+    </dl>
+  </div>
+</div>
+{% endblock %}

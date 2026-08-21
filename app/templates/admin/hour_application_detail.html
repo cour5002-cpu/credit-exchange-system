@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}课时申请详情{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('admin.dashboard') }}">管理员首页</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('admin.list_hour_applications') }}">全部课时申请</a></li>
+    <li class="breadcrumb-item active" aria-current="page">申请详情</li>
+  </ol>
+</nav>
+<div class="card shadow-sm">
+  <div class="card-body p-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h2 class="h4 mb-0">课时申请详情</h2>
+    </div>
+    <dl class="row">
+      <dt class="col-sm-3">申请单号</dt>
+      <dd class="col-sm-9">{{ application.application_no }}</dd>
+      <dt class="col-sm-3">学生姓名</dt>
+      <dd class="col-sm-9">{{ application.student.name if application.student else '空' }}</dd>
+      <dt class="col-sm-3">任务类别</dt>
+      <dd class="col-sm-9">{{ application.task_type_name }}</dd>
+      <dt class="col-sm-3">任务详情描述</dt>
+      <dd class="col-sm-9">{{ application.title }}</dd>
+      <dt class="col-sm-3">参与人员</dt>
+      <dd class="col-sm-9">{{ application.participant_members or '空' }}</dd>
+      <dt class="col-sm-3">专业</dt>
+      <dd class="col-sm-9">{{ application.major_name or '空' }}</dd>
+      <dt class="col-sm-3">课程</dt>
+      <dd class="col-sm-9">{{ application.course_name or '空' }}</dd>
+      <dt class="col-sm-3">课任/指导老师</dt>
+      <dd class="col-sm-9">{{ application.instructor_name or '空' }}</dd>
+      <dt class="col-sm-3">兑换课程课时</dt>
+      <dd class="col-sm-9">{{ application.requested_hours }}</dd>
+      <dt class="col-sm-3">状态</dt>
+      <dd class="col-sm-9">{{ application.status_name }}</dd>
+      <dt class="col-sm-3">审核教师</dt>
+      <dd class="col-sm-9">{{ application.assigned_teacher.name if application.assigned_teacher else '空' }}</dd>
+      {% if application.status != 'rejected' %}
+      <dt class="col-sm-3">最终认定课时</dt>
+      <dd class="col-sm-9">{{ application.final_hours or '空' }}</dd>
+      {% endif %}
+    </dl>
+
+    <div class="d-flex gap-2 mb-4">
+      {% if application.status in ['submitted', 'assigned'] %}
+      <a class="btn btn-primary" href="{{ url_for('admin.assign_hour_application_teacher', application_id=application.id) }}">
+        {% if application.status == 'assigned' %}重新分配教师{% else %}分配教师{% endif %}
+      </a>
+      {% endif %}
+    </div>
+
+    <h3 class="h5">证明材料</h3>
+    <ul class="mb-4">
+      {% for attachment in attachments %}
+      <li>
+        <a href="{{ url_for('main.view_attachment', attachment_id=attachment.id) }}">
+          {{ attachment.file_name }}
+        </a>
+      </li>
+      {% else %}
+      <li class="text-secondary">暂无附件</li>
+      {% endfor %}
+    </ul>
+
+    <h3 class="h5">审核记录</h3>
+    <ul class="mb-0">
+      {% for review in reviews %}
+      <li>{{ review.created_at }} / {{ review.action_name }} / {{ review.comment or '空' }}</li>
+      {% else %}
+      <li class="text-secondary">暂无审核记录</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

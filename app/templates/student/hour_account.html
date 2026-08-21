@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}我的课时账户{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('student.dashboard') }}">学生首页</a></li>
+    <li class="breadcrumb-item active" aria-current="page">我的课时账户</li>
+  </ol>
+</nav>
+<div class="card shadow-sm">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h2 class="h4 mb-0">我的课时账户</h2>
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline-success" href="{{ url_for('credit_exchange.create_application') }}">申请学分兑换</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('credit_exchange.student_list') }}">查看兑换记录</a>
+      </div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="border rounded p-3 bg-light">
+          <div class="text-secondary small">累计获得课时</div>
+          <div class="fs-3 fw-semibold">{{ account.total_earned_hours if account else 0 }}</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="border rounded p-3 bg-light">
+          <div class="text-secondary small">已兑换课时</div>
+          <div class="fs-3 fw-semibold">{{ account.total_exchanged_hours if account else 0 }}</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="border rounded p-3 bg-light">
+          <div class="text-secondary small">剩余可兑换课时</div>
+          <div class="fs-3 fw-semibold">{{ account.available_hours if account else 0 }}</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="border rounded p-3 bg-light">
+          <div class="text-secondary small">已兑换学分</div>
+          <div class="fs-3 fw-semibold">{{ total_exchanged_credits }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

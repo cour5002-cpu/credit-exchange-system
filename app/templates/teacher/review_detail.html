@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% from "components/form_helpers.html" import render_errors %}
+
+{% block title %}审核申请{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('teacher.dashboard') }}">教师首页</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('teacher.list_my_applications') }}">申请待审核页</a></li>
+    <li class="breadcrumb-item active" aria-current="page">审核详情</li>
+  </ol>
+</nav>
+<div class="card shadow-sm">
+  <div class="card-body p-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h2 class="h4 mb-0">审核课时申请</h2>
+      <a class="btn btn-outline-primary" href="{{ url_for('teacher.next_application', application_id=application.id) }}">下一个</a>
+    </div>
+    <dl class="row">
+      <dt class="col-sm-3">申请单号</dt>
+      <dd class="col-sm-9">{{ application.application_no }}</dd>
+      <dt class="col-sm-3">任务类别</dt>
+      <dd class="col-sm-9">{{ application.task_type_name }}</dd>
+      <dt class="col-sm-3">任务详情描述</dt>
+      <dd class="col-sm-9">{{ application.title }}</dd>
+      <dt class="col-sm-3">参与人员</dt>
+      <dd class="col-sm-9">{{ application.participant_members or '空' }}</dd>
+      <dt class="col-sm-3">专业</dt>
+      <dd class="col-sm-9">{{ application.major_name or '空' }}</dd>
+      <dt class="col-sm-3">课程</dt>
+      <dd class="col-sm-9">{{ application.course_name or '空' }}</dd>
+      <dt class="col-sm-3">课任/指导老师</dt>
+      <dd class="col-sm-9">{{ application.instructor_name or '空' }}</dd>
+      <dt class="col-sm-3">兑换课程课时</dt>
+      <dd class="col-sm-9">{{ application.requested_hours }}</dd>
+    </dl>
+
+    <h3 class="h5">证明材料</h3>
+    <ul class="mb-4">
+      {% for attachment in attachments %}
+      <li>
+        <a href="{{ url_for('main.view_attachment', attachment_id=attachment.id) }}">
+          {{ attachment.file_name }}
+        </a>
+      </li>
+      {% else %}
+      <li class="text-secondary">暂无附件</li>
+      {% endfor %}
+    </ul>
+
+    {% if not is_readonly %}
+    <form method="post">
+      {{ form.hidden_tag() }}
+      <div class="mb-3">
+        {{ form.action.label(class="form-label d-block") }}
+        {% for subfield in form.action %}
+        <div class="form-check form-check-inline">
+          {{ subfield(class="form-check-input") }}
+          {{ subfield.label(class="form-check-label") }}
+        </div>
+        {% endfor %}
+        {{ render_errors(form.action) }}
+      </div>
+      <div class="mb-3">
+        {{ form.approved_hours.label(class="form-label") }}
+        {{ form.approved_hours(class="form-control") }}
+        {{ render_errors(form.approved_hours) }}
+      </div>
+      <div class="mb-3">
+        {{ form.comment.label(class="form-label") }}
+        {{ form.comment(class="form-control", rows="4") }}
+        {{ render_errors(form.comment) }}
+      </div>
+      <div class="d-flex justify-content-start">
+        {{ form.submit(class="btn btn-primary") }}
+      </div>
+    </form>
+    {% else %}
+    <div class="alert alert-light border">
+      当前申请已完成审核，如需查看其他记录请返回历史审核记录页。
+    </div>
+    {% endif %}
+
+    <hr>
+    <h3 class="h5">历史审核记录</h3>
+    <ul class="mb-0">
+      {% for review in reviews %}
+      <li>{{ review.created_at }} / {{ review.action_name }} / {{ review.comment or '空' }}</li>
+      {% else %}
+      <li class="text-secondary">暂无审核记录</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% from "components/form_helpers.html" import render_errors %}
+
+{% block title %}分配审核教师{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{{ url_for('admin.dashboard') }}">管理员首页</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('admin.list_hour_applications') }}">全部课时申请</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('admin.hour_application_detail', application_id=application.id) }}">申请详情</a></li>
+    <li class="breadcrumb-item active" aria-current="page">分配审核教师</li>
+  </ol>
+</nav>
+<div class="card shadow-sm">
+  <div class="card-body p-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h2 class="h4 mb-0">分配审核教师</h2>
+    </div>
+    <form class="row g-2 mb-4" method="get" action="{{ url_for('admin.assign_hour_application_teacher', application_id=application.id) }}">
+      <div class="col-md-4">
+        <label class="form-label">专业筛选</label>
+        <div class="input-group">
+          <input class="form-control" id="assign_major_name" name="major_name" value="{{ major_name }}" placeholder="按专业筛选" autocomplete="off">
+          <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"></button>
+          <ul class="dropdown-menu dropdown-menu-end" id="assign-major-menu">
+          {% for major in major_options %}
+            <li><button class="dropdown-item" type="button" data-target-input="assign_major_name" data-value="{{ major }}">{{ major }}</button></li>
+          {% endfor %}
+          </ul>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">课程筛选</label>
+        <div class="input-group">
+          <input class="form-control" id="assign_course_name" name="course_name" value="{{ course_name }}" placeholder="按课程筛选" autocomplete="off">
+          <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"></button>
+          <ul class="dropdown-menu dropdown-menu-end" id="assign-course-menu">
+          {% for course in course_options %}
+            <li><button class="dropdown-item" type="button" data-target-input="assign_course_name" data-value="{{ course }}">{{ course }}</button></li>
+          {% endfor %}
+          </ul>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">自定义筛选</label>
+        <input class="form-control" name="keyword" value="{{ keyword }}" placeholder="教师姓名/工号/关键字">
+      </div>
+      <div class="col-12 d-flex gap-2">
+        <button class="btn btn-outline-primary" type="submit">筛选教师</button>
+        <a class="btn btn-outline-secondary" href="{{ url_for('admin.assign_hour_application_teacher', application_id=application.id) }}">重置</a>
+      </div>
+    </form>
+    <dl class="row">
+      <dt class="col-sm-3">申请单号</dt>
+      <dd class="col-sm-9">{{ application.application_no }}</dd>
+      <dt class="col-sm-3">任务详情描述</dt>
+      <dd class="col-sm-9">{{ application.title }}</dd>
+      <dt class="col-sm-3">当前状态</dt>
+      <dd class="col-sm-9">{{ application.status_name }}</dd>
+    </dl>
+    <form method="post" novalidate>
+      {{ form.hidden_tag() }}
+      <div class="mb-3">
+        {{ form.teacher_id.label(class="form-label") }}
+        <div class="dropdown dropdown-input-group">
+          <div class="input-group">
+            {{ form.teacher_id(class="form-control", autocomplete="off", id="teacher_id", placeholder="请选择或输入教师姓名", required=false) }}
+            <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-menu-target="teacher-select-menu" aria-expanded="false"></button>
+          </div>
+          <ul class="dropdown-menu w-100" id="teacher-select-menu">
+            {% for teacher_id, teacher_label in form.teacher_id.choices %}
+            <li><button class="dropdown-item" type="button" data-target-input="teacher_id" data-value="{{ teacher_id }}">{{ teacher_label }}</button></li>
+            {% endfor %}
+          </ul>
+        </div>
+        {{ render_errors(form.teacher_id) }}
+        <div id="teacher-id-error" class="text-danger small mt-1 d-none">此字段不能为空</div>
+      </div>
+      <div class="d-flex gap-2">
+        {{ form.submit(class="btn btn-primary") }}
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 错误提示弹窗 -->
+<div class="modal fade" id="errorModal" tabindex="-1" aria-labelledby="errorModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title" id="errorModalLabel">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i>操作失败
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-0" id="errorMessage"></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    // 检查是否有错误消息需要显示
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          {% if category == 'danger' %}
+            const errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
+            document.getElementById('errorMessage').textContent = '{{ message }}';
+            errorModal.show();
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    
+    // 筛选条件的下拉菜单
+    document.querySelectorAll("[data-target-input]").forEach((button) => {
+      button.addEventListener("click", function () {
+        const input = document.getElementById(button.dataset.targetInput);
+        input.value = button.dataset.value;
+      });
+    });
+    
+    // 教师选择下拉菜单
+    const teacherInput = document.getElementById("teacher_id");
+    const teacherMenu = document.getElementById("teacher-select-menu");
+    const dropdownToggle = document.querySelector("[data-menu-target='teacher-select-menu']");
+    const form = teacherInput.closest("form");
+    const teacherError = document.getElementById("teacher-id-error");
+    
+    // 下拉菜单切换
+    dropdownToggle.addEventListener("click", function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const isOpen = teacherMenu.classList.contains("show");
+      teacherMenu.classList.toggle("show", !isOpen);
+      dropdownToggle.setAttribute("aria-expanded", !isOpen);
+    });
+    
+    // 点击下拉项
+    teacherMenu.querySelectorAll("[data-target-input='teacher_id']").forEach((button) => {
+      button.addEventListener("click", function() {
+        teacherInput.value = button.dataset.value;
+        teacherMenu.classList.remove("show");
+        dropdownToggle.setAttribute("aria-expanded", "false");
+        teacherError.classList.add("d-none");
+      });
+    });
+    
+    // 点击外部关闭下拉菜单
+    document.addEventListener("click", function(e) {
+      if (!e.target.closest(".dropdown-input-group")) {
+        teacherMenu.classList.remove("show");
+        dropdownToggle.setAttribute("aria-expanded", "false");
+      }
+    });
+    
+    // 输入时清除错误提示
+    teacherInput.addEventListener("input", function() {
+      if (teacherInput.value.trim()) {
+        teacherError.classList.add("d-none");
+      }
+    });
+    
+    // 表单提交验证
+    form.addEventListener("submit", function(e) {
+      if (!teacherInput.value.trim()) {
+        teacherError.classList.remove("d-none");
+        teacherInput.focus();
+        e.preventDefault();
+      }
+    });
+  })();
+</script>
+{% endblock %}

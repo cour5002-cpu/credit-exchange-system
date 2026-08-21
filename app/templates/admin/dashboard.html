@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}管理员首页{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item active" aria-current="page">管理员首页</li>
+  </ol>
+</nav>
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h2 class="h4">管理员工作台</h2>
+    <p class="text-secondary">当前已经接入课时申请查看与教师分配入口。</p>
+    <div class="d-flex gap-2">
+      <a class="btn btn-primary" href="{{ url_for('admin.list_hour_applications') }}">查看全部课时申请</a>
+      <a class="btn btn-outline-success" href="{{ url_for('credit_exchange.admin_list') }}">查看兑换申请</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

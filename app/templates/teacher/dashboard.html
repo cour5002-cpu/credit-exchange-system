@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}教师首页{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item active" aria-current="page">教师首页</li>
+  </ol>
+</nav>
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h2 class="h4">教师工作台</h2>
+    <p class="text-secondary">当前已接入申请待审核页与历史审核记录页面。</p>
+    <div class="d-flex gap-2">
+      <a class="btn btn-primary" href="{{ url_for('teacher.list_my_applications') }}">查看待审核申请</a>
+      <a class="btn btn-outline-secondary" href="{{ url_for('teacher.review_history') }}">查看历史审核记录</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

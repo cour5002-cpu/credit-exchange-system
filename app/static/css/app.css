@@ -1,0 +1,42 @@
+body {
+  min-height: 100vh;
+}
+
+.card {
+  border: 0;
+  border-radius: 1rem;
+}
+
+.dropdown-input-group {
+  position: relative;
+}
+
+.dropdown-input-group .dropdown-menu {
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+.number-spinner-always {
+  appearance: auto;
+  -moz-appearance: auto;
+}
+
+.number-spinner-always::-webkit-outer-spin-button,
+.number-spinner-always::-webkit-inner-spin-button {
+  opacity: 1;
+  margin: 0;
+}
+
+.form-control::placeholder {
+  color: #9aa4b2;
+  opacity: 1;
+}
+
+.form-control:focus::placeholder {
+  color: #b5bec9;
+}
+
+.readonly-select-input {
+  cursor: pointer;
+  background-color: #fff;
+}
