@@ -81,20 +81,21 @@ const filteredConfirmations = computed(() => {
           <table>
             <thead>
               <tr>
-                <th>事项标题</th><th>学生姓名</th><th>确认类型</th><th>提交时间</th><th>当前状态</th><th>操作</th>
+                <th>事项标题</th><th>学生姓名</th><th>申请课时</th><th>确认类型</th><th>提交时间</th><th>当前状态</th><th>操作</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="item in filteredConfirmations" :key="item.id">
                 <td><strong>{{ item.title }}</strong><small>{{ item.id }}</small></td>
                 <td>{{ item.studentName }}</td>
+                <td>{{ item.requestedHours ?? '—' }}</td>
                 <td>课时申请确认</td>
                 <td>{{ item.submitTime }}</td>
                 <td><StatusTag :status="item.status" /></td>
                 <td><RouterLink class="detail-link" :to="{ name: 'teacher-confirm-detail', params: { id: item.id } }">查看详情</RouterLink></td>
               </tr>
               <tr v-if="!filteredConfirmations.length">
-                <td class="empty-state" colspan="6">没有找到符合条件的确认事项。</td>
+                <td class="empty-state" colspan="7">没有找到符合条件的确认事项。</td>
               </tr>
             </tbody>
           </table>

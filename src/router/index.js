@@ -105,8 +105,10 @@ const router = createRouter({
     { path:'/student/appeals/new',name:'student-appeal-create',component:()=>import('../views/StudentAppealCreateView.vue') },
     { path:'/student/appeals',name:'student-appeals',component:()=>import('../views/StudentAppealsView.vue') },
     { path:'/student/appeals/:id',name:'student-appeal-detail',component:()=>import('../views/StudentAppealDetailView.vue') },
+    { path:'/student/complaints',name:'student-complaints',component:()=>import('../views/StudentComplaintListView.vue') },
     { path:'/student/complaints/new',name:'student-complaint-create',component:()=>import('../views/StudentComplaintCreateView.vue') },
     { path:'/student/complaints/submitted/:id',name:'student-complaint-result',component:()=>import('../views/StudentComplaintResultView.vue') },
+    { path:'/student/complaints/:id',name:'student-complaint-detail',component:()=>import('../views/StudentComplaintDetailView.vue') },
     {
       path: '/student/credit-exchange',
       name: 'student-credit-exchange',
@@ -263,6 +265,11 @@ const router = createRouter({
       path: '/admin/statistics',
       name: 'admin-statistics',
       component: () => import('../views/AdminStatisticsView.vue'),
+    },
+    {
+      path: '/admin/extension-rules',
+      name: 'admin-extension-rules',
+      component: () => import('../views/AdminExtensionRuleListView.vue'),
     },
     {
       path: '/admin/rule-files',

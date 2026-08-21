@@ -55,6 +55,12 @@ export function adaptTask(task) {
     resultSubmission: adaptTaskResult(task.result_submission),
     actions: task.actions ?? {},
     myRegistration: adaptTaskRegistration(task.my_registration),
+    registrationForm: task.registration_form ? {
+      contactPhoneRequired: task.registration_form.contact_phone_required !== false,
+      defaultContactPhone: task.registration_form.default_contact_phone ?? '',
+      contactPhonePattern: task.registration_form.contact_phone_pattern ?? '^1[3-9]\\d{9}$',
+      contactPhoneMaxLength: Number(task.registration_form.contact_phone_max_length ?? 11),
+    } : null,
     hourApplications: task.hour_applications ?? task.applications ?? [],
     canRegister: task.actions?.can_register ?? task.can_register ?? false,
   }
@@ -66,7 +72,8 @@ export function adaptTaskRegistration(item) {
   return {
     ...item,
     id: item.id,
-    registrationId: item.id,
+    registrationId: item.registration_id ?? item.id,
+    contactPhone: item.contact_phone ?? item.contactPhone ?? null,
     student,
     studentDbId: item.student?.id,
     studentId: item.student?.student_no,
@@ -108,7 +115,7 @@ export function adaptTaskResult(result) {
   return { id: submission.id, resultId: submission.id, taskId: submission.task_id ?? task?.id, task, taskTitle: submission.task_title ?? task?.title, advisorName: submission.advisor_name ?? task?.advisorName, leader: adaptStudent(submission.leader), leaderId: submission.leader?.id, leaderName: submission.leader?.name, teamMembers: (result.members ?? submission.members ?? []).map((item) => ({ ...adaptStudent(item.student ?? item), role: item.is_leader ? 'captain' : 'member' })), resultDescription: submission.summary ?? submission.achievement_summary, requestedHours: submission.requested_hours, attachments, resultMaterials: attachments, proofMaterials: [], actions: result.actions ?? submission.actions ?? {}, canOperate: result.can_operate ?? submission.can_operate ?? false, versions: submission.versions ?? [], status: submission.status, submitTime: submission.submitted_at }
 }
 
-export const adaptTaskEnvelope = (payload) => adaptTask(payload?.task ? { ...payload.task, attachments: payload.attachments ?? payload.task.attachments, attachment_ids: payload.attachment_ids ?? payload.task.attachment_ids, my_registration: payload.my_registration ?? payload.task.my_registration, actions: payload.actions ?? payload.task.actions, can_register: payload.can_register ?? payload.task.can_register, registrations: payload.registrations ?? payload.items ?? payload.task.registrations, members: payload.members ?? payload.task.members, leader: payload.leader ?? payload.task.leader, result_submission: payload.result_submission ?? payload.task.result_submission } : payload)
+export const adaptTaskEnvelope = (payload) => adaptTask(payload?.task ? { ...payload.task, attachments: payload.attachments ?? payload.task.attachments, attachment_ids: payload.attachment_ids ?? payload.task.attachment_ids, my_registration: payload.my_registration ?? payload.task.my_registration, registration_form: payload.registration_form ?? payload.task.registration_form, actions: payload.actions ?? payload.task.actions, can_register: payload.can_register ?? payload.task.can_register, registrations: payload.registrations ?? payload.items ?? payload.task.registrations, members: payload.members ?? payload.task.members, leader: payload.leader ?? payload.task.leader, result_submission: payload.result_submission ?? payload.task.result_submission } : payload)
 export const adaptTaskList = (payload) => (Array.isArray(payload) ? payload : payload?.items ?? payload?.tasks ?? []).map(adaptTask)
 export const adaptTaskResultEnvelope = (payload) => {
   if (!payload) return null

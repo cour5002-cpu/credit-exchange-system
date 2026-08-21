@@ -22,7 +22,7 @@ const notificationRouteMap = Object.freeze({
     reviewer: (id) => `/reviewer/appeal-reviews/${id}`,
   }),
   complaint: Object.freeze({
-    student: () => '/student/feedback',
+    student: (id) => `/student/complaints/${id}`,
     admin: (id) => `/admin/appeals-complaints/complaints/${id}`,
   }),
 })
@@ -33,7 +33,7 @@ export function getNotificationBizPath(notification, role) {
   const bizId = notification.bizId ?? notification.biz_id
   const createPath = notificationRouteMap[bizType]?.[role]
   const missingBizId = bizId === undefined || bizId === null || bizId === ''
-  if (!createPath || (missingBizId && !(bizType === 'complaint' && role === 'student'))) return null
+  if (!createPath || missingBizId) return null
   return createPath(encodeURIComponent(String(bizId ?? '')))
 }
 

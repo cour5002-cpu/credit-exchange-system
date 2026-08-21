@@ -15,6 +15,7 @@ const adaptDashboardSection = (section) => {
   const { todo_type, list_api, items, ...rest } = section
   return {
     ...rest,
+    label: todo_type === 'complaint_unviewed' ? '未完成投诉' : rest.label,
     todoType: todo_type,
     listApi: list_api,
     items: (Array.isArray(items) ? items : []).map(adaptDashboardItem).filter(Boolean),

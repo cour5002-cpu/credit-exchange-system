@@ -17,7 +17,7 @@ const todoTypes = [
   { type: 'appeal_review_assignment', label: '申诉复审核分配', to: '/admin/appeals-complaints/assign', detail: (id) => `/admin/appeals-complaints/assign/${id}` },
   { type: 'appeal_final_confirmation', label: '申诉复审最终确认', to: '/admin/final-confirm/appeals', detail: (id) => `/admin/final-confirm/appeals/${id}` },
   { type: 'special_extension_review', label: '特殊延期审核', to: '/admin/extensions', detail: (id) => `/admin/extensions/${id}` },
-  { type: 'complaint_unviewed', label: '未查看投诉', to: '/admin/appeals-complaints/complaints', detail: (id) => `/admin/appeals-complaints/complaints/${id}` },
+  { type: 'complaint_unviewed', label: '未完成投诉', to: '/admin/appeals-complaints/complaints', detail: (id) => `/admin/appeals-complaints/complaints/${id}` },
 ]
 
 const sectionMap = computed(() => new Map((dashboard.value?.sections ?? []).map((section) => [section.todoType, section])))

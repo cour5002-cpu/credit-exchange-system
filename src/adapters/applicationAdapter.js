@@ -1,5 +1,6 @@
 import { adaptAttachment } from './taskAdapter.js'
 import { adaptStudent, adaptTeacher } from './userAdapter.js'
+import { adaptExtensionRule } from './extensionRuleAdapter.js'
 
 const applicationTypeMap = { with_result: 'with_material', without_result: 'without_material', task_result: 'task_result' }
 
@@ -178,6 +179,23 @@ export const adaptApplicationList = (payload) => ({
   items: (Array.isArray(payload) ? payload : payload?.items ?? payload?.applications ?? payload?.records ?? []).map(adaptApplication),
 })
 
+export function adaptExtensionEligibility(data) {
+  if (!data) return null
+  const source = data.eligibility ?? data
+  return {
+    canApply: Boolean(source.can_apply),
+    reasonCode: source.reason_code,
+    reason: source.reason,
+    currentDueAt: source.current_due_at,
+    submittedRequestCount: Number(source.submitted_request_count ?? 0),
+    approvedExtensionDays: Number(source.approved_extension_days ?? 0),
+    remainingRequestCount: Number(source.remaining_request_count ?? 0),
+    remainingExtensionDays: Number(source.remaining_extension_days ?? 0),
+    expectedGraduationDate: source.expected_graduation_date,
+    rule: source.rule ? adaptExtensionRule(source.rule) : null,
+  }
+}
+
 export function adaptExtensionRequest(payload) {
   if (!payload) return null
   const extension = payload.extension_request ?? payload
@@ -188,6 +206,11 @@ export function adaptExtensionRequest(payload) {
   const status = extension.status === 'submitted'
     ? (reviewLevel === 'special' ? 'pending_admin_review' : 'pending_advisor_review')
     : extension.status
+  const rawRuleSnapshot = extension.rule_snapshot ?? payload.rule_snapshot ?? null
+  const ruleSnapshot = rawRuleSnapshot ? {
+    ...rawRuleSnapshot,
+    ...adaptExtensionRule(rawRuleSnapshot),
+  } : null
   return {
     id: extension.id ?? extension.extension_request_id,
     applicationId: extension.application_id ?? extension.hour_application_id ?? application?.id,
@@ -215,6 +238,8 @@ export function adaptExtensionRequest(payload) {
     extensionReason: extension.reason,
     extensionSubmitTime: extension.created_at,
     extensionMaterials: extensionAttachments.map(adaptAttachment),
+    ruleSnapshot,
+    rawRuleSnapshot,
   }
 }
 

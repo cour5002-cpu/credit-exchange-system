@@ -17,6 +17,8 @@ import {
 } from '../api/applicationApi.js'
 import { downloadAttachment, getAttachmentErrorMessage, previewAttachment, uploadAttachment } from '../api/fileApi.js'
 import { toApplicationPayload } from '../adapters/applicationAdapter.js'
+import { adaptCurrentExtensionRule } from '../adapters/extensionRuleAdapter.js'
+import { getCurrentExtensionRule } from '../api/extensionRuleApi.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
 import { currentUser as authCurrentUser } from '../stores/authStore.js'
 
@@ -41,6 +43,13 @@ const mockTeachers = [
 const teachers = ref(mockTeachers.map((item) => ({ ...item, isMockFallback: true })))
 const taskTypeOptions = ref(TASK_TYPE_OPTIONS.map((item) => ({ ...item, isMockFallback: true })))
 const dependenciesLoaded = ref(false)
+const currentExtensionRule = ref(null)
+const extensionRuleLoading = ref(false)
+const extensionRuleLoaded = ref(false)
+const extensionRuleError = ref('')
+const expectedResultDateManuallyEdited = ref(false)
+let preserveDateOnNextTaskTypeChange = false
+let extensionRuleRequestSequence = 0
 
 function createCurrentUserMember() {
   return {
@@ -69,6 +78,62 @@ const form = reactive({
   attachmentIds: [],
   attachments: [],
 })
+
+function addLocalDays(days) {
+  const date = new Date()
+  date.setHours(0, 0, 0, 0)
+  date.setDate(date.getDate() + Number(days))
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function applyDefaultMaterialDueDate() {
+  const days = Number(currentExtensionRule.value?.defaultMaterialDueDays)
+  if (form.applicationType !== 'without_result' || expectedResultDateManuallyEdited.value) return
+  if (Number.isInteger(days) && days > 0) form.expectedResultDate = addLocalDays(days)
+}
+
+async function loadCurrentExtensionRule(taskTypeId) {
+  const sequence = ++extensionRuleRequestSequence
+  currentExtensionRule.value = null
+  extensionRuleLoaded.value = false
+  extensionRuleError.value = ''
+  if (!taskTypeId) { extensionRuleLoading.value = false; return }
+  extensionRuleLoading.value = true
+  try {
+    const result = adaptCurrentExtensionRule(await getCurrentExtensionRule({ task_type_id: taskTypeId }))
+    if (sequence !== extensionRuleRequestSequence) return
+    currentExtensionRule.value = result.rule
+    extensionRuleLoaded.value = true
+    applyDefaultMaterialDueDate()
+  } catch {
+    if (sequence !== extensionRuleRequestSequence) return
+    currentExtensionRule.value = null
+    extensionRuleLoaded.value = true
+    extensionRuleError.value = '延期规则加载失败，可手动选择成果截止时间'
+  } finally {
+    if (sequence === extensionRuleRequestSequence) extensionRuleLoading.value = false
+  }
+}
+
+watch(() => form.taskType, (taskTypeId, previousTaskTypeId) => {
+  if (taskTypeId === previousTaskTypeId) return
+  const preserveExistingDate = preserveDateOnNextTaskTypeChange
+  preserveDateOnNextTaskTypeChange = false
+  if (!expectedResultDateManuallyEdited.value) form.expectedResultDate = ''
+  if (!preserveExistingDate) expectedResultDateManuallyEdited.value = false
+  loadCurrentExtensionRule(taskTypeId)
+})
+
+watch(() => form.applicationType, (applicationType) => {
+  if (applicationType === 'without_result') applyDefaultMaterialDueDate()
+})
+
+function markExpectedResultDateEdited() {
+  expectedResultDateManuallyEdited.value = true
+}
 
 watch(() => authCurrentUser.value?.student, () => {
   const previousLeaderId = currentUser.id
@@ -232,6 +297,7 @@ function restoreDraft(payload) {
   form.source = 'student'
   form.taskId = ''
   form.requestedHours = draft.requested_hours ?? ''
+  preserveDateOnNextTaskTypeChange = true
   form.taskType = String(draft.task_type_id ?? '')
   form.applicationType = draft.application_type === 'without_material' ? 'without_result' : 'with_result'
   form.primaryTeacherId = String(draft.advisor_teacher_id ?? primaryAdvisor?.teacher?.id ?? primaryAdvisor?.teacher_id ?? '')
@@ -239,6 +305,7 @@ function restoreDraft(payload) {
     .map((item) => String(item.teacher?.id ?? item.teacher_id ?? ''))
     .filter(Boolean)
   form.expectedResultDate = draft.material_due_at?.slice?.(0, 16) ?? ''
+  expectedResultDateManuallyEdited.value = Boolean(form.expectedResultDate)
   form.members = members.length
     ? members.map((item) => {
         const student = item.student ?? item
@@ -593,7 +660,11 @@ onMounted(async () => {
 
             <div v-if="form.applicationType === 'without_result'" class="form-field">
               <label for="expected-result-date">预计成果提交时间 <span class="required-mark">*</span></label>
-              <input id="expected-result-date" v-model="form.expectedResultDate" type="date" :disabled="!canSubmitApplication" />
+              <input id="expected-result-date" v-model="form.expectedResultDate" type="date" :disabled="!canSubmitApplication" @input="markExpectedResultDateEdited" />
+              <small v-if="extensionRuleLoading">正在加载当前任务类型的延期规则...</small>
+              <small v-else-if="extensionRuleError" class="rule-hint-error">{{ extensionRuleError }}</small>
+              <small v-else-if="currentExtensionRule">当前任务类型默认成果期限：{{ currentExtensionRule.defaultMaterialDueDays }} 天</small>
+              <small v-else-if="extensionRuleLoaded">当前任务类型暂无延期规则，请手动选择成果截止时间</small>
             </div>
           </div>
 

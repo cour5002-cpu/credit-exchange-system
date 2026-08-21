@@ -2,10 +2,12 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import StatusTag from '../components/StatusTag.vue'
 import { TASK_TYPE_OPTIONS, getTaskTypeText } from '../mock/tasks.js'
-import { getStudentTasks, registerTask } from '../api/taskApi.js'
+import { getStudentTasks } from '../api/taskApi.js'
+import { useRouter } from 'vue-router'
 import { adaptTaskList } from '../adapters/taskAdapter.js'
 import { getApiErrorMessage } from '../utils/apiFeedback.js'
 const keyword=ref('');const selectedType=ref('');const registrationStatus=ref('');const version=ref(0)
+const router=useRouter()
 const page=ref(1);const pageSize=ref(10);const total=ref(0);const loading=ref(false)
 const visibleStatuses=['published','registration_open','selection_pending']
 const registerableStatuses=['published','registration_open']
@@ -32,7 +34,7 @@ const totalPages=computed(()=>Math.max(1,Math.ceil(total.value/pageSize.value)))
 const pageNumbers=computed(()=>Array.from({length:totalPages.value},(_,index)=>index+1))
 async function goToPage(value){const target=Math.min(Math.max(1,value),totalPages.value);if(target===page.value)return;page.value=target;await loadItems()}
 const items=computed(()=>{version.value;const search=keyword.value.trim().toLowerCase();return remoteItems.value.filter(item=>visibleStatuses.includes(item.status)).filter(item=>(!selectedType.value||item.taskTypeId===selectedType.value)&&(!registrationStatus.value||derivedStatus(item)===registrationStatus.value)&&(!search||item.title.toLowerCase().includes(search))).sort((a,b)=>String(a.registrationDeadline).localeCompare(String(b.registrationDeadline)))})
-async function apply(item){try{await registerTask(item.id,{remark:''});window.alert('报名成功');await loadItems()}catch(error){if(error?.status===409||error?.code===40901)return window.alert('报名已截止');window.alert(getApiErrorMessage(error,'报名失败'))}}
+function apply(item){router.push(`/student/task-square/${item.id}`)}
 function summary(text){const value=String(text||'暂无要求');return value.length>42?`${value.slice(0,42)}…`:value}
 </script>
 <template><main class="page"><div class="content"><header class="header"><div><p class="eyebrow">S201 · TASK SQUARE</p><h1>任务广场</h1><p>浏览管理员已确认发布的任务，并在截止时间前报名。</p></div><RouterLink class="back" to="/student/dashboard">返回学生首页</RouterLink></header>

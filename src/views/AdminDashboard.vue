@@ -12,6 +12,7 @@ const entries = [
   { title: '最终确认', description: '处理等待最终确认的业务。', to: '/admin/final-confirm' },
   { title: '申诉与投诉', description: '处理用户提交的申诉与投诉。', to: '/admin/appeals-complaints' },
   { title: '特殊延期', description: '管理特殊情况的延期申请。', to: '/admin/extensions' },
+  { title: '延期规则管理', description: '配置延期范围、次数和默认成果期限。', to: '/admin/extension-rules' },
   { title: '数据统计', description: '查看系统业务统计数据。', to: '/admin/statistics' },
 ]
 </script>

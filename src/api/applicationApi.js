@@ -27,6 +27,7 @@ export const getPendingMaterials = (params) => get('/advisor/hour-applications/m
 export const getApplicationMaterials = (id) => get(`/advisor/hour-applications/${id}/materials`)
 export const approveApplicationMaterials = (id, data = {}) => post(`/advisor/hour-applications/${id}/materials/approve`, data)
 export const rejectApplicationMaterials = (id, data) => post(`/advisor/hour-applications/${id}/materials/reject`, data)
+export const getExtensionEligibility = (applicationId) => get(`/student/hour-applications/${applicationId}/extension-eligibility`)
 export const submitExtensionRequest = (id, data) => {
   const rawRequestedDueAt = String(data.requested_due_at ?? '')
   const requestedDueAt = /(?:Z|[+-]\d{2}:\d{2})$/.test(rawRequestedDueAt)
